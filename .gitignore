@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment variables
+
+.env
+# WhatsApp authentication (keep only creds.json)
+auth_info/*
+
+# Logs
+*.log
+npm-debug.log*
+
+# Docker
+
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

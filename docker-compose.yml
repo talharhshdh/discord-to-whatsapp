@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  discord-whatsapp-bridge:
+    build: .
+    container_name: discord-whatsapp-bridge
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # Persist WhatsApp authentication
+      - ./auth_info:/app/auth_info
+    # Optional: if you need to expose ports
+    # ports:
+    #   - "3000:3000"
