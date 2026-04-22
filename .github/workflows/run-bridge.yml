@@ -6,7 +6,7 @@ on:
 jobs:
   run-bridge:
     runs-on: ubuntu-latest
-    timeout-minutes: 5 # Total timeout including wait time
+    timeout-minutes: 10 # Total timeout including wait time (4min run + 5min wait + buffer)
     
     steps:
       - name: Checkout code
