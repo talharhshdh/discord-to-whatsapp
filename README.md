@@ -94,7 +94,7 @@ A Node.js TypeScript application that bridges Discord messages to WhatsApp using
 
 ## GitHub Actions Setup
 
-This project includes a GitHub Actions workflow that runs the bridge automatically every 5 minutes for 4 minutes each time.
+This project includes a GitHub Actions workflow that runs the bridge in a continuous loop - each run lasts 4 minutes, waits 5 minutes, then automatically triggers the next run.
 
 ### Setting up GitHub Secrets
 
@@ -118,17 +118,22 @@ This project includes a GitHub Actions workflow that runs the bridge automatical
      ```
 
 3. **Workflow behavior:**
-   - Runs automatically every 5 minutes
-   - Each run lasts exactly 4 minutes before being killed
-   - Can also be triggered manually from Actions tab → Run workflow
+   - Runs for 4 minutes
+   - Waits 5 minutes
+   - Automatically triggers the next run (continuous loop)
    - Restores WhatsApp session from secrets each time
 
-### Manual Trigger
+### Starting the Loop
 
-You can manually trigger the workflow:
+Trigger the workflow once manually to start the continuous loop:
 1. Go to Actions tab in your repository
 2. Select "Discord WhatsApp Bridge" workflow
 3. Click "Run workflow"
+4. The workflow will keep triggering itself every 5 minutes after each 4-minute run
+
+### Stopping the Loop
+
+To stop the continuous loop, cancel the running workflow from the Actions tab.
 
 ## License
 
