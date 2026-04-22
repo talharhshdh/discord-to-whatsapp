@@ -2,11 +2,13 @@ name: Discord WhatsApp Bridge
 
 on:
   workflow_dispatch: # Allows manual trigger
+  schedule:
+    - cron: '*/5 * * * *' # Minimum 5-minute interval
 
 jobs:
   run-bridge:
     runs-on: ubuntu-latest
-    timeout-minutes: 10 # Total timeout including wait time (4min run + 5min wait + buffer)
+    timeout-minutes: 10 #
     
     steps:
       - name: Checkout code
