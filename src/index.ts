@@ -176,7 +176,7 @@ class DiscordWhatsAppBridge {
     if (this.whatsappReady && this.discordReady && !this.testMessageSent) {
       console.log('🚀 Bridge is fully operational!');
       this.testMessageSent = true;
-      await this.sendTestMessage();
+      // await this.sendTestMessage();
     }
   }
 
