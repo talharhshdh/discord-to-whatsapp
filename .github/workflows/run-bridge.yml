@@ -5,6 +5,10 @@ on:
   schedule:
     - cron: '*/10 * * * *' # Fallback just in case the loop breaks
 
+concurrency:
+  group: discord-whatsapp-bridge
+  cancel-in-progress: false # Don't cancel running jobs, just queue them
+
 jobs:
   run-bridge:
     runs-on: ubuntu-latest
