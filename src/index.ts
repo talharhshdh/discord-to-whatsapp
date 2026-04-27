@@ -3,13 +3,15 @@ import makeWASocket, {
   useMultiFileAuthState,
   WASocket,
   proto,
-  fetchLatestBaileysVersion
+  fetchLatestBaileysVersion,
+  downloadMediaMessage
 } from '@whiskeysockets/baileys';
 import { Client as DiscordClient, GatewayIntentBits, Message } from 'discord.js';
 import qrcode from 'qrcode-terminal';
 import * as dotenv from 'dotenv';
 import { Boom } from '@hapi/boom';
 import P from 'pino';
+import sharp from 'sharp';
 
 dotenv.config();
 
@@ -119,6 +121,11 @@ class DiscordWhatsAppBridge {
       });
 
       sock.ev.on('creds.update', saveCreds);
+
+      // Handle incoming WhatsApp messages for image-to-sticker conversion
+      sock.ev.on('messages.upsert', async ({ messages }) => {
+        await this.handleWhatsAppMessage(messages);
+      });
     } catch (error) {
       console.error('❌ Error setting up WhatsApp:', error);
       this.isConnecting = false;
@@ -199,6 +206,61 @@ class DiscordWhatsAppBridge {
       console.log('📤 Test message sent to WhatsApp successfully!');
     } catch (error) {
       console.error('❌ Error sending test message:', error);
+    }
+  }
+
+  private async handleWhatsAppMessage(messages: proto.IWebMessageInfo[]): Promise<void> {
+    for (const msg of messages) {
+      try {
+        // Ignore if no message or if it's from status broadcast
+        if (!msg.message || msg.key.remoteJid === 'status@broadcast') continue;
+
+        // Get the message text
+        const messageText = msg.message.conversation || 
+                           msg.message.extendedTextMessage?.text || 
+                           '';
+
+        // Check if this is a reply to an image with ".sticker" command
+        const quotedMessage = msg.message.extendedTextMessage?.contextInfo?.quotedMessage;
+        
+        if (quotedMessage && quotedMessage.imageMessage && messageText.trim().toLowerCase() === '.sticker') {
+          console.log('🖼️ Detected .sticker command on image reply, converting to sticker...');
+          
+          // Download the quoted image
+          const quotedMsg: proto.IWebMessageInfo = {
+            key: msg.key,
+            message: { imageMessage: quotedMessage.imageMessage }
+          };
+          
+          const buffer = await downloadMediaMessage(
+            quotedMsg,
+            'buffer',
+            {},
+            {
+              logger: P({ level: 'silent' }),
+              reuploadRequest: this.whatsappSocket!.updateMediaMessage
+            }
+          );
+
+          // Convert image to sticker format (WebP, max 512x512)
+          const stickerBuffer = await sharp(buffer as Buffer)
+            .resize(512, 512, {
+              fit: 'contain',
+              background: { r: 0, g: 0, b: 0, alpha: 0 }
+            })
+            .webp()
+            .toBuffer();
+
+          // Send as sticker
+          await this.whatsappSocket!.sendMessage(msg.key.remoteJid!, {
+            sticker: stickerBuffer
+          });
+
+          console.log('✅ Image converted to sticker and sent!');
+        }
+      } catch (error) {
+        console.error('❌ Error processing WhatsApp message:', error);
+      }
     }
   }
 
