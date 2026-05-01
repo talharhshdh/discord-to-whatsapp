@@ -408,44 +408,76 @@ class DiscordWhatsAppBridge {
         }
 
         // ── Platform media downloader ─────────────────────────────────────
-        // When you send yourself a link (fromMe) from a supported platform
-        // (Instagram, TikTok, Facebook, Twitter/X, YouTube, MediaFire,
-        //  CapCut, Google Drive, Pinterest) the bot will automatically
-        //  download the media and send it back to the same chat.
+        // When an authorized sender sends a supported platform link the bot
+        // will download the media and send it back to the same chat.
         if (messageText.trim()) {
-          const downloadResult = await detectAndDownload(messageText);
+          const jid = msg.key.remoteJid!;
 
-          if (downloadResult) {
-            const { buffer: mediaBuffer, mediaType, mimetype, caption, filename } = downloadResult;
-            const jid = msg.key.remoteJid!;
+          // Only proceed if the message contains a recognised platform URL
+          const { detectPlatform } = await import('./libs/downloader');
+          if (!detectPlatform(messageText)) continue;
 
-            console.log(`📤 Sending ${mediaType} (${(mediaBuffer.length / 1024).toFixed(1)} KB) to ${jid}`);
+          // ── Send initial status message ──────────────────────────────────
+          const statusMsg = await this.whatsappSocket!.sendMessage(jid, {
+            text: '⏳ *Processing your link...*',
+          });
+          const statusKey = statusMsg?.key;
 
-            if (mediaType === 'video') {
-              await this.whatsappSocket!.sendMessage(jid, {
-                video: mediaBuffer,
-                caption,
-                mimetype,
-              });
-            } else if (mediaType === 'image') {
-              await this.whatsappSocket!.sendMessage(jid, {
-                image: mediaBuffer,
-                caption,
-                mimetype,
-              });
-            } else {
-              // Send as a document (e.g. APK from MediaFire, Drive files)
-              await this.whatsappSocket!.sendMessage(jid, {
-                document: mediaBuffer,
-                mimetype,
-                fileName: filename,
-                caption,
-              });
+          /**
+           * Edits the status message in-place using WhatsApp's message-edit
+           * feature so the user sees live progress without extra messages.
+           */
+          const updateStatus = async (text: string): Promise<void> => {
+            try {
+              if (statusKey && this.whatsappSocket) {
+                await this.whatsappSocket.sendMessage(jid, {
+                  text,
+                  edit: statusKey,
+                } as Parameters<typeof this.whatsappSocket.sendMessage>[1]);
+              }
+            } catch {
+              // Non-fatal — progress update failure shouldn't abort the download
             }
+          };
 
-            console.log(`✅ ${caption.split('\n')[0]} media sent!`);
+          try {
+            const downloadResult = await detectAndDownload(messageText, updateStatus);
+
+            if (downloadResult) {
+              const { buffer: mediaBuffer, mediaType, mimetype, caption, filename } = downloadResult;
+
+              await updateStatus('📤 *Uploading to WhatsApp...*');
+              console.log(`📤 Sending ${mediaType} (${(mediaBuffer.length / 1024).toFixed(1)} KB) to ${jid}`);
+
+              if (mediaType === 'video') {
+                await this.whatsappSocket!.sendMessage(jid, { video: mediaBuffer, caption, mimetype });
+              } else if (mediaType === 'image') {
+                await this.whatsappSocket!.sendMessage(jid, { image: mediaBuffer, caption, mimetype });
+              } else {
+                await this.whatsappSocket!.sendMessage(jid, {
+                  document: mediaBuffer, mimetype, fileName: filename, caption,
+                });
+              }
+
+              // Delete the progress message now that the media is sent
+              if (statusKey && this.whatsappSocket) {
+                await this.whatsappSocket.sendMessage(jid, { delete: statusKey });
+              }
+
+              console.log(`✅ ${caption.split('\n')[0]} media sent!`);
+            } else {
+              // URL detected but downloader returned null — silently remove status
+              if (statusKey && this.whatsappSocket) {
+                await this.whatsappSocket.sendMessage(jid, { delete: statusKey });
+              }
+            }
+          } catch (dlErr) {
+            const errMsg = dlErr instanceof Error ? dlErr.message : String(dlErr);
+            await updateStatus(`❌ *Download failed*\n${errMsg}`);
+            console.error('❌ Download error:', dlErr);
           }
         }
+
       } catch (error) {
         console.error('❌ Error processing WhatsApp message:', error);
       }

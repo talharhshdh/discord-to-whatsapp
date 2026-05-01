@@ -85,6 +85,12 @@ export type Platform =
   | 'gdrive'
   | 'pinterest';
 
+/**
+ * Called at key stages of a download to report progress to the user.
+ * Receives a short human-readable status string.
+ */
+export type ProgressCallback = (status: string) => Promise<void>;
+
 // ---------------------------------------------------------------------------
 // URL detection
 // ---------------------------------------------------------------------------
@@ -152,30 +158,76 @@ async function fetchBuffer(url: string): Promise<{ buffer: Buffer; contentType: 
  * Picks the best download URL from a list of ab-downloader result items.
  * Priority: HD/high quality first, then first available.
  */
-function pickBestUrl(items: AbDownloaderResult[]): string | null {
-  if (!items || items.length === 0) return null;
+/**
+ * Extracts the best download URL from any ab-downloader response shape.
+ *
+ * Each platform returns a different structure:
+ *  Instagram : Array<{url}>                       → item.url
+ *  YouTube   : Object {mp4, mp3}                  → mp4
+ *  TikTok    : Object {video:[], audio:[]}         → video[0]
+ *  Facebook  : Object {HD, Normal_video}           → HD
+ *  Twitter   : Object {url:[{hd},{sd}]}            → url[0].hd
+ *  MediaFire : Object {result:{downloadUrl}}       → result.downloadUrl
+ *  CapCut    : Object {videoUrl}                   → videoUrl
+ *  GDrive    : Object {result:{downloadUrl}}       → result.downloadUrl
+ *  Pinterest : Object {result:{image, images}}     → result.images.orig.url
+ */
+function pickBestUrl(raw: unknown): string | null {
+  if (!raw) return null;
 
-  const flatten = (item: AbDownloaderResult): string[] => {
-    const candidates: string[] = [];
-    if (item.url)      candidates.push(item.url);
-    if (item.download) candidates.push(item.download);
-    if (item.urls)     candidates.push(...item.urls);
-    return candidates.filter(Boolean);
-  };
-
-  // Prefer HD quality
-  const hd = items.find(i =>
-    /hd|high|1080|720/i.test(i.quality ?? i.type ?? '')
-  );
-  if (hd) {
-    const urls = flatten(hd);
-    if (urls.length) return urls[0];
+  // ── Array response (Instagram) ────────────────────────────────────────
+  if (Array.isArray(raw)) {
+    for (const item of raw as Record<string, unknown>[]) {
+      const candidates = [
+        item['url'], item['download'],
+        ...(Array.isArray(item['urls']) ? item['urls'] : []),
+      ].filter((u): u is string => typeof u === 'string' && u.startsWith('http'));
+      if (candidates.length) return candidates[0];
+    }
+    return null;
   }
 
-  // Fallback: first item with any URL
-  for (const item of items) {
-    const urls = flatten(item);
-    if (urls.length) return urls[0];
+  const obj = raw as Record<string, unknown>;
+
+  // ── YouTube: {mp4, mp3} ───────────────────────────────────────────────
+  if (typeof obj['mp4'] === 'string') return obj['mp4'];
+
+  // ── TikTok: {video:[], audio:[]} ──────────────────────────────────────
+  if (Array.isArray(obj['video']) && obj['video'].length > 0)
+    return (obj['video'] as string[])[0];
+
+  // ── Facebook: {HD, Normal_video} ─────────────────────────────────────
+  if (typeof obj['HD'] === 'string')           return obj['HD'];
+  if (typeof obj['Normal_video'] === 'string') return obj['Normal_video'];
+
+  // ── Twitter: {url:[{hd:...},{sd:...}]} ───────────────────────────────
+  if (Array.isArray(obj['url'])) {
+    for (const entry of obj['url'] as Record<string, unknown>[]) {
+      const v = entry['hd'] ?? entry['sd'] ?? Object.values(entry)[0];
+      if (typeof v === 'string') return v;
+    }
+  }
+
+  // ── CapCut: {videoUrl} ───────────────────────────────────────────────
+  if (typeof obj['videoUrl'] === 'string') return obj['videoUrl'];
+
+  // ── MediaFire / GDrive: {result:{downloadUrl}} ───────────────────────
+  const result = obj['result'] as Record<string, unknown> | undefined;
+  if (result && typeof result['downloadUrl'] === 'string') return result['downloadUrl'];
+
+  // ── Pinterest: {result:{image, images:{orig:{url}}}} ─────────────────
+  if (result) {
+    const images = result['images'] as Record<string, unknown> | undefined;
+    if (images) {
+      const orig = images['orig'] as Record<string, unknown> | undefined;
+      if (orig && typeof orig['url'] === 'string') return orig['url'];
+    }
+    if (typeof result['image'] === 'string') return result['image'];
+  }
+
+  // ── Generic fallback: first string field starting with http ──────────
+  for (const v of Object.values(obj)) {
+    if (typeof v === 'string' && v.startsWith('http')) return v;
   }
 
   return null;
@@ -240,162 +292,161 @@ function resolveMediaType(
 // Platform downloaders
 // ---------------------------------------------------------------------------
 
-async function downloadInstagram(url: string): Promise<DownloadResult> {
+async function downloadInstagram(url: string, onProgress?: ProgressCallback): Promise<DownloadResult> {
+  await onProgress?.('🔍 Fetching Instagram link...');
   const data = await igdl(url);
   const mediaUrl = pickBestUrl(data);
   if (!mediaUrl) throw new Error('Instagram: no download URL found in response');
 
+  await onProgress?.('📥 Downloading media...');
   const { buffer, contentType } = await fetchBuffer(mediaUrl);
-  // Instagram always delivers video — force mp4 when server returns octet-stream
   const { mediaType, mimetype } = resolveMediaType(contentType, mediaUrl, 'video/mp4');
   const ext = mimeToExt(mimetype);
   return {
-    buffer,
-    mediaType,
-    mimetype,
+    buffer, mediaType, mimetype,
     caption: '📸 *Instagram*',
     filename: `instagram_${Date.now()}.${ext}`,
   };
 }
 
-async function downloadTikTok(url: string): Promise<DownloadResult> {
+async function downloadTikTok(url: string, onProgress?: ProgressCallback): Promise<DownloadResult> {
+  await onProgress?.('🔍 Fetching TikTok link...');
   const data = await ttdl(url);
-  const title = (data[0]?.title as string | undefined) ?? 'TikTok';
+  const title = (data as unknown as Record<string, unknown>)?.['title'] as string | undefined ?? 'TikTok';
   const mediaUrl = pickBestUrl(data);
   if (!mediaUrl) throw new Error('TikTok: no download URL found in response');
 
+  await onProgress?.('📥 Downloading media...');
   const { buffer, contentType } = await fetchBuffer(mediaUrl);
   const { mediaType, mimetype } = resolveMediaType(contentType, mediaUrl, 'video/mp4');
   const ext = mimeToExt(mimetype);
   return {
-    buffer,
-    mediaType,
-    mimetype,
+    buffer, mediaType, mimetype,
     caption: `🎵 *TikTok*\n${title}`,
     filename: `tiktok_${Date.now()}.${ext}`,
   };
 }
 
-async function downloadFacebook(url: string): Promise<DownloadResult> {
+async function downloadFacebook(url: string, onProgress?: ProgressCallback): Promise<DownloadResult> {
+  await onProgress?.('🔍 Fetching Facebook link...');
   const data = await fbdown(url);
   const mediaUrl = pickBestUrl(data);
   if (!mediaUrl) throw new Error('Facebook: no download URL found in response');
 
+  await onProgress?.('📥 Downloading media...');
   const { buffer, contentType } = await fetchBuffer(mediaUrl);
   const { mediaType, mimetype } = resolveMediaType(contentType, mediaUrl, 'video/mp4');
   const ext = mimeToExt(mimetype);
   return {
-    buffer,
-    mediaType,
-    mimetype,
+    buffer, mediaType, mimetype,
     caption: '📘 *Facebook*',
     filename: `facebook_${Date.now()}.${ext}`,
   };
 }
 
-async function downloadTwitter(url: string): Promise<DownloadResult> {
+async function downloadTwitter(url: string, onProgress?: ProgressCallback): Promise<DownloadResult> {
+  await onProgress?.('🔍 Fetching Twitter link...');
   const data = await twitter(url);
   const mediaUrl = pickBestUrl(data);
   if (!mediaUrl) throw new Error('Twitter: no download URL found in response');
 
+  await onProgress?.('📥 Downloading media...');
   const { buffer, contentType } = await fetchBuffer(mediaUrl);
   const { mediaType, mimetype } = resolveMediaType(contentType, mediaUrl, 'video/mp4');
   const ext = mimeToExt(mimetype);
   return {
-    buffer,
-    mediaType,
-    mimetype,
+    buffer, mediaType, mimetype,
     caption: '🐦 *Twitter / X*',
     filename: `twitter_${Date.now()}.${ext}`,
   };
 }
 
-async function downloadYouTube(url: string): Promise<DownloadResult> {
+async function downloadYouTube(url: string, onProgress?: ProgressCallback): Promise<DownloadResult> {
+  await onProgress?.('🔍 Fetching YouTube link...');
   const data = await youtube(url);
-  const title = (data[0]?.title as string | undefined) ?? 'YouTube';
+  const title = (data as unknown as Record<string, unknown>)?.['title'] as string | undefined ?? 'YouTube';
   const mediaUrl = pickBestUrl(data);
   if (!mediaUrl) throw new Error('YouTube: no download URL found in response');
 
+  await onProgress?.('📥 Downloading media...');
   const { buffer, contentType } = await fetchBuffer(mediaUrl);
   const { mediaType, mimetype } = resolveMediaType(contentType, mediaUrl, 'video/mp4');
   const ext = mimeToExt(mimetype);
   return {
-    buffer,
-    mediaType,
-    mimetype,
+    buffer, mediaType, mimetype,
     caption: `🎬 *YouTube*\n${title}`,
     filename: `youtube_${Date.now()}.${ext}`,
   };
 }
 
-async function downloadMediaFire(url: string): Promise<DownloadResult> {
+async function downloadMediaFire(url: string, onProgress?: ProgressCallback): Promise<DownloadResult> {
+  await onProgress?.('🔍 Fetching MediaFire link...');
   const data = await mediafire(url);
-  const item = data[0];
-  const fileName = (item?.filename ?? item?.name ?? `mediafire_${Date.now()}`) as string;
+  const result = (data as unknown as Record<string, unknown>)?.['result'] as Record<string, unknown> | undefined;
+  const fileName = (result?.['filename'] ?? result?.['name'] ?? `mediafire_${Date.now()}`) as string;
+  const size = result?.['filesize'] ? `\nSize: ${result['filesize']}` : '';
   const mediaUrl = pickBestUrl(data);
   if (!mediaUrl) throw new Error('MediaFire: no download URL found in response');
 
+  await onProgress?.('📥 Downloading file...');
   const { buffer, contentType } = await fetchBuffer(mediaUrl);
   const { mediaType, mimetype } = resolveMediaType(contentType, mediaUrl);
-  const size = item?.size ? `\nSize: ${item.size}` : '';
   return {
-    buffer,
-    mediaType,
-    mimetype,
+    buffer, mediaType, mimetype,
     caption: `📁 *MediaFire*\n${fileName}${size}`,
     filename: fileName,
   };
 }
 
-async function downloadCapCut(url: string): Promise<DownloadResult> {
+async function downloadCapCut(url: string, onProgress?: ProgressCallback): Promise<DownloadResult> {
+  await onProgress?.('🔍 Fetching CapCut link...');
   const data = await capcut(url);
-  const title = (data[0]?.title as string | undefined) ?? 'CapCut Template';
+  const obj = data as unknown as Record<string, unknown>;
+  const title = (obj['title'] ?? 'CapCut Template') as string;
   const mediaUrl = pickBestUrl(data);
   if (!mediaUrl) throw new Error('CapCut: no download URL found in response');
 
+  await onProgress?.('📥 Downloading media...');
   const { buffer, contentType } = await fetchBuffer(mediaUrl);
   const { mediaType, mimetype } = resolveMediaType(contentType, mediaUrl, 'video/mp4');
   const ext = mimeToExt(mimetype);
   return {
-    buffer,
-    mediaType,
-    mimetype,
+    buffer, mediaType, mimetype,
     caption: `🎬 *CapCut*\n${title}`,
     filename: `capcut_${Date.now()}.${ext}`,
   };
 }
 
-async function downloadGDrive(url: string): Promise<DownloadResult> {
+async function downloadGDrive(url: string, onProgress?: ProgressCallback): Promise<DownloadResult> {
+  await onProgress?.('🔍 Fetching Google Drive link...');
   const data = await gdrive(url);
-  const item = data[0];
-  const fileName = (item?.name ?? `gdrive_${Date.now()}`) as string;
+  const result = (data as unknown as Record<string, unknown>)?.['result'] as Record<string, unknown> | undefined;
+  const fileName = (result?.['filename'] ?? `gdrive_${Date.now()}`) as string;
   const mediaUrl = pickBestUrl(data);
   if (!mediaUrl) throw new Error('Google Drive: no download URL found in response');
 
+  await onProgress?.('📥 Downloading file...');
   const { buffer, contentType } = await fetchBuffer(mediaUrl);
   const { mediaType, mimetype } = resolveMediaType(contentType, mediaUrl);
   return {
-    buffer,
-    mediaType,
-    mimetype,
+    buffer, mediaType, mimetype,
     caption: `💾 *Google Drive*\n${fileName}`,
     filename: fileName,
   };
 }
 
-async function downloadPinterest(url: string): Promise<DownloadResult> {
+async function downloadPinterest(url: string, onProgress?: ProgressCallback): Promise<DownloadResult> {
+  await onProgress?.('🔍 Fetching Pinterest link...');
   const data = await pinterest(url);
   const mediaUrl = pickBestUrl(data);
   if (!mediaUrl) throw new Error('Pinterest: no download URL found in response');
 
+  await onProgress?.('📥 Downloading image...');
   const { buffer, contentType } = await fetchBuffer(mediaUrl);
-  // Pinterest serves images primarily; use image/jpeg as fallback
   const { mediaType, mimetype } = resolveMediaType(contentType, mediaUrl, 'image/jpeg');
   const ext = mimeToExt(mimetype);
   return {
-    buffer,
-    mediaType,
-    mimetype,
+    buffer, mediaType, mimetype,
     caption: '📌 *Pinterest*',
     filename: `pinterest_${Date.now()}.${ext}`,
   };
@@ -406,7 +457,7 @@ async function downloadPinterest(url: string): Promise<DownloadResult> {
 // ---------------------------------------------------------------------------
 
 /** Map of platform → downloader function */
-const DOWNLOADERS: Record<Platform, (url: string) => Promise<DownloadResult>> = {
+const DOWNLOADERS: Record<Platform, (url: string, onProgress?: ProgressCallback) => Promise<DownloadResult>> = {
   instagram: downloadInstagram,
   tiktok:    downloadTikTok,
   facebook:  downloadFacebook,
@@ -426,11 +477,13 @@ const DOWNLOADERS: Record<Platform, (url: string) => Promise<DownloadResult>> = 
  * Returns `null` if no supported platform URL is found.
  * Throws if the download fails.
  *
- * @example
- * const result = await detectAndDownload('https://www.tiktok.com/@user/video/123');
- * if (result) sock.sendMessage(jid, { video: result.buffer, caption: result.caption });
+ * @param text       Raw WhatsApp message text.
+ * @param onProgress Optional callback called at each download stage.
  */
-export async function detectAndDownload(text: string): Promise<DownloadResult | null> {
+export async function detectAndDownload(
+  text: string,
+  onProgress?: ProgressCallback,
+): Promise<DownloadResult | null> {
   const detection = detectPlatform(text);
   if (!detection) return null;
 
@@ -438,5 +491,5 @@ export async function detectAndDownload(text: string): Promise<DownloadResult | 
   console.log(`📥 Detected ${platform} link: ${url}`);
 
   const downloader = DOWNLOADERS[platform];
-  return downloader(url);
+  return downloader(url, onProgress);
 }
