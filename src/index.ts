@@ -191,15 +191,11 @@ class DiscordWhatsAppBridge {
       sock.ev.on('contacts.update', upsertContacts);
 
       // Handle incoming WhatsApp messages.
-      // We MUST check `type === 'notify'` — Baileys fires this event with
-      // type === 'append' for historical/synced messages every time the bot
-      // reconnects, which would cause stickers/downloads to re-trigger.
+      // We accept BOTH 'notify' (real-time) and 'append' (catch-up) events because
+      // WhatsApp sometimes delivers fresh messages as 'append' after a reconnect.
+      // Age-based filtering inside handleWhatsAppMessage drops genuine history syncs.
       sock.ev.on('messages.upsert', async ({ messages, type }) => {
-        if (type !== 'notify') {
-          console.log(`⏭️ Skipping messages.upsert event (type="${type}", not real-time) [${messages.length} msg(s)]`);
-          return;
-        }
-        console.log(`📬 Incoming notify event: ${messages.length} message(s)`);
+        console.log(`📬 messages.upsert type="${type}" [${messages.length} msg(s)]`);
         for (const m of messages) {
           const norm = normalizeJid(m.key.remoteJid ?? '');
           const resolvedPhoneJid = this.lidToJid.get(norm) ?? norm;
@@ -331,6 +327,22 @@ class DiscordWhatsAppBridge {
       try {
         // Ignore if no message or if it's from status broadcast
         if (!msg.message || msg.key.remoteJid === 'status@broadcast') continue;
+
+        // Age gate: skip messages older than 60 seconds.
+        // This filters genuine history syncs (sent minutes/hours ago on reconnect)
+        // while allowing real-time messages that happen to arrive as type='append'.
+        const tsRaw = msg.messageTimestamp;
+        const tsSeconds: number =
+          typeof tsRaw === 'number'
+            ? tsRaw
+            : (tsRaw != null && typeof (tsRaw as { low?: number }).low === 'number')
+              ? (tsRaw as { low: number }).low
+              : 0;
+        const ageSeconds = Math.floor(Date.now() / 1000) - tsSeconds;
+        if (tsSeconds > 0 && ageSeconds > 60) {
+          console.log(`⏭️ Skipping old message (${ageSeconds}s ago) from ${msg.key.remoteJid}`);
+          continue;
+        }
 
         // Allow the owner (fromMe) OR any authorized admin in WHATSAPP_RECIPIENT
         if (!this.isAuthorizedSender(msg)) continue;

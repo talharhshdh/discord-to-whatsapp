@@ -3,7 +3,7 @@ name: Discord WhatsApp Bridge
 on:
   workflow_dispatch: # Allows manual trigger
   schedule:
-    - cron: '*/10 * * * *' # Fallback just in case the loop breaks
+    - cron: '0 */6 * * *' # Fallback every 6h in case the self-trigger fails
 
 concurrency:
   group: discord-whatsapp-bridge
@@ -12,7 +12,7 @@ concurrency:
 jobs:
   run-bridge:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 310  # 5 hours + 10 min buffer for setup/teardown
 
     steps:
       - name: Checkout code
@@ -43,14 +43,14 @@ jobs:
       - name: Build project
         run: npm run build
       
-      - name: Run bridge for 5 minutes
+      - name: Run bridge for 5 hours
         run: |
           echo "🚀 Starting Discord WhatsApp Bridge..."
-          # Runs the bot for 5 minutes (300 seconds) then gracefully stops
-          timeout 300 npm start || code=$?
-          
+          # Run the bot for 5 hours (18000 seconds) then stop gracefully
+          timeout 18000 npm start || code=$?
+
           if [ "$code" -eq 124 ]; then
-            echo "⏱️ Process cleanly stopped after 5 minutes."
+            echo "⏱️ Process cleanly stopped after 5 hours."
           elif [ -z "$code" ]; then
             echo "✅ Process completed normally."
           else
