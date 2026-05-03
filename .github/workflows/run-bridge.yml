@@ -58,13 +58,21 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y xvfb
 
-      - name: Run Test Movie Downloader
-        run: node dist/scripts/test-movie-downloader.js
-
       - name: Start Cloudflare Bypasser API
         run: |
-          xvfb-run python src/scripts/cf_bypasser.py &
-          sleep 10
+          xvfb-run python src/scripts/cf_bypasser.py > bypasser.log 2>&1 &
+          echo "Waiting for API to start..."
+          for i in {1..15}; do
+            if curl -s http://127.0.0.1:8000/health > /dev/null; then
+              echo "✅ API is up!"
+              break
+            fi
+            sleep 2
+          done
+          cat bypasser.log
+
+      - name: Run Test Movie Downloader
+        run: node dist/scripts/test-movie-downloader.js
 
       - name: Run Auto-Download (Spider-Man)
         run: node dist/scripts/auto-download.js
