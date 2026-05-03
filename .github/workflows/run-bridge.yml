@@ -2,10 +2,10 @@ name: Discord WhatsApp Bridge
 
 on:
   push:
-    branches: [main]  # Restart bridge on every push to main
+    branches: [main] # Restart bridge on every push to main
   workflow_dispatch: # Allows manual trigger
   schedule:
-    - cron: '0 */6 * * *' # Fallback every 6h in case the self-trigger fails
+    - cron: "0 */6 * * *" # Fallback every 6h in case the self-trigger fails
 
 concurrency:
   group: discord-whatsapp-bridge
@@ -14,33 +14,33 @@ concurrency:
 jobs:
   run-bridge:
     runs-on: ubuntu-latest
-    timeout-minutes: 310  # 5 hours + 10 min buffer for setup/teardown
+    timeout-minutes: 310 # 5 hours + 10 min buffer for setup/teardown
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
-      
+          node-version: "20"
+          cache: "npm"
+
       - name: Create auth_info directory
         run: mkdir -p auth_info
-      
+
       - name: Restore creds.json from GitHub Secret
         run: |
           echo '${{ secrets.CREDS_JSON }}' > auth_info/creds.json
           echo "✅ creds.json restored"
-      
+
       - name: Create .env from GitHub Secret
         run: |
           echo '${{ secrets.ENV_FILE }}' > .env
           echo "✅ .env file created"
-      
+
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Cache Playwright Chromium
         id: playwright-cache
@@ -55,7 +55,7 @@ jobs:
 
       - name: Build project
         run: npm run build
-      
+
       - name: Run bridge for 5 hours
         run: |
           echo "🚀 Starting Discord WhatsApp Bridge..."
@@ -70,7 +70,7 @@ jobs:
             echo "❌ Process failed with exit code $code"
           fi
           exit 0 # Ensures the step passes so the trigger step can run
-      
+
       - name: Trigger next workflow run immediately
         run: |
           echo "🔄 Triggering next run via API..."
