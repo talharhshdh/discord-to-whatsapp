@@ -14,8 +14,39 @@ import { Boom } from '@hapi/boom';
 import P from 'pino';
 import sharp from 'sharp';
 import { detectAndDownload } from './libs/downloader';
+import {
+  searchYouTube,
+  getYouTubeInfo,
+  downloadYouTubeVideo,
+  formatSearchResultMessage,
+  formatQualityPickerMessage,
+  type YouTubeSearchResult,
+  type YouTubeVideoInfo,
+  type YouTubeQualityOption,
+} from './libs/youtube-dl';
 
 dotenv.config();
+
+// ---------------------------------------------------------------------------
+// YouTube interactive session state
+// ---------------------------------------------------------------------------
+
+/** Stages of the YouTube interactive flow */
+type YtSessionStage =
+  | 'search_results'   // user was shown search results; waiting for them to pick one
+  | 'quality_picker';  // user was shown quality options; waiting for a number selection
+
+interface YtSession {
+  stage: YtSessionStage;
+  /** Search results shown to the user (stage: search_results) */
+  searchResults?: YouTubeSearchResult[];
+  /** Video info + quality list (stage: quality_picker) */
+  videoInfo?: YouTubeVideoInfo;
+  /** WhatsApp key of the status message to edit in-place */
+  statusKey?: proto.IMessageKey;
+  /** Original search query (for display) */
+  query?: string;
+}
 
 /**
  * Normalizes a WhatsApp JID to its bare user form.
@@ -45,6 +76,12 @@ class DiscordWhatsAppBridge {
    * entries to avoid unbounded memory growth.
    */
   private processedMessageIds = new Set<string>();
+
+  /**
+   * Per-JID YouTube interactive session state.
+   * Key = remoteJid (the chat), Value = current session.
+   */
+  private ytSessions = new Map<string, YtSession>();
 
   /**
    * JIDs of all authorized senders (owner + admins).
@@ -325,12 +362,8 @@ class DiscordWhatsAppBridge {
   private async handleWhatsAppMessage(messages: proto.IWebMessageInfo[]): Promise<void> {
     for (const msg of messages) {
       try {
-        // Ignore if no message or if it's from status broadcast
         if (!msg.message || msg.key.remoteJid === 'status@broadcast') continue;
 
-        // Age gate: skip messages older than 60 seconds.
-        // This filters genuine history syncs (sent minutes/hours ago on reconnect)
-        // while allowing real-time messages that happen to arrive as type='append'.
         const tsRaw = msg.messageTimestamp;
         const tsSeconds: number =
           typeof tsRaw === 'number'
@@ -344,144 +377,309 @@ class DiscordWhatsAppBridge {
           continue;
         }
 
-        // Allow the owner (fromMe) OR any authorized admin in WHATSAPP_RECIPIENT
         if (!this.isAuthorizedSender(msg)) continue;
 
-        // Deduplication guard — belt-and-suspenders protection against the bot
-        // processing the same message twice (e.g., rapid reconnects emitting a
-        // duplicate 'notify' event). Key = remoteJid + messageId.
         const msgUniqueId = `${msg.key.remoteJid}:${msg.key.id}`;
         if (this.processedMessageIds.has(msgUniqueId)) {
           console.log(`⏭️ Skipping already-processed message (${msgUniqueId})`);
           continue;
         }
-        // Cap set size to avoid unbounded memory growth
         if (this.processedMessageIds.size >= 500) {
           const firstEntry = this.processedMessageIds.values().next().value;
-          if (firstEntry !== undefined) {
-            this.processedMessageIds.delete(firstEntry);
-          }
+          if (firstEntry !== undefined) this.processedMessageIds.delete(firstEntry);
         }
         this.processedMessageIds.add(msgUniqueId);
 
-        // Get the message text
-        const messageText = msg.message.conversation ||
+        const messageText = (
+          msg.message.conversation ||
           msg.message.extendedTextMessage?.text ||
-          '';
+          ''
+        ).trim();
 
-        // ── .sticker command ─────────────────────────────────────────────
-        // Reply to any image with ".sticker" to convert it to a WhatsApp sticker.
+        const jid = msg.key.remoteJid!;
+        const sock = this.whatsappSocket!;
+
+        // ── .sticker command ────────────────────────────────────────────────
         const quotedMessage = msg.message.extendedTextMessage?.contextInfo?.quotedMessage;
-
-        if (quotedMessage && quotedMessage.imageMessage && messageText.trim().toLowerCase() === '.sticker') {
+        if (quotedMessage?.imageMessage && messageText.toLowerCase() === '.sticker') {
           console.log('🖼️ Detected .sticker command on image reply, converting to sticker...');
-
           const quotedMsg: proto.IWebMessageInfo = {
             key: msg.key,
-            message: { imageMessage: quotedMessage.imageMessage }
+            message: { imageMessage: quotedMessage.imageMessage },
           };
-
-          const buffer = await downloadMediaMessage(
-            quotedMsg,
-            'buffer',
-            {},
-            {
-              logger: P({ level: 'silent' }),
-              reuploadRequest: this.whatsappSocket!.updateMediaMessage
-            }
-          );
-
+          const buffer = await downloadMediaMessage(quotedMsg, 'buffer', {}, {
+            logger: P({ level: 'silent' }),
+            reuploadRequest: sock.updateMediaMessage,
+          });
           const stickerBuffer = await sharp(buffer as Buffer)
-            .resize(512, 512, {
-              fit: 'contain',
-              background: { r: 0, g: 0, b: 0, alpha: 0 }
-            })
+            .resize(512, 512, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
             .webp()
             .toBuffer();
-
-          await this.whatsappSocket!.sendMessage(msg.key.remoteJid!, {
-            sticker: stickerBuffer
-          });
-
+          await sock.sendMessage(jid, { sticker: stickerBuffer });
           console.log('✅ Image converted to sticker and sent!');
-          continue; // done with this message
+          continue;
         }
 
-        // ── Platform media downloader ─────────────────────────────────────
-        // When an authorized sender sends a supported platform link the bot
-        // will download the media and send it back to the same chat.
-        if (messageText.trim()) {
-          const jid = msg.key.remoteJid!;
+        if (!messageText) continue;
 
-          // Only proceed if the message contains a recognised platform URL
-          const { detectPlatform } = await import('./libs/downloader');
-          if (!detectPlatform(messageText)) continue;
+        // ────────────────────────────────────────────────────────────────────
+        // YouTube interactive session handler
+        // ────────────────────────────────────────────────────────────────────
+        const session = this.ytSessions.get(jid);
 
-          // ── Send initial status message ──────────────────────────────────
-          const statusMsg = await this.whatsappSocket!.sendMessage(jid, {
-            text: '⏳ *Processing your link...*',
-          });
-          const statusKey = statusMsg?.key;
+        // ── Stage: user is choosing a search result ──────────────────────────
+        if (session?.stage === 'search_results') {
+          const pick = parseInt(messageText, 10);
+          const results = session.searchResults ?? [];
 
-          /**
-           * Edits the status message in-place using WhatsApp's message-edit
-           * feature so the user sees live progress without extra messages.
-           */
-          const updateStatus = async (text: string): Promise<void> => {
+          if (pick >= 1 && pick <= results.length) {
+            const chosen = results[pick - 1]!;
+            this.ytSessions.delete(jid);
+
+            const statusMsg = await sock.sendMessage(jid, {
+              text: `⏳ *Fetching info for:*\n_${chosen.title}_`,
+            });
+            const statusKey = statusMsg?.key;
+
+            const updateStatus = this.makeStatusUpdater(jid, statusKey);
+
             try {
-              if (statusKey && this.whatsappSocket) {
-                await this.whatsappSocket.sendMessage(jid, {
-                  text,
-                  edit: statusKey,
-                } as Parameters<typeof this.whatsappSocket.sendMessage>[1]);
-              }
-            } catch {
-              // Non-fatal — progress update failure shouldn't abort the download
+              await updateStatus('🔍 *Getting video formats...*');
+              const info = await getYouTubeInfo(chosen.url);
+              this.ytSessions.set(jid, {
+                stage: 'quality_picker',
+                videoInfo: info,
+                statusKey,
+                query: session.query,
+              });
+              await updateStatus(formatQualityPickerMessage(info));
+            } catch (err) {
+              const errMsg = err instanceof Error ? err.message : String(err);
+              await updateStatus(`❌ *Failed to fetch info*\n${errMsg}`);
+              this.ytSessions.delete(jid);
             }
-          };
+            continue;
+          }
 
-          try {
-            const downloadResult = await detectAndDownload(messageText, updateStatus);
+          // Invalid pick — remind the user
+          if (/^\d+$/.test(messageText)) {
+            await sock.sendMessage(jid, {
+              text: `⚠️ Please reply with a number between 1 and ${results.length}.`,
+            });
+            continue;
+          }
+          // Not a number — fall through to treat as new input
+          this.ytSessions.delete(jid);
+        }
 
-            if (downloadResult) {
-              const { buffer: mediaBuffer, mediaType, mimetype, caption, filename } = downloadResult;
+        // ── Stage: user is choosing a quality ────────────────────────────────
+        if (session?.stage === 'quality_picker') {
+          const pick = parseInt(messageText, 10);
+          const info = session.videoInfo!;
+
+          if (pick >= 1 && pick <= info.qualities.length) {
+            const quality = info.qualities[pick - 1]!;
+            this.ytSessions.delete(jid);
+
+            const statusMsg = await sock.sendMessage(jid, {
+              text: `⏳ *Starting download...*\n_${info.title}_\n_Quality: ${quality.key}_`,
+            });
+            const statusKey = statusMsg?.key;
+            const updateStatus = this.makeStatusUpdater(jid, statusKey);
+
+            try {
+              const result = await downloadYouTubeVideo(info.url, quality, updateStatus);
 
               await updateStatus('📤 *Uploading to WhatsApp...*');
-              console.log(`📤 Sending ${mediaType} (${(mediaBuffer.length / 1024).toFixed(1)} KB) to ${jid}`);
+              console.log(`📤 Sending YouTube ${quality.key} (${(result.buffer.length / 1024 / 1024).toFixed(1)} MB) to ${jid}`);
 
-              if (mediaType === 'video') {
-                await this.whatsappSocket!.sendMessage(jid, { video: mediaBuffer, caption, mimetype });
-              } else if (mediaType === 'image') {
-                await this.whatsappSocket!.sendMessage(jid, { image: mediaBuffer, caption, mimetype });
+              if (result.mediaType === 'video') {
+                await sock.sendMessage(jid, {
+                  video: result.buffer, caption: result.caption, mimetype: result.mimetype,
+                });
               } else {
-                await this.whatsappSocket!.sendMessage(jid, {
-                  document: mediaBuffer, mimetype, fileName: filename, caption,
+                await sock.sendMessage(jid, {
+                  document: result.buffer, mimetype: result.mimetype,
+                  fileName: result.filename, caption: result.caption,
                 });
               }
 
-              // Delete the progress message now that the media is sent
-              if (statusKey && this.whatsappSocket) {
-                await this.whatsappSocket.sendMessage(jid, { delete: statusKey });
-              }
+              if (statusKey) await sock.sendMessage(jid, { delete: statusKey });
+              console.log(`✅ YouTube ${quality.key} sent!`);
+            } catch (err) {
+              const errMsg = err instanceof Error ? err.message : String(err);
+              await updateStatus(`❌ *Download failed*\n${errMsg}`);
+              this.ytSessions.delete(jid);
+            }
+            continue;
+          }
 
+          if (/^\d+$/.test(messageText)) {
+            await sock.sendMessage(jid, {
+              text: `⚠️ Please reply with a number between 1 and ${info.qualities.length}.`,
+            });
+            continue;
+          }
+          this.ytSessions.delete(jid);
+        }
+
+        // ────────────────────────────────────────────────────────────────────
+        // Detect supported platform URLs (non-YouTube)
+        // ────────────────────────────────────────────────────────────────────
+        const { detectPlatform } = await import('./libs/downloader');
+        const detection = detectPlatform(messageText);
+
+        if (detection) {
+          // ── YouTube URL: use youtube-dl-exec flow ──────────────────────────
+          if (detection.platform === 'youtube') {
+            const statusMsg = await sock.sendMessage(jid, {
+              text: '⏳ *Fetching YouTube video info...*',
+            });
+            const statusKey = statusMsg?.key;
+            const updateStatus = this.makeStatusUpdater(jid, statusKey);
+
+            try {
+              await updateStatus('🔍 *Getting available formats...*');
+              const info = await getYouTubeInfo(detection.url);
+              this.ytSessions.set(jid, {
+                stage: 'quality_picker',
+                videoInfo: info,
+                statusKey,
+              });
+              await updateStatus(formatQualityPickerMessage(info));
+            } catch (err) {
+              const errMsg = err instanceof Error ? err.message : String(err);
+              await updateStatus(`❌ *Failed to get video info*\n${errMsg}`);
+            }
+            continue;
+          }
+
+          // ── Other platforms: existing downloader ───────────────────────────
+          const statusMsg = await sock.sendMessage(jid, {
+            text: '⏳ *Processing your link...*',
+          });
+          const statusKey = statusMsg?.key;
+          const updateStatus = this.makeStatusUpdater(jid, statusKey);
+
+          try {
+            const downloadResult = await detectAndDownload(messageText, updateStatus);
+            if (downloadResult) {
+              const { buffer: mediaBuffer, mediaType, mimetype, caption, filename } = downloadResult;
+              await updateStatus('📤 *Uploading to WhatsApp...*');
+              if (mediaType === 'video') {
+                await sock.sendMessage(jid, { video: mediaBuffer, caption, mimetype });
+              } else if (mediaType === 'image') {
+                await sock.sendMessage(jid, { image: mediaBuffer, caption, mimetype });
+              } else {
+                await sock.sendMessage(jid, { document: mediaBuffer, mimetype, fileName: filename, caption });
+              }
+              if (statusKey) await sock.sendMessage(jid, { delete: statusKey });
               console.log(`✅ ${caption.split('\n')[0]} media sent!`);
             } else {
-              // URL detected but downloader returned null — silently remove status
-              if (statusKey && this.whatsappSocket) {
-                await this.whatsappSocket.sendMessage(jid, { delete: statusKey });
-              }
+              if (statusKey) await sock.sendMessage(jid, { delete: statusKey });
             }
           } catch (dlErr) {
             const errMsg = dlErr instanceof Error ? dlErr.message : String(dlErr);
             await updateStatus(`❌ *Download failed*\n${errMsg}`);
-            console.error('❌ Download error:', dlErr);
           }
+          continue;
+        }
+
+        // ────────────────────────────────────────────────────────────────────
+        // Plain text → offer YouTube search
+        // ────────────────────────────────────────────────────────────────────
+        // Only trigger if text looks like a search query (not a command, not a URL)
+        const isUrl = /^https?:\/\//i.test(messageText);
+        const isCommand = messageText.startsWith('.');
+        const isShortNum = /^\d{1,2}$/.test(messageText); // could be a session reply
+
+        if (!isUrl && !isCommand && !isShortNum && messageText.length >= 3) {
+          // Offer a "Search YouTube" prompt
+          await sock.sendMessage(jid, {
+            text:
+              `🔍 *Search YouTube for:* "${messageText}"?\n\n` +
+              `Reply *y* or *yes* to search, or just ignore this message.`,
+          });
+          // Store pending search query so the next reply can trigger it
+          this.ytSessions.set(jid, {
+            stage: 'search_results',
+            query: messageText,
+            // no searchResults yet — we populate after user confirms
+          });
+          continue;
+        }
+
+        // ── Handle "yes" confirmation for pending YouTube search ─────────────
+        if (
+          (messageText.toLowerCase() === 'y' || messageText.toLowerCase() === 'yes') &&
+          session?.stage === 'search_results' &&
+          session.query &&
+          !session.searchResults
+        ) {
+          const query = session.query;
+          this.ytSessions.delete(jid);
+
+          const statusMsg = await sock.sendMessage(jid, {
+            text: `🔍 *Searching YouTube for:* "${query}"...`,
+          });
+          const statusKey = statusMsg?.key;
+          const updateStatus = this.makeStatusUpdater(jid, statusKey);
+
+          try {
+            const results = await searchYouTube(query, 5);
+
+            if (results.length === 0) {
+              await updateStatus('❌ No results found.');
+              continue;
+            }
+
+            // Store session for result selection
+            this.ytSessions.set(jid, {
+              stage: 'search_results',
+              searchResults: results,
+              query,
+              statusKey,
+            });
+
+            // Build result messages
+            const lines = results.map((v, i) => formatSearchResultMessage(v, i)).join('\n\n---\n\n');
+            await updateStatus(
+              `🎬 *YouTube Search Results*\n_Query: "${query}"_\n\n` +
+              lines +
+              `\n\n_Reply with a number (1–${results.length}) to download._`,
+            );
+          } catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            await updateStatus(`❌ *Search failed*\n${errMsg}`);
+            this.ytSessions.delete(jid);
+          }
+          continue;
         }
 
       } catch (error) {
         console.error('❌ Error processing WhatsApp message:', error);
       }
     }
+  }
+
+  /**
+   * Returns a function that edits a status message in-place.
+   * Non-fatal: failures are swallowed so they don't abort downloads.
+   */
+  private makeStatusUpdater(
+    jid: string,
+    statusKey?: proto.IMessageKey,
+  ): (text: string) => Promise<void> {
+    return async (text: string) => {
+      try {
+        if (statusKey && this.whatsappSocket) {
+          await this.whatsappSocket.sendMessage(jid, {
+            text,
+            edit: statusKey,
+          } as Parameters<typeof this.whatsappSocket.sendMessage>[1]);
+        }
+      } catch { /* non-fatal */ }
+    };
   }
 
   private async handleDiscordMessage(message: Message): Promise<void> {
