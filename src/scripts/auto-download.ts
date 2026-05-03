@@ -106,6 +106,17 @@ async function runAutoDownload() {
         } catch (err) {
           console.error('❌ Error during download:', err);
           await sock.sendMessage(targetJid, { text: `❌ *Auto-Download Error:*\n${err instanceof Error ? err.message : String(err)}` });
+          
+          if (fs.existsSync('cf_screenshot.png')) {
+            console.log('📸 Sending Cloudflare screenshot to recipient...');
+            const screenshot = fs.readFileSync('cf_screenshot.png');
+            await sock.sendMessage(targetJid, { 
+              image: screenshot, 
+              caption: '⚠️ Cloudflare challenge/failure screenshot' 
+            });
+            fs.unlinkSync('cf_screenshot.png');
+          }
+
           reject(err);
         } finally {
           setTimeout(() => {

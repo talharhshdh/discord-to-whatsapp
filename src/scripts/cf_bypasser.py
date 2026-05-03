@@ -43,7 +43,10 @@ def get_prorcp(req: FetchRequest):
                         full = f"https://cloudnestra.com{src}" if src.startswith('/') else src
                         return {"url": full}
                         
+            sb.save_screenshot("cf_screenshot.png")
             raise HTTPException(status_code=400, detail="Could not find /prorcp/")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
