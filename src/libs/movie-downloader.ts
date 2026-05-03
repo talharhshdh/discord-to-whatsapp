@@ -22,6 +22,7 @@
 import * as https from 'https';
 import * as http from 'http';
 import { IncomingMessage } from 'http';
+import * as zlib from 'zlib';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -125,10 +126,21 @@ function fetchHtml(
           return;
         }
 
+        // Decompress response based on Content-Encoding header
+        const encoding = res.headers['content-encoding'];
+        let stream: NodeJS.ReadableStream = res;
+        if (encoding === 'gzip') {
+          stream = res.pipe(zlib.createGunzip());
+        } else if (encoding === 'deflate') {
+          stream = res.pipe(zlib.createInflate());
+        } else if (encoding === 'br') {
+          stream = res.pipe(zlib.createBrotliDecompress());
+        }
+
         const chunks: Buffer[] = [];
-        res.on('data', (c: Buffer) => chunks.push(c));
-        res.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
-        res.on('error', reject);
+        stream.on('data', (c: Buffer) => chunks.push(c));
+        stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+        stream.on('error', reject);
       });
 
       req.on('error', reject);
@@ -199,7 +211,7 @@ async function getRcpUrl(tmdbId: number, mediaType: MovieMediaType): Promise<str
     'Sec-Fetch-Mode': 'navigate',
     'Sec-Fetch-Site': 'cross-site',
   });
-
+  fs.writeFileSync("./index.html", html)
   // Match: src="//cloudnestra.com/rcp/..."
   const rcpMatch = html.match(/src=["'](?:https?:)?\/\/cloudnestra\.com(\/rcp\/[^"']+)["']/i);
   if (!rcpMatch || !rcpMatch[1]) {
@@ -517,8 +529,8 @@ export async function getMovieStreamUrls(
   tmdbId: number,
   mediaType: MovieMediaType,
 ): Promise<string[]> {
-  const rcpUrl   = await getRcpUrl(tmdbId, mediaType);
+  const rcpUrl = await getRcpUrl(tmdbId, mediaType);
   const proRcpUrl = await getProRcpUrl(rcpUrl);
-  const info     = await extractM3u8Urls(proRcpUrl);
+  const info = await extractM3u8Urls(proRcpUrl);
   return info.urls;
 }

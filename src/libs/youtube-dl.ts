@@ -3,6 +3,11 @@
  * @description YouTube downloader using `youtube-dl-exec` (primary) with quality selection,
  *              audio-only mode, real download progress tracking, and YouTube search via `yt-search`.
  *
+ *  Download fallback chain:
+ *   1. youtube-dl-exec (yt-dlp) — full quality selection + progress tracking
+ *   2. btch-downloader          — simple mp4 URL extraction
+ *   3. ab-downloader            — last-resort mp4 URL extraction
+ *
  *  Flow:
  *   1. searchYouTube(query)      → top N results (title, url, duration, views, author, thumbnail)
  *   2. getYouTubeInfo(url)       → video metadata + available quality options
@@ -17,6 +22,15 @@ const youtubedl = require('youtube-dl-exec') as (
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const yts = require('yt-search') as (query: string) => Promise<YtsResult>;
+
+// Fallback downloaders
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const btch = require('btch-downloader') as Record<string, (url: string) => Promise<unknown>>;
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { youtube: abYoutube } = require('ab-downloader') as {
+  youtube: (url: string) => Promise<unknown>;
+};
 
 import * as https from 'https';
 import * as http from 'http';
@@ -320,6 +334,8 @@ export async function getYouTubeInfo(url: string): Promise<YouTubeVideoInfo> {
  * passes format IDs to yt-dlp to let it merge them (requires ffmpeg).
  * Falls back to single-stream download if no audio format provided.
  *
+ * If yt-dlp fails entirely, falls back to btch-downloader then ab-downloader.
+ *
  * @param url           YouTube URL
  * @param quality       Selected quality option from getYouTubeInfo
  * @param onProgress    Progress callback (called periodically during download)
@@ -331,48 +347,125 @@ export async function downloadYouTubeVideo(
 ): Promise<YouTubeDownloadResult> {
   await onProgress?.(`⚙️ *Starting download: ${quality.label}*`);
 
-  // Build format string: "videoId+audioId" or just "audioId" for audio-only
-  const formatStr = quality.audioOnly
-    ? quality.formatId
-    : quality.audioFormatId
-      ? `${quality.formatId}+${quality.audioFormatId}`
-      : quality.formatId;
+  // ── Primary: yt-dlp ────────────────────────────────────────────────────
+  try {
+    // Build format string: "videoId+audioId" or just "audioId" for audio-only
+    const formatStr = quality.audioOnly
+      ? quality.formatId
+      : quality.audioFormatId
+        ? `${quality.formatId}+${quality.audioFormatId}`
+        : quality.formatId;
 
-  // Get fresh direct URL(s) for the selected format
-  const info = await youtubedl(url, {
-    ...YTDLP_BASE_FLAGS,
-    dumpSingleJson: true,
-    format: formatStr,
-    // Ask yt-dlp to give us the merged/best URL for this format combo
-  });
+    // Get fresh direct URL(s) for the selected format
+    const info = await youtubedl(url, {
+      ...YTDLP_BASE_FLAGS,
+      dumpSingleJson: true,
+      format: formatStr,
+    });
 
-  // yt-dlp returns the chosen format's URL in info.url
-  const downloadUrl = info.url;
-  if (!downloadUrl) {
-    throw new Error(`yt-dlp returned no download URL for format "${formatStr}"`);
+    // yt-dlp returns the chosen format's URL in info.url
+    const downloadUrl = info.url;
+    if (!downloadUrl) {
+      throw new Error(`yt-dlp returned no download URL for format "${formatStr}"`);
+    }
+
+    const totalBytes = quality.sizeBytes;
+    await onProgress?.(`📥 *Downloading ${quality.label}*\n_0% — ${fmtBytes(totalBytes)} total_`);
+
+    const buffer = await streamWithProgress(downloadUrl, totalBytes, async (pct, downloaded) => {
+      const bar = buildProgressBar(pct, 10);
+      await onProgress?.(
+        `📥 *Downloading ${quality.key}*\n${bar} ${pct}%\n_${fmtBytes(downloaded)} / ${fmtBytes(totalBytes)}_`,
+      );
+    });
+
+    const ext = quality.audioOnly ? 'm4a' : 'mp4';
+    const mimetype = quality.audioOnly ? 'audio/mp4' : 'video/mp4';
+    const mediaType: 'video' | 'document' = quality.audioOnly ? 'document' : 'video';
+
+    return {
+      buffer,
+      mediaType,
+      mimetype,
+      caption:  `🎬 *${info.title}*\n_${quality.key} · ${fmtDuration(info.duration ?? 0)}_`,
+      filename: `${info.title.replace(/[^\w\s-]/g, '').trim()}.${ext}`,
+    };
+  } catch (primaryErr) {
+    console.warn('[youtube-dl] yt-dlp failed, trying fallback downloaders:', primaryErr);
+    await onProgress?.(
+      `⚠️ *yt-dlp failed — trying fallback downloader...*\n_${(primaryErr as Error).message}_`,
+    );
   }
 
-  const totalBytes = quality.sizeBytes;
+  // ── Fallback: btch-downloader → ab-downloader ──────────────────────────
+  return downloadYouTubeVideoFallback(url, onProgress);
+}
 
-  await onProgress?.(`📥 *Downloading ${quality.label}*\n_0% — ${fmtBytes(totalBytes)} total_`);
+/**
+ * Fallback YouTube downloader.
+ * Tries btch-downloader first (returns {mp4, mp3, title}), then ab-downloader.
+ * Downloads the best available mp4 URL and returns a YouTubeDownloadResult.
+ *
+ * @param url        YouTube URL
+ * @param onProgress Progress callback
+ */
+export async function downloadYouTubeVideoFallback(
+  url: string,
+  onProgress?: YtProgressCallback,
+): Promise<YouTubeDownloadResult> {
+  let mediaUrl: string | null = null;
+  let title = 'YouTube';
 
-  const buffer = await streamWithProgress(downloadUrl, totalBytes, async (pct, downloaded) => {
+  // ── Try btch-downloader ────────────────────────────────────────────────
+  try {
+    await onProgress?.('🔄 *Trying btch-downloader...*');
+    const data = await btch['youtube'](url) as Record<string, unknown>;
+    title = (data['title'] as string) ?? title;
+    if (typeof data['mp4'] === 'string' && data['mp4']) {
+      mediaUrl = data['mp4'] as string;
+      console.log('[youtube-dl] btch-downloader succeeded, url:', mediaUrl);
+    }
+  } catch (btchErr) {
+    console.warn('[youtube-dl] btch-downloader also failed:', btchErr);
+  }
+
+  // ── Try ab-downloader ──────────────────────────────────────────────────
+  if (!mediaUrl) {
+    try {
+      await onProgress?.('🔄 *Trying ao-downloader...*');
+      const data = await abYoutube(url) as Record<string, unknown>;
+      title = (data['title'] as string) ?? title;
+      if (typeof data['mp4'] === 'string' && data['mp4']) {
+        mediaUrl = data['mp4'] as string;
+        console.log('[youtube-dl] ab-downloader succeeded, url:', mediaUrl);
+      }
+    } catch (abErr) {
+      console.warn('[youtube-dl] ab-downloader also failed:', abErr);
+    }
+  }
+
+  if (!mediaUrl) {
+    throw new Error(
+      'All YouTube download methods failed.\n' +
+      'yt-dlp, btch-downloader, and ab-downloader all returned no URL.',
+    );
+  }
+
+  await onProgress?.(`📥 *Downloading via fallback...*`);
+
+  const buffer = await streamWithProgress(mediaUrl, null, async (pct, downloaded) => {
     const bar = buildProgressBar(pct, 10);
     await onProgress?.(
-      `📥 *Downloading ${quality.key}*\n${bar} ${pct}%\n_${fmtBytes(downloaded)} / ${fmtBytes(totalBytes)}_`,
+      `📥 *Downloading (fallback)*\n${bar} ${pct}%\n_${fmtBytes(downloaded)} downloaded_`,
     );
   });
 
-  const ext = quality.audioOnly ? 'm4a' : 'mp4';
-  const mimetype = quality.audioOnly ? 'audio/mp4' : 'video/mp4';
-  const mediaType: 'video' | 'document' = quality.audioOnly ? 'document' : 'video';
-
   return {
     buffer,
-    mediaType,
-    mimetype,
-    caption:  `🎬 *${info.title}*\n_${quality.key} · ${fmtDuration(info.duration ?? 0)}_`,
-    filename: `${info.title.replace(/[^\w\s-]/g, '').trim()}.${ext}`,
+    mediaType:  'video',
+    mimetype:   'video/mp4',
+    caption:    `🎬 *${title}*\n_(fallback quality)_`,
+    filename:   `${title.replace(/[^\w\s-]/g, '').trim() || 'youtube'}.mp4`,
   };
 }
 

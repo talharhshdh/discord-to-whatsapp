@@ -18,6 +18,7 @@ import {
   searchYouTube,
   getYouTubeInfo,
   downloadYouTubeVideo,
+  downloadYouTubeVideoFallback,
   formatSearchResultMessage,
   formatQualityPickerMessage,
   type YouTubeSearchResult,
@@ -798,9 +799,26 @@ class DiscordWhatsAppBridge {
                 statusKey,
               });
               await updateStatus(formatQualityPickerMessage(info));
-            } catch (err) {
-              const errMsg = err instanceof Error ? err.message : String(err);
-              await updateStatus(`❌ *Failed to get video info*\n${errMsg}`);
+            } catch (infoErr) {
+              const infoErrMsg = infoErr instanceof Error ? infoErr.message : String(infoErr);
+              console.warn('[index] getYouTubeInfo failed, attempting direct fallback download:', infoErrMsg);
+              await updateStatus(
+                `⚠️ *Could not fetch formats (yt-dlp error)*\n_${infoErrMsg}_\n\n🔄 *Attempting fallback download...*`,
+              );
+              try {
+                const fallbackResult = await downloadYouTubeVideoFallback(detection.url, updateStatus);
+                await updateStatus('📤 *Uploading to WhatsApp...*');
+                await sock.sendMessage(jid, {
+                  video: fallbackResult.buffer,
+                  caption: fallbackResult.caption,
+                  mimetype: fallbackResult.mimetype,
+                });
+                if (statusKey) await sock.sendMessage(jid, { delete: statusKey });
+                console.log('✅ YouTube fallback download sent!');
+              } catch (fallbackErr) {
+                const fallbackErrMsg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
+                await updateStatus(`❌ *All download methods failed*\n${fallbackErrMsg}`);
+              }
             }
             continue;
           }
