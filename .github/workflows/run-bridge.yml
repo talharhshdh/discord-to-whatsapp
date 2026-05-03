@@ -87,8 +87,8 @@ jobs:
           done
           cat bypasser.log
 
-      - name: Run Auto-Download (Spider-Man)
-        run: node dist/scripts/auto-download.js
+      # - name: Run Auto-Download (Spider-Man)
+      #   run: node dist/scripts/auto-download.js
 
       - name: Run bridge for 5 hours
         run: |
