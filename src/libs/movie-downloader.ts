@@ -246,118 +246,57 @@ async function fetchHtmlViaBrowser(
   url: string,
   referer?: string,
 ): Promise<string> {
-  const puppeteer = await import('puppeteer');
-  console.log(`[MovieDL] 🌐 Cloudflare detected — using headless browser for: ${url}`);
-
-  const launchParams = {
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-  };
-
-  const browser = await (puppeteer.default?.launch(launchParams) || puppeteer.launch(launchParams));
+  console.log(`[MovieDL] 🌐 Cloudflare detected — using local Python SeleniumBase API for: ${url}`);
 
   try {
-    const page = await browser.newPage();
-    await page.setViewport({ width: 1280, height: 800 });
-    await page.setUserAgent(BROWSER_HEADERS['User-Agent']);
-    await page.setExtraHTTPHeaders({
-      'Accept-Language': BROWSER_HEADERS['Accept-Language'],
-      DNT: '1',
-      ...(referer ? { Referer: referer } : {}),
+    const response = await fetch('http://127.0.0.1:8000/get_html', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ url }),
     });
-    // networkidle2 = no more than 2 in-flight requests for 500ms (passes CF challenges)
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: 30_000 });
-    return await page.content();
-  } finally {
-    await browser.close();
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Python API failed: ${response.status} ${errorText}`);
+    }
+
+    const data = (await response.json()) as { html: string };
+    return data.html;
+  } catch (err) {
+    console.log(`[MovieDL] ❌ Python API error: ${err}`);
+    throw err;
   }
 }
 
 /**
- * Extract the /prorcp/ URL from the cloudnestra /rcp/ page using a real browser.
- *
- * The /prorcp/ path is set dynamically on an iframe.src via JS.
- * We wait for the iframe element to appear in the DOM and read its src directly —
- * no request interception or HTML parsing needed.
+ * Extract the /prorcp/ URL from the cloudnestra /rcp/ page using a local Python SeleniumBase API.
+ * The python server bypasses Cloudflare and extracts the URL.
  */
 async function browserGetProRcpUrl(rcpUrl: string): Promise<string> {
-  const puppeteer = await import('puppeteer');
-  console.log(`[MovieDL] 🌐 Using browser to get /prorcp/ from: ${rcpUrl}`);
-
-  const launchParams = {
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-  };
-
-  const browser = await (puppeteer.default?.launch(launchParams) || puppeteer.launch(launchParams));
+  console.log(`[MovieDL] 🌐 Using local Python SeleniumBase API to get /prorcp/ from: ${rcpUrl}`);
 
   try {
-    const page = await browser.newPage();
-    await page.setViewport({ width: 1280, height: 800 });
-    await page.setUserAgent(BROWSER_HEADERS['User-Agent']);
-    await page.setExtraHTTPHeaders({
-      'Accept-Language': BROWSER_HEADERS['Accept-Language'],
-      DNT: '1',
-      Referer: `https://${EMBED_HOST}/`,
+    const response = await fetch('http://127.0.0.1:8000/get_prorcp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ url: rcpUrl }),
     });
 
-    await page.goto(rcpUrl, { waitUntil: 'networkidle2', timeout: 30_000 });
-
-    const title = await page.title();
-    const finalUrl = page.url();
-    console.log(`[MovieDL] Page loaded. Title: "${title}", URL: ${finalUrl}`);
-
-    // Check for Cloudflare challenge
-    const content = await page.content();
-    if (content.includes('cf-browser-verification') || content.includes('cf_chl_') || (content.includes('Just a moment') && content.includes('cloudflare'))) {
-      console.log('[MovieDL] ⚠️ Still stuck on Cloudflare challenge page in browser.');
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Python API failed: ${response.status} ${errorText}`);
     }
 
-    // Wait up to 15s for the iframe with /prorcp/ to be set by JS
-    console.log('[MovieDL] Waiting for /prorcp/ iframe...');
-    let iframeSrc = await page
-      .waitForSelector('iframe[src*="/prorcp/"]', { timeout: 15_000 })
-      .then((el: any) => el?.evaluate((node: any) => (node as any).src))
-      .catch(async () => {
-        console.log('[MovieDL] Iframe selector timeout. Checking ALL iframes...');
-        // Exhaustive check: get all iframe sources currently in the DOM
-        const allIframes = await page.evaluate(() => {
-          return Array.from(document.querySelectorAll('iframe')).map(i => ({
-            src: i.src,
-            id: i.id,
-            class: i.className
-          }));
-        });
-        console.log(`[MovieDL] Total iframes found: ${allIframes.length}`);
-        allIframes.forEach((f, idx) => console.log(`  [${idx}] src: "${f.src}", id: "${f.id}", class: "${f.class}"`));
-
-        // Try to find it in the list manually
-        const found = allIframes.find(f => f.src.includes('/prorcp/'));
-        return found ? found.src : null;
-      });
-
-    if (iframeSrc) {
-      const full = iframeSrc.startsWith('/')
-        ? `https://${CLOUDNESTRA_HOST}${iframeSrc}`
-        : iframeSrc;
-      console.log(`[MovieDL] Found /prorcp/ from iframe src: ${full}`);
-      return full;
-    }
-
-    // Fallback: regex over full page HTML
-    const m = content.match(/['"](\/?prorcp\/[^'"]+)['"]/);
-    if (m && m[1]) {
-      const full = m[1].startsWith('/')
-        ? `https://${CLOUDNESTRA_HOST}${m[1]}`
-        : m[1];
-      console.log(`[MovieDL] Found /prorcp/ via page content regex: ${full}`);
-      return full;
-    }
-
-    console.log(`[MovieDL] ❌ Failed to find /prorcp/. Page content snippet: ${content.slice(0, 1000)}`);
-    throw new Error(`Could not find /prorcp/ URL in page content. (Title: ${title})`);
-  } finally {
-    await browser.close();
+    const data = (await response.json()) as { url: string };
+    console.log(`[MovieDL] ✅ Found /prorcp/ from Python API: ${data.url}`);
+    return data.url;
+  } catch (err) {
+    console.log(`[MovieDL] ❌ Python API error: ${err}`);
+    throw err;
   }
 }
 
