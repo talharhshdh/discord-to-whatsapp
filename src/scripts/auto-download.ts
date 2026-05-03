@@ -10,7 +10,12 @@ import { downloadMovie } from '../libs/movie-downloader';
 import * as fs from 'fs';
 import * as path from 'path';
 
-dotenv.config();
+const result = dotenv.config();
+if (result.error) {
+  console.log('⚠️ Warning: Could not load .env file. Using system environment variables.');
+} else {
+  console.log('✅ .env file loaded successfully.');
+}
 
 function normalizeJid(jid: string): string {
   return jidNormalizedUser(jid);

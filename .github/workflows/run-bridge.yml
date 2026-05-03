@@ -52,11 +52,6 @@ jobs:
 
       - name: Run Auto-Download (Spider-Man)
         run: node dist/scripts/auto-download.js
-        env:
-          WHATSAPP_RECIPIENT: ${{ secrets.WHATSAPP_RECIPIENT }}
-          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
-          ENV_FILE: ${{ secrets.ENV_FILE }}
-          CREDS_JSON: ${{ secrets.CREDS_JSON }}
 
       - name: Run bridge for 5 hours
         run: |
