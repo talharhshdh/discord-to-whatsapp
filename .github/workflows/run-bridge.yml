@@ -71,12 +71,6 @@ jobs:
           done
           cat bypasser.log
 
-      - name: Run Test Movie Downloader
-        run: node dist/scripts/test-movie-downloader.js
-
-      - name: Run Auto-Download (Spider-Man)
-        run: node dist/scripts/auto-download.js
-
       - name: Run bridge for 5 hours
         run: |
           echo "🚀 Starting Discord WhatsApp Bridge..."
