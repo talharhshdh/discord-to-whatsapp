@@ -80,12 +80,70 @@ async function runAutoDownload() {
             }
           };
 
-          const dlResult = await downloadMovie(
-            movie.tmdbId,
-            movie.mediaType,
-            movie.title + year,
-            updateStatus
-          );
+          let vncUrl = '';
+          if (fs.existsSync('lt_url.txt')) {
+            vncUrl = fs.readFileSync('lt_url.txt', 'utf-8').replace('your url is:', '').trim();
+            if (vncUrl && !vncUrl.startsWith('http')) vncUrl = 'https://' + vncUrl;
+          }
+          
+          if (vncUrl) {
+            await sock.sendMessage(targetJid, { text: `🤖 *Download starting for ${movie.title}!*\n\nIf the automated bypass gets stuck on Cloudflare, please open this remote browser link and click the verify checkbox:\n🔗 ${vncUrl}/vnc.html` });
+          }
+
+          let dlResult: any = null;
+          try {
+            dlResult = await downloadMovie(
+              movie.tmdbId,
+              movie.mediaType,
+              movie.title + year,
+              updateStatus
+            );
+          } catch (err) {
+            console.error('❌ Error during auto-download:', err);
+            
+            // Generate direct embed URL for the user to open
+            const embedUrl = `https://screenfetch2.xyz/embed/${movie.mediaType}?tmdb=${movie.tmdbId}`;
+            
+            await sock.sendMessage(targetJid, { 
+              text: `⚠️ *Cloudflare Blocked the Downloader*\n\nI couldn't automatically bypass Cloudflare to get the video link for *${movie.title}*.\n\nCould you please open this link in your browser, grab the \`.m3u8\` link from the network tab, and reply to this message with it?\n\n🔗 ${embedUrl}\n\n_Waiting 10 minutes for your reply..._` 
+            });
+
+            console.log('⏳ Waiting up to 10 minutes for the user to reply with the .m3u8 link...');
+            
+            const m3u8Link = await new Promise<string>((resolve, reject) => {
+              const timeout = setTimeout(() => reject(new Error('Timeout waiting for m3u8 link')), 10 * 60 * 1000);
+              
+              const listener = (m: any) => {
+                const msg = m.messages[0];
+                if (!msg.message || msg.key.remoteJid !== targetJid || msg.key.fromMe) return;
+                
+                const text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
+                // Look for an m3u8 URL anywhere in the message
+                const match = text.match(/https?:\/\/[^\s]+\.m3u8/);
+                if (match) {
+                  clearTimeout(timeout);
+                  sock.ev.off('messages.upsert', listener);
+                  resolve(match[0]);
+                }
+              };
+              
+              sock.ev.on('messages.upsert', listener);
+            });
+
+            console.log(`✅ Received m3u8 link from user: ${m3u8Link}`);
+            await updateStatus('📥 *Received manual link, downloading...*');
+
+            // Import the helper function we just exported
+            const { downloadM3u8 } = require('../libs/movie-downloader');
+            const filePath = await downloadM3u8(m3u8Link, movie.title + year, updateStatus);
+            
+            dlResult = {
+              filePath,
+              filename: `${movie.title.replace(/[^\w\s\-().]/g, '')}.mp4`,
+              mimetype: 'video/mp4',
+              caption: `🎬 *${movie.title}${year}*\n📥 Downloaded manually via user provided link`
+            };
+          }
 
           console.log('📤 Uploading to WhatsApp...');
           await updateStatus('📤 *Uploading to WhatsApp...*');
@@ -104,7 +162,7 @@ async function runAutoDownload() {
           console.log('✅ Done!');
           resolve();
         } catch (err) {
-          console.error('❌ Error during download:', err);
+          console.error('❌ Global error during download process:', err);
           await sock.sendMessage(targetJid, { text: `❌ *Auto-Download Error:*\n${err instanceof Error ? err.message : String(err)}` });
           
           if (fs.existsSync('cf_screenshot.png')) {

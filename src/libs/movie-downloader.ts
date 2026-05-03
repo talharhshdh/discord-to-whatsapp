@@ -612,7 +612,7 @@ async function pickWorkingUrl(urls: string[]): Promise<string> {
  *
  * @returns Path to the downloaded file
  */
-async function downloadM3u8(
+export async function downloadM3u8(
   m3u8Url: string,
   title: string,
   onProgress: (msg: string) => Promise<void>,

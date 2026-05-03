@@ -14,8 +14,8 @@ class FetchRequest(BaseModel):
 @app.post("/get_prorcp")
 def get_prorcp(req: FetchRequest):
     try:
-        # Using uc (Undetected Chromedriver) with headless mode.
-        with SB(uc=True, headless=True) as sb:
+        # Using uc (Undetected Chromedriver) with headless=False so it appears on VNC display
+        with SB(uc=True, headless=False) as sb:
             sb.uc_open_with_reconnect(req.url, 5)
             
             try:
@@ -23,8 +23,8 @@ def get_prorcp(req: FetchRequest):
             except Exception:
                 pass
 
-            # Loop a few times to give JS time to execute and create the iframe
-            for i in range(4):
+            # Loop up to 30 times (120 seconds) to give user time to click Cloudflare captcha via VNC
+            for i in range(30):
                 sb.sleep(4)
                 source = sb.get_page_source()
                 
@@ -53,7 +53,7 @@ def get_prorcp(req: FetchRequest):
 @app.post("/get_html")
 def get_html(req: FetchRequest):
     try:
-        with SB(uc=True, headless=True) as sb:
+        with SB(uc=True, headless=False) as sb:
             sb.uc_open_with_reconnect(req.url, 5)
             try:
                 sb.uc_gui_click_captcha()

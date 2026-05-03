@@ -55,12 +55,26 @@ jobs:
           python -m pip install --upgrade pip
           pip install seleniumbase fastapi uvicorn pydantic
           seleniumbase install chromedriver
+      - name: Install VNC and Localtunnel
+        run: |
           sudo apt-get update
-          sudo apt-get install -y xvfb
+          sudo apt-get install -y x11vnc xvfb novnc websockify
+          npm install -g localtunnel
+
+      - name: Start VNC and Localtunnel
+        run: |
+          Xvfb :99 -screen 0 1280x800x24 &
+          x11vnc -display :99 -nopw -bg -xkb -forever
+          websockify --web=/usr/share/novnc/ 6080 localhost:5900 &
+          lt --port 6080 > lt_url.txt &
+          sleep 5
+          cat lt_url.txt
 
       - name: Start Cloudflare Bypasser API
+        env:
+          DISPLAY: :99
         run: |
-          xvfb-run python src/scripts/cf_bypasser.py > bypasser.log 2>&1 &
+          python src/scripts/cf_bypasser.py > bypasser.log 2>&1 &
           echo "Waiting for API to start..."
           for i in {1..15}; do
             if curl -s http://127.0.0.1:8000/health > /dev/null; then
