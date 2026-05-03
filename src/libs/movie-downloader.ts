@@ -315,12 +315,25 @@ async function browserGetProRcpUrl(rcpUrl: string): Promise<string> {
 
     // Wait up to 15s for the iframe with /prorcp/ to be set by JS
     console.log('[MovieDL] Waiting for /prorcp/ iframe...');
-    const iframeSrc = await page
+    let iframeSrc = await page
       .waitForSelector('iframe[src*="/prorcp/"]', { timeout: 15_000 })
       .then((el: any) => el?.evaluate((node: any) => (node as any).src))
       .catch(async () => {
-        console.log('[MovieDL] Iframe selector timeout. Trying regex on content...');
-        return null;
+        console.log('[MovieDL] Iframe selector timeout. Checking ALL iframes...');
+        // Exhaustive check: get all iframe sources currently in the DOM
+        const allIframes = await page.evaluate(() => {
+          return Array.from(document.querySelectorAll('iframe')).map(i => ({
+            src: i.src,
+            id: i.id,
+            class: i.className
+          }));
+        });
+        console.log(`[MovieDL] Total iframes found: ${allIframes.length}`);
+        allIframes.forEach((f, idx) => console.log(`  [${idx}] src: "${f.src}", id: "${f.id}", class: "${f.class}"`));
+
+        // Try to find it in the list manually
+        const found = allIframes.find(f => f.src.includes('/prorcp/'));
+        return found ? found.src : null;
       });
 
     if (iframeSrc) {

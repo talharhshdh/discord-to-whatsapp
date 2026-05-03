@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "esnext",
     "module": "commonjs",
-    "lib": ["ES2021"],
+    "lib": ["ES2021", "DOM"],
     "outDir": "./dist",
     "rootDir": "./src",
     "strict": true,
