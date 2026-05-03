@@ -17,6 +17,15 @@
  * Domain-injection strategy (from the site's own test_doms array):
  *   {v1} → test_doms[0] host, {v2} → test_doms[1] host, …
  * Additional fallback {v5} uses the app2.{host} pattern from the last URL.
+ *
+ * Cloudflare bypass strategy:
+ *   Raw HTTP fetch is tried first (fast, zero overhead on clean IPs).
+ *   If the response is 403 / Cloudflare-blocked, we automatically fall back
+ *   to a headless Chromium browser (Playwright) which passes bot challenges.
+ *   Playwright is imported lazily — no startup cost unless the fallback fires.
+ *   On VPS/datacenter IPs this fallback will always be used.
+ *   On GitHub Actions, Playwright works out of the box.
+ *   On VPS: run `npx playwright install --with-deps chromium` once after deploy.
  */
 
 import * as https from 'https';
@@ -210,6 +219,101 @@ function fetchHtml(
 }
 
 // ---------------------------------------------------------------------------
+// Cloudflare-aware HTML fetch: raw HTTP with Playwright fallback
+// ---------------------------------------------------------------------------
+
+/**
+ * Detects whether an HTTP error (or HTML string) indicates Cloudflare blocked us.
+ * Cloudflare returns 403 or a 200 with a challenge page when blocking bots.
+ */
+function isCloudflareBlock(err: unknown, html?: string): boolean {
+  if (err instanceof Error && err.message.includes('HTTP 403')) return true;
+  if (html) {
+    // Cloudflare challenge pages contain these markers
+    return (
+      html.includes('cf-browser-verification') ||
+      html.includes('cf_chl_') ||
+      html.includes('Cloudflare Ray ID') ||
+      (html.includes('Just a moment') && html.includes('cloudflare'))
+    );
+  }
+  return false;
+}
+
+/**
+ * Fetch HTML using a headless Chromium browser (Playwright).
+ * Used as a fallback when Cloudflare blocks raw Node.js HTTP requests.
+ *
+ * On VPS, run once after deploy: `npx playwright install --with-deps chromium`
+ * On GitHub Actions, Chromium deps are pre-installed — no extra step needed.
+ */
+async function fetchHtmlViaBrowser(
+  url: string,
+  referer?: string,
+): Promise<string> {
+  // Lazy import — only loads playwright module when actually needed
+  const { chromium } = await import('playwright');
+
+  console.log(`[MovieDL] 🌐 Cloudflare detected — using headless browser for: ${url}`);
+
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const context = await browser.newContext({
+      userAgent: BROWSER_HEADERS['User-Agent'],
+      extraHTTPHeaders: {
+        'Accept-Language': BROWSER_HEADERS['Accept-Language'],
+        DNT: '1',
+      },
+      ...(referer ? { } : {}),
+    });
+
+    const page = await context.newPage();
+
+    if (referer) {
+      await page.setExtraHTTPHeaders({ Referer: referer });
+    }
+
+    // Wait until network is idle (Cloudflare challenge completes)
+    await page.goto(url, { waitUntil: 'networkidle', timeout: 30_000 });
+
+    const html = await page.content();
+    return html;
+  } finally {
+    await browser.close();
+  }
+}
+
+/**
+ * Fetch HTML for a URL — fast raw HTTP first, Playwright fallback on Cloudflare block.
+ *
+ * @param url          Target URL
+ * @param extraHeaders Additional HTTP headers (e.g. Referer, Sec-Fetch-*)
+ * @param referer      Referer to pass to the browser fallback (optional)
+ */
+async function fetchHtmlWithFallback(
+  url: string,
+  extraHeaders: Record<string, string> = {},
+  referer?: string,
+): Promise<string> {
+  try {
+    const html = await fetchHtml(url, extraHeaders);
+
+    // Cloudflare can return 200 with a challenge page instead of 403
+    if (isCloudflareBlock(null, html)) {
+      console.log(`[MovieDL] Cloudflare challenge page detected (200 body), switching to browser.`);
+      return fetchHtmlViaBrowser(url, referer ?? extraHeaders['Referer']);
+    }
+
+    return html;
+  } catch (err) {
+    if (isCloudflareBlock(err)) {
+      return fetchHtmlViaBrowser(url, referer ?? extraHeaders['Referer']);
+    }
+    throw err;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // HTTP HEAD check: verify an m3u8 URL is reachable
 // ---------------------------------------------------------------------------
 
@@ -260,12 +364,16 @@ async function getRcpUrl(tmdbId: number, mediaType: MovieMediaType): Promise<str
   const embedUrl = `https://${EMBED_HOST}/embed/${type}?tmdb=${tmdbId}&o=${encodeURIComponent(FILMPIRE_ORIGIN)}`;
 
   console.log(`[MovieDL] Step1: Fetching embed page: ${embedUrl}`);
-  const html = await fetchHtml(embedUrl, {
-    Referer: `${FILMPIRE_ORIGIN}/`,
-    'Sec-Fetch-Dest': 'iframe',
-    'Sec-Fetch-Mode': 'navigate',
-    'Sec-Fetch-Site': 'cross-site',
-  });
+  const html = await fetchHtmlWithFallback(
+    embedUrl,
+    {
+      Referer: `${FILMPIRE_ORIGIN}/`,
+      'Sec-Fetch-Dest': 'iframe',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-Site': 'cross-site',
+    },
+    `${FILMPIRE_ORIGIN}/`,
+  );
 
   // Match: src="//cloudnestra.com/rcp/..."
   const rcpMatch = html.match(/src=["'](?:https?:)?\/\/cloudnestra\.com(\/rcp\/[^"']+)["']/i);
@@ -286,12 +394,16 @@ async function getRcpUrl(tmdbId: number, mediaType: MovieMediaType): Promise<str
  */
 async function getProRcpUrl(rcpUrl: string): Promise<string> {
   console.log(`[MovieDL] Step2: Fetching rcp page: ${rcpUrl}`);
-  const html = await fetchHtml(rcpUrl, {
-    Referer: `https://${EMBED_HOST}/`,
-    'Sec-Fetch-Dest': 'iframe',
-    'Sec-Fetch-Mode': 'navigate',
-    'Sec-Fetch-Site': 'cross-site',
-  });
+  const html = await fetchHtmlWithFallback(
+    rcpUrl,
+    {
+      Referer: `https://${EMBED_HOST}/`,
+      'Sec-Fetch-Dest': 'iframe',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-Site': 'cross-site',
+    },
+    `https://${EMBED_HOST}/`,
+  );
 
   // Match: src: '/prorcp/...' in the loadIframe() function
   const proRcpMatch = html.match(/['"]\/prorcp\/([^'"]+)['"]/i);
@@ -316,12 +428,16 @@ async function getProRcpUrl(rcpUrl: string): Promise<string> {
  */
 async function extractM3u8Urls(proRcpUrl: string): Promise<M3u8Info> {
   console.log(`[MovieDL] Step3: Fetching prorcp page: ${proRcpUrl}`);
-  const html = await fetchHtml(proRcpUrl, {
-    Referer: `https://${CLOUDNESTRA_HOST}/rcp/`,
-    'Sec-Fetch-Dest': 'iframe',
-    'Sec-Fetch-Mode': 'navigate',
-    'Sec-Fetch-Site': 'same-origin',
-  });
+  const html = await fetchHtmlWithFallback(
+    proRcpUrl,
+    {
+      Referer: `https://${CLOUDNESTRA_HOST}/rcp/`,
+      'Sec-Fetch-Dest': 'iframe',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-Site': 'same-origin',
+    },
+    `https://${CLOUDNESTRA_HOST}/rcp/`,
+  );
 
   // ── Extract test_doms[] ─────────────────────────────────────────────────
   // Pattern: var test_doms = ["https://tmstr1.neonhorizonworkshops.com", …];
