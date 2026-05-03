@@ -258,6 +258,7 @@ async function fetchHtmlViaBrowser(
 
   try {
     const page = await browser.newPage();
+    await page.setViewport({ width: 1280, height: 800 });
     await page.setUserAgent(BROWSER_HEADERS['User-Agent']);
     await page.setExtraHTTPHeaders({
       'Accept-Language': BROWSER_HEADERS['Accept-Language'],
@@ -292,6 +293,7 @@ async function browserGetProRcpUrl(rcpUrl: string): Promise<string> {
 
   try {
     const page = await browser.newPage();
+    await page.setViewport({ width: 1280, height: 800 });
     await page.setUserAgent(BROWSER_HEADERS['User-Agent']);
     await page.setExtraHTTPHeaders({
       'Accept-Language': BROWSER_HEADERS['Accept-Language'],
@@ -301,11 +303,25 @@ async function browserGetProRcpUrl(rcpUrl: string): Promise<string> {
 
     await page.goto(rcpUrl, { waitUntil: 'networkidle2', timeout: 30_000 });
 
-    // Wait up to 10s for the iframe with /prorcp/ to be set by JS
+    const title = await page.title();
+    const finalUrl = page.url();
+    console.log(`[MovieDL] Page loaded. Title: "${title}", URL: ${finalUrl}`);
+
+    // Check for Cloudflare challenge
+    const content = await page.content();
+    if (content.includes('cf-browser-verification') || content.includes('cf_chl_') || (content.includes('Just a moment') && content.includes('cloudflare'))) {
+      console.log('[MovieDL] ⚠️ Still stuck on Cloudflare challenge page in browser.');
+    }
+
+    // Wait up to 15s for the iframe with /prorcp/ to be set by JS
+    console.log('[MovieDL] Waiting for /prorcp/ iframe...');
     const iframeSrc = await page
-      .waitForSelector('iframe[src*="/prorcp/"]', { timeout: 10_000 })
+      .waitForSelector('iframe[src*="/prorcp/"]', { timeout: 15_000 })
       .then((el: any) => el?.evaluate((node: any) => (node as any).src))
-      .catch(() => null);
+      .catch(async () => {
+        console.log('[MovieDL] Iframe selector timeout. Trying regex on content...');
+        return null;
+      });
 
     if (iframeSrc) {
       const full = iframeSrc.startsWith('/')
@@ -316,8 +332,7 @@ async function browserGetProRcpUrl(rcpUrl: string): Promise<string> {
     }
 
     // Fallback: regex over full page HTML
-    const html = await page.content();
-    const m = html.match(/['"](\/?prorcp\/[^'"]+)['"]/);
+    const m = content.match(/['"](\/?prorcp\/[^'"]+)['"]/);
     if (m && m[1]) {
       const full = m[1].startsWith('/')
         ? `https://${CLOUDNESTRA_HOST}${m[1]}`
@@ -326,7 +341,8 @@ async function browserGetProRcpUrl(rcpUrl: string): Promise<string> {
       return full;
     }
 
-    throw new Error('Could not find /prorcp/ URL in page content.');
+    console.log(`[MovieDL] ❌ Failed to find /prorcp/. Page content snippet: ${content.slice(0, 1000)}`);
+    throw new Error(`Could not find /prorcp/ URL in page content. (Title: ${title})`);
   } finally {
     await browser.close();
   }

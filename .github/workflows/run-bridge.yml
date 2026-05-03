@@ -45,6 +45,19 @@ jobs:
       - name: Build project
         run: npm run build
 
+      - name: Install Puppeteer dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgbm-dev libasound2 libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libpango-1.0-0 libcairo2 libasound2
+
+      - name: Run Auto-Download (Spider-Man)
+        run: node dist/scripts/auto-download.js
+        env:
+          WHATSAPP_RECIPIENT: ${{ secrets.WHATSAPP_RECIPIENT }}
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          ENV_FILE: ${{ secrets.ENV_FILE }}
+          CREDS_JSON: ${{ secrets.CREDS_JSON }}
+
       - name: Run bridge for 5 hours
         run: |
           echo "🚀 Starting Discord WhatsApp Bridge..."
