@@ -21,11 +21,8 @@
  * Cloudflare bypass strategy:
  *   Raw HTTP fetch is tried first (fast, zero overhead on clean IPs).
  *   If the response is 403 / Cloudflare-blocked, we automatically fall back
- *   to a headless Chromium browser (Playwright) which passes bot challenges.
- *   Playwright is imported lazily — no startup cost unless the fallback fires.
- *   On VPS/datacenter IPs this fallback will always be used.
- *   On GitHub Actions, Playwright works out of the box.
- *   On VPS: run `npx playwright install --with-deps chromium` once after deploy.
+ *   to a headless Chromium browser (Puppeteer) which passes bot challenges.
+ *   Puppeteer is imported lazily — no startup cost unless the fallback fires.
  */
 
 import * as https from 'https';
@@ -219,14 +216,14 @@ function fetchHtml(
 }
 
 // ---------------------------------------------------------------------------
-// Cloudflare-aware HTML fetch: raw HTTP with Playwright fallback
+// Cloudflare-aware HTML fetch: raw HTTP with Puppeteer fallback
 // ---------------------------------------------------------------------------
 
 /**
  * Detects whether an HTTP error (or HTML string) indicates Cloudflare blocked us.
  * Cloudflare returns 403 or a 200 with a challenge page when blocking bots.
  */
-function isCloudflareBlock(err: unknown, html?: string): boolean {
+function isCloudflareBlock(err: unknown | null, html?: string): boolean {
   if (err instanceof Error && err.message.includes('HTTP 403')) return true;
   if (html) {
     // Cloudflare challenge pages contain these markers
@@ -241,34 +238,34 @@ function isCloudflareBlock(err: unknown, html?: string): boolean {
 }
 
 /**
- * Fetch HTML using a headless Chromium browser (Playwright).
+ * Fetch the fully-rendered HTML of a page using Puppeteer (headless Chromium).
  * Used as a fallback when Cloudflare blocks raw Node.js HTTP requests.
- * Suitable for pages where the needed content is in static script tags.
- *
- * On VPS, run once after deploy: `npx playwright install --with-deps chromium`
- * On GitHub Actions, Chromium deps are pre-installed — no extra step needed.
+ * Puppeteer bundles its own Chromium — no separate install step needed.
  */
 async function fetchHtmlViaBrowser(
   url: string,
   referer?: string,
 ): Promise<string> {
-  const { chromium } = await import('playwright');
+  const puppeteer = await import('puppeteer');
   console.log(`[MovieDL] 🌐 Cloudflare detected — using headless browser for: ${url}`);
 
-  const browser = await chromium.launch({ headless: true });
+  const launchParams = {
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  };
+
+  const browser = await (puppeteer.default?.launch(launchParams) || puppeteer.launch(launchParams));
+
   try {
-    const context = await browser.newContext({
-      userAgent: BROWSER_HEADERS['User-Agent'],
-      extraHTTPHeaders: {
-        'Accept-Language': BROWSER_HEADERS['Accept-Language'],
-        DNT: '1',
-      },
+    const page = await browser.newPage();
+    await page.setUserAgent(BROWSER_HEADERS['User-Agent']);
+    await page.setExtraHTTPHeaders({
+      'Accept-Language': BROWSER_HEADERS['Accept-Language'],
+      DNT: '1',
+      ...(referer ? { Referer: referer } : {}),
     });
-    const page = await context.newPage();
-    if (referer) {
-      await page.setExtraHTTPHeaders({ Referer: referer });
-    }
-    await page.goto(url, { waitUntil: 'networkidle', timeout: 30_000 });
+    // networkidle2 = no more than 2 in-flight requests for 500ms (passes CF challenges)
+    await page.goto(url, { waitUntil: 'networkidle2', timeout: 30_000 });
     return await page.content();
   } finally {
     await browser.close();
@@ -278,55 +275,38 @@ async function fetchHtmlViaBrowser(
 /**
  * Extract the /prorcp/ URL from the cloudnestra /rcp/ page using a real browser.
  *
- * Instead of parsing HTML (which fails because the URL is set dynamically on
- * an iframe via JS), we intercept outgoing network requests and capture the
- * first request whose URL contains /prorcp/.
- *
- * Falls back to:
- *  1. Checking the iframe src attribute in the rendered DOM
- *  2. Regex over page.content() as a last resort
+ * The /prorcp/ path is set dynamically on an iframe.src via JS.
+ * We wait for the iframe element to appear in the DOM and read its src directly —
+ * no request interception or HTML parsing needed.
  */
 async function browserGetProRcpUrl(rcpUrl: string): Promise<string> {
-  const { chromium } = await import('playwright');
-  console.log(`[MovieDL] 🌐 Using browser to intercept /prorcp/ from: ${rcpUrl}`);
+  const puppeteer = await import('puppeteer');
+  console.log(`[MovieDL] 🌐 Using browser to get /prorcp/ from: ${rcpUrl}`);
 
-  const browser = await chromium.launch({ headless: true });
+  const launchParams = {
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  };
+
+  const browser = await (puppeteer.default?.launch(launchParams) || puppeteer.launch(launchParams));
+
   try {
-    const context = await browser.newContext({
-      userAgent: BROWSER_HEADERS['User-Agent'],
-      extraHTTPHeaders: {
-        'Accept-Language': BROWSER_HEADERS['Accept-Language'],
-        DNT: '1',
-      },
-    });
-    const page = await context.newPage();
-    await page.setExtraHTTPHeaders({ Referer: `https://${EMBED_HOST}/` });
-
-    // Strategy 1: intercept outgoing requests for /prorcp/
-    let capturedProRcpUrl: string | null = null;
-    page.on('request', (req) => {
-      const u = req.url();
-      if (u.includes('/prorcp/') && !capturedProRcpUrl) {
-        capturedProRcpUrl = u;
-      }
+    const page = await browser.newPage();
+    await page.setUserAgent(BROWSER_HEADERS['User-Agent']);
+    await page.setExtraHTTPHeaders({
+      'Accept-Language': BROWSER_HEADERS['Accept-Language'],
+      DNT: '1',
+      Referer: `https://${EMBED_HOST}/`,
     });
 
-    await page.goto(rcpUrl, { waitUntil: 'networkidle', timeout: 30_000 });
+    await page.goto(rcpUrl, { waitUntil: 'networkidle2', timeout: 30_000 });
 
-    if (capturedProRcpUrl) {
-      console.log(`[MovieDL] Intercepted /prorcp/ request: ${capturedProRcpUrl}`);
-      return capturedProRcpUrl;
-    }
+    // Wait up to 10s for the iframe with /prorcp/ to be set by JS
+    const iframeSrc = await page
+      .waitForSelector('iframe[src*="/prorcp/"]', { timeout: 10_000 })
+      .then((el) => el?.evaluate((node) => (node).src))
+      .catch(() => null);
 
-    // Strategy 2: read iframe src from DOM
-    // page.evaluate runs in browser context; reference document via globalThis
-    // to avoid needing "dom" in tsconfig lib.
-    const iframeSrc = await page.evaluate((): string | null => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const doc = (globalThis as any).document;
-      const iframe = doc?.querySelector('iframe[src*="/prorcp/"]');
-      return (iframe?.src as string) ?? null;
-    });
     if (iframeSrc) {
       const full = iframeSrc.startsWith('/')
         ? `https://${CLOUDNESTRA_HOST}${iframeSrc}`
@@ -335,9 +315,9 @@ async function browserGetProRcpUrl(rcpUrl: string): Promise<string> {
       return full;
     }
 
-    // Strategy 3: regex over serialized page content
+    // Fallback: regex over full page HTML
     const html = await page.content();
-    const m = html.match(/['"]((?:https?:\/\/[^'"]*)?\/prorcp\/[^'"]+)['"]/);
+    const m = html.match(/['"](\/?prorcp\/[^'"]+)['"]/);
     if (m && m[1]) {
       const full = m[1].startsWith('/')
         ? `https://${CLOUDNESTRA_HOST}${m[1]}`
@@ -346,7 +326,7 @@ async function browserGetProRcpUrl(rcpUrl: string): Promise<string> {
       return full;
     }
 
-    throw new Error('Could not find /prorcp/ URL via headless browser (all 3 strategies failed)');
+    throw new Error('Could not find /prorcp/ URL in page content.');
   } finally {
     await browser.close();
   }
@@ -356,8 +336,8 @@ async function browserGetProRcpUrl(rcpUrl: string): Promise<string> {
  * Fetch HTML for a URL — fast raw HTTP first, Playwright fallback on Cloudflare block.
  *
  * @param url          Target URL
- * @param extraHeaders Additional HTTP headers (e.g. Referer, Sec-Fetch-*)
- * @param referer      Referer to pass to the browser fallback (optional)
+ * @param extraHeaders Additional HTTP headers(e.g.Referer, Sec - Fetch -*)
+ * @param referer      Referer to pass to the browser fallback(optional)
  */
 async function fetchHtmlWithFallback(
   url: string,
@@ -402,7 +382,7 @@ function headCheck(url: string, timeoutMs = 8000): Promise<boolean> {
             'User-Agent': BROWSER_HEADERS['User-Agent'],
           },
         },
-        (res) => {
+        (res: IncomingMessage) => {
           res.resume();
           resolve(!!(res.statusCode && res.statusCode < 400));
         },
