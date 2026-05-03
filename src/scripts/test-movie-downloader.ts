@@ -12,7 +12,7 @@
  * No download occurs — only the URL resolution chain is tested.
  */
 
-import { getMovieStreamUrls } from '../libs/movie-downloader.ts';
+import { getMovieStreamUrls } from '../libs/movie-downloader';
 
 async function main() {
   const tmdbId = 634649
@@ -26,7 +26,7 @@ async function main() {
 
   console.log(`\n🎬 Testing movie-downloader for TMDB ID: ${tmdbId} (${mediaType})\n`);
 
-  const urls = await getMovieStreamUrls(tmdbId, mediaType);
+  const urls = await getMovieStreamUrls(tmdbId, "movie");
 
   if (urls.length === 0) {
     console.error('❌ No stream URLs resolved.');
