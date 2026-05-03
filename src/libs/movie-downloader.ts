@@ -76,6 +76,54 @@ export interface M3u8Info {
 // HTTP helper: fetch raw HTML, following up to 3 redirects
 // ---------------------------------------------------------------------------
 
+/**
+ * Module-level cookie jar: maps hostname → raw Cookie header value.
+ * Populated from Set-Cookie response headers and re-sent on subsequent
+ * requests to the same host, mimicking real browser session behaviour.
+ */
+const cookieJar = new Map<string, string>();
+
+/**
+ * Parse Set-Cookie header(s) into name=value pairs and merge into the jar
+ * for the given hostname.
+ */
+function absorbCookies(hostname: string, raw: string | string[] | undefined): void {
+  if (!raw) return;
+  const entries = Array.isArray(raw) ? raw : [raw];
+  const existing: Record<string, string> = {};
+
+  // Parse already-stored cookies for this host
+  const stored = cookieJar.get(hostname);
+  if (stored) {
+    for (const pair of stored.split(';')) {
+      const [k, ...rest] = pair.trim().split('=');
+      if (k) existing[k.trim()] = rest.join('=');
+    }
+  }
+
+  // Merge new cookies (only name=value, ignore attributes like Path/Expires)
+  for (const entry of entries) {
+    const nameValue = entry.split(';')[0]?.trim();
+    if (!nameValue) continue;
+    const eqIdx = nameValue.indexOf('=');
+    if (eqIdx < 1) continue;
+    const name = nameValue.slice(0, eqIdx).trim();
+    const value = nameValue.slice(eqIdx + 1).trim();
+    existing[name] = value;
+  }
+
+  cookieJar.set(
+    hostname,
+    Object.entries(existing)
+      .map(([k, v]) => `${k}=${v}`)
+      .join('; '),
+  );
+}
+
+/**
+ * Fetch URL as a browser would: follows redirects, decompresses gzip/br/deflate,
+ * and maintains a per-hostname cookie jar across calls.
+ */
 function fetchHtml(
   url: string,
   extraHeaders: Record<string, string> = {},
@@ -86,6 +134,10 @@ function fetchHtml(
       const parsed = new URL(targetUrl);
       const lib = parsed.protocol === 'https:' ? https : http;
 
+      // Attach any previously collected cookies for this host
+      const jar = cookieJar.get(parsed.hostname);
+      const cookieHeader = jar ? { Cookie: jar } : {};
+
       const options = {
         hostname: parsed.hostname,
         port: parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
@@ -94,11 +146,15 @@ function fetchHtml(
         headers: {
           ...BROWSER_HEADERS,
           Host: parsed.hostname,
+          ...cookieHeader,
           ...extraHeaders,
         },
       };
 
       const req = lib.request(options, (res: IncomingMessage) => {
+        // Collect Set-Cookie from every response (including redirects)
+        absorbCookies(parsed.hostname, res.headers['set-cookie']);
+
         // Follow redirect
         if (
           res.statusCode &&
@@ -114,7 +170,6 @@ function fetchHtml(
           if (nextUrl.startsWith('/')) {
             nextUrl = `${parsed.protocol}//${parsed.host}${nextUrl}`;
           }
-          // Drain to allow socket reuse
           res.resume();
           attempt(nextUrl, redirectsLeft - 1);
           return;
@@ -144,7 +199,7 @@ function fetchHtml(
       });
 
       req.on('error', reject);
-      req.setTimeout(15000, () => {
+      req.setTimeout(15_000, () => {
         req.destroy(new Error(`Timeout fetching ${targetUrl}`));
       });
       req.end();
@@ -211,7 +266,7 @@ async function getRcpUrl(tmdbId: number, mediaType: MovieMediaType): Promise<str
     'Sec-Fetch-Mode': 'navigate',
     'Sec-Fetch-Site': 'cross-site',
   });
-  fs.writeFileSync("./index.html", html)
+
   // Match: src="//cloudnestra.com/rcp/..."
   const rcpMatch = html.match(/src=["'](?:https?:)?\/\/cloudnestra\.com(\/rcp\/[^"']+)["']/i);
   if (!rcpMatch || !rcpMatch[1]) {
