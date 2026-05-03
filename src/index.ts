@@ -24,6 +24,12 @@ import {
   type YouTubeVideoInfo,
   type YouTubeQualityOption,
 } from './libs/youtube-dl';
+import {
+  searchMovies,
+  formatMovieSearchMessage,
+  type MovieSearchResult,
+} from './libs/movie-search';
+import { downloadMovie, getMovieStreamUrls } from './libs/movie-downloader';
 
 dotenv.config();
 
@@ -46,6 +52,33 @@ interface YtSession {
   statusKey?: proto.IMessageKey;
   /** Original search query (for display) */
   query?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Movie interactive session state
+// ---------------------------------------------------------------------------
+
+/**
+ * Stages of the movie interactive flow:
+ *   search_results  → user sees list, picks a number
+ *   action_picker   → user sees the chosen movie, picks Download vs Link
+ */
+type MovieSessionStage = 'search_results' | 'action_picker';
+
+/**
+ * Session state for the movie search interactive flow.
+ * Key = remoteJid (the chat)
+ */
+interface MovieSession {
+  stage: MovieSessionStage;
+  /** Movie results shown to the user (stage: search_results) */
+  results: MovieSearchResult[];
+  /** The movie the user has chosen (stage: action_picker) */
+  chosen?: MovieSearchResult;
+  /** Original search query */
+  query: string;
+  /** WhatsApp key of the status message to edit in-place */
+  statusKey?: proto.IMessageKey;
 }
 
 /**
@@ -82,6 +115,12 @@ class DiscordWhatsAppBridge {
    * Key = remoteJid (the chat), Value = current session.
    */
   private ytSessions = new Map<string, YtSession>();
+
+  /**
+   * Per-JID movie interactive session state.
+   * Stores the displayed search results while the user picks one.
+   */
+  private movieSessions = new Map<string, MovieSession>();
 
   /**
    * JIDs of all authorized senders (owner + admins).
@@ -399,6 +438,43 @@ class DiscordWhatsAppBridge {
         const jid = msg.key.remoteJid!;
         const sock = this.whatsappSocket!;
 
+        // ── .movie command ───────────────────────────────────────────────────
+        // Usage: .movie <query>
+        if (messageText.toLowerCase().startsWith('.movie')) {
+          const query = messageText.slice('.movie'.length).trim();
+
+          if (!query) {
+            await sock.sendMessage(jid, {
+              text: '🎬 *Movie Search*\n\nUsage: `.movie <title>`\nExample: `.movie Spider-Man`',
+            });
+            continue;
+          }
+
+          const statusMsg = await sock.sendMessage(jid, {
+            text: `🔍 *Searching movies for:* "${query}"...`,
+          });
+          const statusKey = statusMsg?.key;
+          const updateStatus = this.makeStatusUpdater(jid, statusKey);
+
+          try {
+            const results = await searchMovies(query, 5);
+
+            if (results.length === 0) {
+              await updateStatus('❌ *No movies found* for that query. Try a different title.');
+              continue;
+            }
+
+            // Store session so the next numeric reply resolves to the action picker
+            this.movieSessions.set(jid, { stage: 'search_results', results, query, statusKey });
+
+            await updateStatus(formatMovieSearchMessage(results, query));
+          } catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            await updateStatus(`❌ *Movie search failed*\n${errMsg}`);
+          }
+          continue;
+        }
+
         // ── .sticker command ────────────────────────────────────────────────
         const quotedMessage = msg.message.extendedTextMessage?.contextInfo?.quotedMessage;
         if (quotedMessage?.imageMessage && messageText.toLowerCase() === '.sticker') {
@@ -421,6 +497,144 @@ class DiscordWhatsAppBridge {
         }
 
         if (!messageText) continue;
+
+        // ────────────────────────────────────────────────────────────────────
+        // Movie session handler (two-stage flow)
+        // ────────────────────────────────────────────────────────────────────
+        const movieSession = this.movieSessions.get(jid);
+        if (movieSession) {
+          // ── Stage 1: user picks a result number ───────────────────────────
+          if (movieSession.stage === 'search_results') {
+            const pick = parseInt(messageText, 10);
+            const { results: movieResults, query: movieQuery, statusKey: movieStatusKey } = movieSession;
+
+            if (pick >= 1 && pick <= movieResults.length) {
+              const chosen = movieResults[pick - 1]!;
+              const year = chosen.releaseDate ? ` (${chosen.releaseDate.slice(0, 4)})` : '';
+              const typeEmoji = chosen.mediaType === 'tv' ? '📺' : '🎬';
+
+              // Advance to action-picker stage
+              this.movieSessions.set(jid, {
+                stage: 'action_picker',
+                results: movieResults,
+                chosen,
+                query: movieQuery,
+                statusKey: movieStatusKey,
+              });
+
+              const updateStatus = this.makeStatusUpdater(jid, movieStatusKey);
+              await updateStatus(
+                `${typeEmoji} *${chosen.title}*${year}\n\n` +
+                `What would you like to do?\n\n` +
+                `*1* — 📥 Download (sends the video file)\n` +
+                `*2* — 🔗 Stream link (watch in browser)\n\n` +
+                `_Reply with 1 or 2._`,
+              );
+              console.log(`[Movie] Action picker shown for "${chosen.title}"`);
+              continue;
+            }
+
+            // Invalid pick — remind user but keep session alive
+            if (/^\d+$/.test(messageText)) {
+              await sock.sendMessage(jid, {
+                text: `⚠️ Please reply with a number between 1 and ${movieResults.length}.`,
+              });
+              continue;
+            }
+
+            // Non-numeric → cancel movie session, fall through
+            this.movieSessions.delete(jid);
+          }
+
+          // ── Stage 2: user picks Download (1) or Link (2) ──────────────────
+          else if (movieSession.stage === 'action_picker') {
+            const { chosen, statusKey: movieStatusKey, query: movieQuery } = movieSession;
+
+            if (!chosen) {
+              this.movieSessions.delete(jid);
+              continue;
+            }
+
+            const pick = parseInt(messageText, 10);
+
+            if (pick === 1) {
+              // ── Download the video ───────────────────────────────────────
+              this.movieSessions.delete(jid);
+              const updateStatus = this.makeStatusUpdater(jid, movieStatusKey);
+              const year = chosen.releaseDate ? ` (${chosen.releaseDate.slice(0, 4)})` : '';
+
+              try {
+                await updateStatus(`📥 *Starting download…*\n_${chosen.title}${year}_`);
+
+                const dlResult = await downloadMovie(
+                  chosen.tmdbId,
+                  chosen.mediaType,
+                  chosen.title + year,
+                  updateStatus,
+                );
+
+                await updateStatus('📤 *Uploading to WhatsApp...*');
+                const videoBuffer = require('fs').readFileSync(dlResult.filePath);
+                await sock.sendMessage(jid, {
+                  video: videoBuffer,
+                  mimetype: dlResult.mimetype,
+                  caption: dlResult.caption,
+                  fileName: dlResult.filename,
+                });
+
+                // Delete status message and temp file
+                if (movieStatusKey) await sock.sendMessage(jid, { delete: movieStatusKey });
+                try { require('fs').unlinkSync(dlResult.filePath); } catch { /* ignore */ }
+
+                console.log(`✅ Movie downloaded and sent: "${chosen.title}"`);
+              } catch (err) {
+                const errMsg = err instanceof Error ? err.message : String(err);
+                const updateStatus2 = this.makeStatusUpdater(jid, movieStatusKey);
+                await updateStatus2(`❌ *Download failed*\n${errMsg}`);
+              }
+              continue;
+
+            } else if (pick === 2) {
+              // ── Resolve + send stream link ───────────────────────────────
+              this.movieSessions.delete(jid);
+              const updateStatus = this.makeStatusUpdater(jid, movieStatusKey);
+              const year = chosen.releaseDate ? ` (${chosen.releaseDate.slice(0, 4)})` : '';
+              const typeEmoji = chosen.mediaType === 'tv' ? '📺' : '🎬';
+
+              try {
+                await updateStatus(`🌐 *Resolving stream URLs for:*\n_${chosen.title}${year}_`);
+
+                const urls = await getMovieStreamUrls(chosen.tmdbId, chosen.mediaType);
+                const bestUrl = urls[0] ?? chosen.watchUrl;
+
+                await updateStatus(
+                  `${typeEmoji} *${chosen.title}*${year}\n\n` +
+                  `🔗 *Best quality stream (m3u8):*\n${bestUrl}\n\n` +
+                  `_Paste in VLC → Media → Open Network Stream_\n` +
+                  `_or use the embed link:_\n${chosen.watchUrl}`,
+                );
+                console.log(`✅ Stream link sent for "${chosen.title}" → ${bestUrl}`);
+              } catch (err) {
+                // Fallback to embed link if stream resolution fails
+                await updateStatus(
+                  `${typeEmoji} *${chosen.title}*${year}\n\n` +
+                  `🔗 *Watch here:*\n${chosen.watchUrl}\n\n` +
+                  `_Open the link in your browser to watch._`,
+                );
+              }
+              continue;
+
+            } else if (/^\d+$/.test(messageText)) {
+              await sock.sendMessage(jid, {
+                text: '⚠️ Please reply with *1* (Download) or *2* (Stream Link).',
+              });
+              continue;
+            } else {
+              // Non-numeric → cancel
+              this.movieSessions.delete(jid);
+            }
+          }
+        }
 
         // ────────────────────────────────────────────────────────────────────
         // YouTube interactive session handler
