@@ -491,7 +491,7 @@ async function extractM3u8Urls(proRcpUrl: string): Promise<M3u8Info> {
   // ── Extract the Playerjs file: string ─────────────────────────────────
   // Pattern: new Playerjs({…, file: "https://tmstr1.{v1}/pl/H4sI…", …})
   // The file value can span multiple lines and is separated by " or "
-  const fileMatch = html.match(/new\s+Playerjs\s*\(\s*\{[^}]*?file\s*:\s*["']([^"']+)["']/s);
+  const fileMatch = html.match(/new\s+Playerjs\s*\(\s*\{[\s\S]*?file\s*:\s*["']([^"']+)["']/);
   if (!fileMatch || !fileMatch[1]) {
     throw new Error('Could not find Playerjs file: parameter in prorcp page');
   }
