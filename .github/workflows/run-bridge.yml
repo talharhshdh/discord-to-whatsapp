@@ -58,12 +58,13 @@ jobs:
       - name: Install VNC
         run: |
           sudo apt-get update
-          sudo apt-get install -y x11vnc xvfb novnc websockify
+          sudo apt-get install -y x11vnc xvfb novnc websockify fluxbox
 
       - name: Start VNC and Tunnel
         run: |
           Xvfb :99 -screen 0 1280x800x24 &
           sleep 2
+          fluxbox -display :99 &
           x11vnc -display :99 -nopw -bg -xkb -forever
           websockify --web=/usr/share/novnc/ 6080 localhost:5900 &
           ssh -p 443 -o StrictHostKeyChecking=no -R0:localhost:6080 a.pinggy.io > pinggy.log 2>&1 &
