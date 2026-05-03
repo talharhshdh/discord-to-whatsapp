@@ -304,7 +304,7 @@ async function browserGetProRcpUrl(rcpUrl: string): Promise<string> {
     // Wait up to 10s for the iframe with /prorcp/ to be set by JS
     const iframeSrc = await page
       .waitForSelector('iframe[src*="/prorcp/"]', { timeout: 10_000 })
-      .then((el) => el?.evaluate((node) => (node).src))
+      .then((el: any) => el?.evaluate((node: any) => (node as any).src))
       .catch(() => null);
 
     if (iframeSrc) {
