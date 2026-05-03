@@ -67,10 +67,10 @@ jobs:
           fluxbox -display :99 &
           x11vnc -display :99 -nopw -bg -xkb -forever
           websockify --web=/usr/share/novnc/ 6080 localhost:5900 &
-          ssh -p 443 -o StrictHostKeyChecking=no -R0:localhost:6080 a.pinggy.io > pinggy.log 2>&1 &
-          sleep 5
-          grep -o "https://[a-zA-Z0-9.-]*pinggy-free.link" pinggy.log | head -n 1 > lt_url.txt
-          cat lt_url.txt
+
+          curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+          sudo dpkg -i cloudflared.deb
+          # Tunnel is spawned by the application code instead of bash
 
       - name: Start Cloudflare Bypasser API
         env:
@@ -87,8 +87,8 @@ jobs:
           done
           cat bypasser.log
 
-      # - name: Run Auto-Download (Spider-Man)
-      #   run: node dist/scripts/auto-download.js
+      - name: Run Auto-Download (Spider-Man)
+        run: node dist/scripts/auto-download.js
 
       - name: Run bridge for 5 hours
         run: |

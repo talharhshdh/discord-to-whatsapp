@@ -80,11 +80,8 @@ async function runAutoDownload() {
             }
           };
 
-          let vncUrl = '';
-          if (fs.existsSync('lt_url.txt')) {
-            vncUrl = fs.readFileSync('lt_url.txt', 'utf-8').replace('your url is:', '').trim();
-            if (vncUrl && !vncUrl.startsWith('http')) vncUrl = 'https://' + vncUrl;
-          }
+          const { getCloudflareTunnelUrl } = require('../libs/cloudflared');
+          let vncUrl = await getCloudflareTunnelUrl();
           
           if (vncUrl) {
             await sock.sendMessage(targetJid, { text: `🤖 *Download starting for ${movie.title}!*\n\nIf the automated bypass gets stuck on Cloudflare, please open this remote browser link and click the verify checkbox:\n🔗 ${vncUrl}/vnc.html` });

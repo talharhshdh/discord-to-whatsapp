@@ -639,6 +639,13 @@ class DiscordWhatsAppBridge {
               try {
                 await updateStatus(`📥 *Starting download…*\n_${chosen.title}${year}_`);
 
+                const { getCloudflareTunnelUrl } = require('./libs/cloudflared');
+                let vncUrl = await getCloudflareTunnelUrl();
+                
+                if (vncUrl) {
+                  await sock.sendMessage(jid, { text: `🤖 *Download starting!*\n\nIf the automated bypass gets stuck on Cloudflare, please open this remote browser link and click the verify checkbox:\n🔗 ${vncUrl}/vnc.html` });
+                }
+
                 const dlResult = await downloadMovie(
                   chosen.tmdbId,
                   chosen.mediaType,
