@@ -197,14 +197,44 @@ class DiscordWhatsAppBridge {
 
       this.whatsappSocket = sock;
 
+      // ── Pairing-code auth (phone-number flow) ──────────────────────────────
+      // When WHATSAPP_PHONE is configured we request a numeric pairing code
+      // instead of displaying a QR code.  The code must be entered in:
+      //   WhatsApp → Settings → Linked Devices → Link a Device → Link with Phone Number
+      const pairingPhone = (process.env.WHATSAPP_PHONE ?? '').replace(/\D/g, '');
+      if (pairingPhone && !sock.authState.creds.registered) {
+        // Baileys requires a short delay for the socket handshake to complete
+        // before requestPairingCode can be called.
+        setTimeout(async () => {
+          try {
+            const code = await sock.requestPairingCode(pairingPhone);
+            // Format as XXXX-XXXX for readability
+            const formatted = code.length === 8 ? `${code.slice(0, 4)}-${code.slice(4)}` : code;
+            console.log('\n🔑 ========================================');
+            console.log(`🔑  WhatsApp Pairing Code: ${formatted}`);
+            console.log('🔑 ========================================');
+            console.log('📱 Open WhatsApp → Settings → Linked Devices → Link a Device');
+            console.log('📱 Tap "Link with Phone Number" and enter the code above.\n');
+          } catch (err) {
+            console.error('❌ Failed to request pairing code:', err);
+            console.log('💡 Falling back to QR code — restart without WHATSAPP_PHONE set.');
+          }
+        }, 3000);
+      }
+
       sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
-          console.log('\n📱 WhatsApp QR Code Generated:');
-          qrcode.generate(qr, { small: true });
-          console.log('\n✨ Scan the QR code above with your WhatsApp mobile app');
-          console.log('📱 Open WhatsApp → Settings → Linked Devices → Link a Device\n');
+          if (pairingPhone) {
+            // Pairing-code flow requested — skip QR rendering
+            console.log('⏳ QR received but pairing-code mode is active — waiting for code request...');
+          } else {
+            console.log('\n📱 WhatsApp QR Code Generated:');
+            qrcode.generate(qr, { small: true });
+            console.log('\n✨ Scan the QR code above with your WhatsApp mobile app');
+            console.log('📱 Open WhatsApp → Settings → Linked Devices → Link a Device\n');
+          }
         }
 
         if (connection === 'close') {
@@ -277,7 +307,7 @@ class DiscordWhatsAppBridge {
           const resolvedPhoneJid = this.lidToJid.get(norm) ?? norm;
           console.log(`   └─ from: ${norm}${resolvedPhoneJid !== norm ? ` (→ ${resolvedPhoneJid})` : ''} | fromMe: ${m.key.fromMe} | participant: ${m.key.participant ?? 'n/a'}`);
         }
-        await this.handleWhatsAppMessage(messages);
+        await this.handleWhatsAppMessage(messages, type);
       });
     } catch (error) {
       console.error('❌ Error setting up WhatsApp:', error);
@@ -373,9 +403,9 @@ class DiscordWhatsAppBridge {
    * but their remoteJid will match one of the authorized JIDs.
    */
   private isAuthorizedSender(msg: any): boolean {
-    // Owner: message sent from the linked device itself
-    if (msg.key.fromMe) return true;
-    // console.log("Msg:", msg)
+    // NOTE: fromMe messages are NEVER authorized here.
+    // The bot's own sent messages echo back as fromMe=true and must be
+    // skipped before reaching this check (see handleWhatsAppMessage guard).
     // Normalize and resolve JIDs.
     // WhatsApp multi-device routes messages via LIDs ("192861614141583@lid").
     // We resolve them to phone JIDs via the contact map before comparing.
@@ -398,22 +428,47 @@ class DiscordWhatsAppBridge {
     return allowed;
   }
 
-  private async handleWhatsAppMessage(messages: proto.IWebMessageInfo[]): Promise<void> {
+  /**
+   * Processes incoming WhatsApp messages.
+   *
+   * @param type - Baileys upsert type:
+   *   'notify'  = real-time delivery (always process, ignore age)
+   *   'append'  = history sync on connect (filter old messages to avoid
+   *               replaying the entire chat history every restart)
+   */
+  private async handleWhatsAppMessage(
+    messages: proto.IWebMessageInfo[],
+    type: string = 'notify',
+  ): Promise<void> {
     for (const msg of messages) {
       try {
         if (!msg.message || msg.key.remoteJid === 'status@broadcast') continue;
 
-        const tsRaw = msg.messageTimestamp;
-        const tsSeconds: number =
-          typeof tsRaw === 'number'
-            ? tsRaw
-            : (tsRaw != null && typeof (tsRaw as { low?: number }).low === 'number')
-              ? (tsRaw as { low: number }).low
-              : 0;
-        const ageSeconds = Math.floor(Date.now() / 1000) - tsSeconds;
-        if (tsSeconds > 0 && ageSeconds > 60) {
-          console.log(`⏭️ Skipping old message (${ageSeconds}s ago) from ${msg.key.remoteJid}`);
-          continue;
+        // ── Skip bot's own echoed messages (loop prevention) ─────────────────
+        // WhatsApp re-delivers every message the bot sends back via
+        // messages.upsert with fromMe=true.  Processing these causes the bot
+        // to reply to its own replies, creating an infinite message loop.
+        if (msg.key.fromMe) continue;
+
+        // ── Age filter — only for historical syncs ('append') ─────────────────
+        // 'notify' events are real-time deliveries; even if the timestamp is
+        // old (e.g. held by WhatsApp until the main device came online), we
+        // must process them so the bot doesn't silently ignore real messages.
+        // 'append' events replay history on reconnect; filter to avoid acting
+        // on old messages from previous sessions.
+        if (type === 'append') {
+          const tsRaw = msg.messageTimestamp;
+          const tsSeconds: number =
+            typeof tsRaw === 'number'
+              ? tsRaw
+              : (tsRaw != null && typeof (tsRaw as { low?: number }).low === 'number')
+                ? (tsRaw as { low: number }).low
+                : 0;
+          const ageSeconds = Math.floor(Date.now() / 1000) - tsSeconds;
+          if (tsSeconds > 0 && ageSeconds > 60) {
+            console.log(`⏭️ Skipping old append message (${ageSeconds}s ago) from ${msg.key.remoteJid}`);
+            continue;
+          }
         }
 
         if (!this.isAuthorizedSender(msg)) continue;
@@ -782,47 +837,29 @@ class DiscordWhatsAppBridge {
         }
 
         // ────────────────────────────────────────────────────────────────────
-        // Plain text → offer YouTube search
+        // .yt <query>  — explicit YouTube search command
         // ────────────────────────────────────────────────────────────────────
-        // Only trigger if text looks like a search query (not a command, not a URL)
-        const isUrl = /^https?:\/\//i.test(messageText);
-        const isCommand = messageText.startsWith('.');
-        const isShortNum = /^\d{1,2}$/.test(messageText); // could be a session reply
+        // NOTE: The old "plain text → offer search" feature was removed because
+        // the bot's own reply echoes back as a new message, causing an infinite
+        // loop.  Use `.yt <query>` to search YouTube explicitly.
+        if (messageText.toLowerCase().startsWith('.yt ')) {
+          const ytQuery = messageText.slice('.yt '.length).trim();
 
-        if (!isUrl && !isCommand && !isShortNum && messageText.length >= 3) {
-          // Offer a "Search YouTube" prompt
-          await sock.sendMessage(jid, {
-            text:
-              `🔍 *Search YouTube for:* "${messageText}"?\n\n` +
-              `Reply *y* or *yes* to search, or just ignore this message.`,
-          });
-          // Store pending search query so the next reply can trigger it
-          this.ytSessions.set(jid, {
-            stage: 'search_results',
-            query: messageText,
-            // no searchResults yet — we populate after user confirms
-          });
-          continue;
-        }
-
-        // ── Handle "yes" confirmation for pending YouTube search ─────────────
-        if (
-          (messageText.toLowerCase() === 'y' || messageText.toLowerCase() === 'yes') &&
-          session?.stage === 'search_results' &&
-          session.query &&
-          !session.searchResults
-        ) {
-          const query = session.query;
-          this.ytSessions.delete(jid);
+          if (!ytQuery) {
+            await sock.sendMessage(jid, {
+              text: '🔍 *YouTube Search*\n\nUsage: `.yt <query>`\nExample: `.yt Pakistan national anthem`',
+            });
+            continue;
+          }
 
           const statusMsg = await sock.sendMessage(jid, {
-            text: `🔍 *Searching YouTube for:* "${query}"...`,
+            text: `🔍 *Searching YouTube for:* "${ytQuery}"...`,
           });
           const statusKey = statusMsg?.key;
           const updateStatus = this.makeStatusUpdater(jid, statusKey);
 
           try {
-            const results = await searchYouTube(query, 5);
+            const results = await searchYouTube(ytQuery, 5);
 
             if (results.length === 0) {
               await updateStatus('❌ No results found.');
@@ -833,14 +870,14 @@ class DiscordWhatsAppBridge {
             this.ytSessions.set(jid, {
               stage: 'search_results',
               searchResults: results,
-              query,
+              query: ytQuery,
               statusKey,
             });
 
             // Build result messages
             const lines = results.map((v, i) => formatSearchResultMessage(v, i)).join('\n\n---\n\n');
             await updateStatus(
-              `🎬 *YouTube Search Results*\n_Query: "${query}"_\n\n` +
+              `🎬 *YouTube Search Results*\n_Query: "${ytQuery}"_\n\n` +
               lines +
               `\n\n_Reply with a number (1–${results.length}) to download._`,
             );
