@@ -1,13 +1,15 @@
 name: Discord WhatsApp Bridge
 
 on:
+  push:
+    branches: [main]  # Restart bridge on every push to main
   workflow_dispatch: # Allows manual trigger
   schedule:
     - cron: '0 */6 * * *' # Fallback every 6h in case the self-trigger fails
 
 concurrency:
   group: discord-whatsapp-bridge
-  cancel-in-progress: false # Don't cancel running jobs, just queue them
+  cancel-in-progress: true # Cancel old run when new push comes in
 
 jobs:
   run-bridge:
@@ -39,7 +41,18 @@ jobs:
       
       - name: Install dependencies
         run: npm ci
-      
+
+      - name: Cache Playwright Chromium
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ hashFiles('node_modules/playwright/package.json') }}
+
+      - name: Install Playwright Chromium browser
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
       - name: Build project
         run: npm run build
       
