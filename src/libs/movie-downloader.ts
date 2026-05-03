@@ -243,6 +243,7 @@ function isCloudflareBlock(err: unknown, html?: string): boolean {
 /**
  * Fetch HTML using a headless Chromium browser (Playwright).
  * Used as a fallback when Cloudflare blocks raw Node.js HTTP requests.
+ * Suitable for pages where the needed content is in static script tags.
  *
  * On VPS, run once after deploy: `npx playwright install --with-deps chromium`
  * On GitHub Actions, Chromium deps are pre-installed — no extra step needed.
@@ -251,9 +252,7 @@ async function fetchHtmlViaBrowser(
   url: string,
   referer?: string,
 ): Promise<string> {
-  // Lazy import — only loads playwright module when actually needed
   const { chromium } = await import('playwright');
-
   console.log(`[MovieDL] 🌐 Cloudflare detected — using headless browser for: ${url}`);
 
   const browser = await chromium.launch({ headless: true });
@@ -264,20 +263,90 @@ async function fetchHtmlViaBrowser(
         'Accept-Language': BROWSER_HEADERS['Accept-Language'],
         DNT: '1',
       },
-      ...(referer ? { } : {}),
     });
-
     const page = await context.newPage();
-
     if (referer) {
       await page.setExtraHTTPHeaders({ Referer: referer });
     }
-
-    // Wait until network is idle (Cloudflare challenge completes)
     await page.goto(url, { waitUntil: 'networkidle', timeout: 30_000 });
+    return await page.content();
+  } finally {
+    await browser.close();
+  }
+}
 
+/**
+ * Extract the /prorcp/ URL from the cloudnestra /rcp/ page using a real browser.
+ *
+ * Instead of parsing HTML (which fails because the URL is set dynamically on
+ * an iframe via JS), we intercept outgoing network requests and capture the
+ * first request whose URL contains /prorcp/.
+ *
+ * Falls back to:
+ *  1. Checking the iframe src attribute in the rendered DOM
+ *  2. Regex over page.content() as a last resort
+ */
+async function browserGetProRcpUrl(rcpUrl: string): Promise<string> {
+  const { chromium } = await import('playwright');
+  console.log(`[MovieDL] 🌐 Using browser to intercept /prorcp/ from: ${rcpUrl}`);
+
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const context = await browser.newContext({
+      userAgent: BROWSER_HEADERS['User-Agent'],
+      extraHTTPHeaders: {
+        'Accept-Language': BROWSER_HEADERS['Accept-Language'],
+        DNT: '1',
+      },
+    });
+    const page = await context.newPage();
+    await page.setExtraHTTPHeaders({ Referer: `https://${EMBED_HOST}/` });
+
+    // Strategy 1: intercept outgoing requests for /prorcp/
+    let capturedProRcpUrl: string | null = null;
+    page.on('request', (req) => {
+      const u = req.url();
+      if (u.includes('/prorcp/') && !capturedProRcpUrl) {
+        capturedProRcpUrl = u;
+      }
+    });
+
+    await page.goto(rcpUrl, { waitUntil: 'networkidle', timeout: 30_000 });
+
+    if (capturedProRcpUrl) {
+      console.log(`[MovieDL] Intercepted /prorcp/ request: ${capturedProRcpUrl}`);
+      return capturedProRcpUrl;
+    }
+
+    // Strategy 2: read iframe src from DOM
+    // page.evaluate runs in browser context; reference document via globalThis
+    // to avoid needing "dom" in tsconfig lib.
+    const iframeSrc = await page.evaluate((): string | null => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const doc = (globalThis as any).document;
+      const iframe = doc?.querySelector('iframe[src*="/prorcp/"]');
+      return (iframe?.src as string) ?? null;
+    });
+    if (iframeSrc) {
+      const full = iframeSrc.startsWith('/')
+        ? `https://${CLOUDNESTRA_HOST}${iframeSrc}`
+        : iframeSrc;
+      console.log(`[MovieDL] Found /prorcp/ from iframe src: ${full}`);
+      return full;
+    }
+
+    // Strategy 3: regex over serialized page content
     const html = await page.content();
-    return html;
+    const m = html.match(/['"]((?:https?:\/\/[^'"]*)?\/prorcp\/[^'"]+)['"]/);
+    if (m && m[1]) {
+      const full = m[1].startsWith('/')
+        ? `https://${CLOUDNESTRA_HOST}${m[1]}`
+        : m[1];
+      console.log(`[MovieDL] Found /prorcp/ via page content regex: ${full}`);
+      return full;
+    }
+
+    throw new Error('Could not find /prorcp/ URL via headless browser (all 3 strategies failed)');
   } finally {
     await browser.close();
   }
@@ -394,24 +463,29 @@ async function getRcpUrl(tmdbId: number, mediaType: MovieMediaType): Promise<str
  */
 async function getProRcpUrl(rcpUrl: string): Promise<string> {
   console.log(`[MovieDL] Step2: Fetching rcp page: ${rcpUrl}`);
-  const html = await fetchHtmlWithFallback(
-    rcpUrl,
-    {
+
+  // Try raw HTTP + regex first (works on clean IPs)
+  try {
+    const html = await fetchHtml(rcpUrl, {
       Referer: `https://${EMBED_HOST}/`,
       'Sec-Fetch-Dest': 'iframe',
       'Sec-Fetch-Mode': 'navigate',
       'Sec-Fetch-Site': 'cross-site',
-    },
-    `https://${EMBED_HOST}/`,
-  );
+    });
 
-  // Match: src: '/prorcp/...' in the loadIframe() function
-  const proRcpMatch = html.match(/['"]\/prorcp\/([^'"]+)['"]/i);
-  if (!proRcpMatch || !proRcpMatch[1]) {
-    throw new Error('Could not find /prorcp/ path in cloudnestra rcp page');
+    if (!isCloudflareBlock(null, html)) {
+      const proRcpMatch = html.match(/['"]\/prorcp\/([^'"]+)['"]/i);
+      if (proRcpMatch && proRcpMatch[1]) {
+        return `https://${CLOUDNESTRA_HOST}/prorcp/${proRcpMatch[1]}`;
+      }
+    }
+  } catch (err) {
+    if (!isCloudflareBlock(err)) throw err;
+    // Fall through to browser strategy
   }
 
-  return `https://${CLOUDNESTRA_HOST}/prorcp/${proRcpMatch[1]}`;
+  // Cloudflare blocked — use browser with request interception
+  return browserGetProRcpUrl(rcpUrl);
 }
 
 // ---------------------------------------------------------------------------
