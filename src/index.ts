@@ -512,8 +512,35 @@ class DiscordWhatsAppBridge {
               const chosen = movieResults[pick - 1]!;
               const year = chosen.releaseDate ? ` (${chosen.releaseDate.slice(0, 4)})` : '';
               const typeEmoji = chosen.mediaType === 'tv' ? '📺' : '🎬';
+              const updateStatus = this.makeStatusUpdater(jid, movieStatusKey);
 
-              // Advance to action-picker stage
+              // Immediately resolve stream URLs so we can show both links upfront
+              await updateStatus(`🔍 *Fetching stream info for:*\n_${chosen.title}${year}_`);
+
+              let streamLine = '';
+              try {
+                const urls = await getMovieStreamUrls(chosen.tmdbId, chosen.mediaType);
+                const bestUrl = urls[0];
+                if (bestUrl) {
+                  streamLine =
+                    `\n🎞️ *Direct stream (m3u8):*\n${bestUrl}\n` +
+                    `_→ Paste in VLC \u203a Media \u203a Open Network Stream_\n`;
+                }
+              } catch {
+                // Non-fatal: stream link resolution failed, just omit
+              }
+
+              // Show both watch links + download offer in one message
+              await updateStatus(
+                `${typeEmoji} *${chosen.title}*${year}\n\n` +
+                `🔗 *Watch in browser:*\n${chosen.watchUrl}\n` +
+                streamLine +
+                `\n─────────────────────\n` +
+                `📥 *Want to download the video file?*\n` +
+                `Reply *1* to download · Anything else to cancel`,
+              );
+
+              // Advance to download-confirm stage
               this.movieSessions.set(jid, {
                 stage: 'action_picker',
                 results: movieResults,
@@ -522,15 +549,7 @@ class DiscordWhatsAppBridge {
                 statusKey: movieStatusKey,
               });
 
-              const updateStatus = this.makeStatusUpdater(jid, movieStatusKey);
-              await updateStatus(
-                `${typeEmoji} *${chosen.title}*${year}\n\n` +
-                `What would you like to do?\n\n` +
-                `*1* — 📥 Download (sends the video file)\n` +
-                `*2* — 🔗 Stream link (watch in browser)\n\n` +
-                `_Reply with 1 or 2._`,
-              );
-              console.log(`[Movie] Action picker shown for "${chosen.title}"`);
+              console.log(`[Movie] Links shown for "${chosen.title}", awaiting download confirm`);
               continue;
             }
 
@@ -546,18 +565,16 @@ class DiscordWhatsAppBridge {
             this.movieSessions.delete(jid);
           }
 
-          // ── Stage 2: user picks Download (1) or Link (2) ──────────────────
+          // ── Stage 2: user confirms download (reply "1") ────────────────────
           else if (movieSession.stage === 'action_picker') {
-            const { chosen, statusKey: movieStatusKey, query: movieQuery } = movieSession;
+            const { chosen, statusKey: movieStatusKey } = movieSession;
 
             if (!chosen) {
               this.movieSessions.delete(jid);
               continue;
             }
 
-            const pick = parseInt(messageText, 10);
-
-            if (pick === 1) {
+            if (messageText.trim() === '1') {
               // ── Download the video ───────────────────────────────────────
               this.movieSessions.delete(jid);
               const updateStatus = this.makeStatusUpdater(jid, movieStatusKey);
@@ -582,7 +599,7 @@ class DiscordWhatsAppBridge {
                   fileName: dlResult.filename,
                 });
 
-                // Delete status message and temp file
+                // Clean up status message and temp file
                 if (movieStatusKey) await sock.sendMessage(jid, { delete: movieStatusKey });
                 try { require('fs').unlinkSync(dlResult.filePath); } catch { /* ignore */ }
 
@@ -594,43 +611,8 @@ class DiscordWhatsAppBridge {
               }
               continue;
 
-            } else if (pick === 2) {
-              // ── Resolve + send stream link ───────────────────────────────
-              this.movieSessions.delete(jid);
-              const updateStatus = this.makeStatusUpdater(jid, movieStatusKey);
-              const year = chosen.releaseDate ? ` (${chosen.releaseDate.slice(0, 4)})` : '';
-              const typeEmoji = chosen.mediaType === 'tv' ? '📺' : '🎬';
-
-              try {
-                await updateStatus(`🌐 *Resolving stream URLs for:*\n_${chosen.title}${year}_`);
-
-                const urls = await getMovieStreamUrls(chosen.tmdbId, chosen.mediaType);
-                const bestUrl = urls[0] ?? chosen.watchUrl;
-
-                await updateStatus(
-                  `${typeEmoji} *${chosen.title}*${year}\n\n` +
-                  `🔗 *Best quality stream (m3u8):*\n${bestUrl}\n\n` +
-                  `_Paste in VLC → Media → Open Network Stream_\n` +
-                  `_or use the embed link:_\n${chosen.watchUrl}`,
-                );
-                console.log(`✅ Stream link sent for "${chosen.title}" → ${bestUrl}`);
-              } catch (err) {
-                // Fallback to embed link if stream resolution fails
-                await updateStatus(
-                  `${typeEmoji} *${chosen.title}*${year}\n\n` +
-                  `🔗 *Watch here:*\n${chosen.watchUrl}\n\n` +
-                  `_Open the link in your browser to watch._`,
-                );
-              }
-              continue;
-
-            } else if (/^\d+$/.test(messageText)) {
-              await sock.sendMessage(jid, {
-                text: '⚠️ Please reply with *1* (Download) or *2* (Stream Link).',
-              });
-              continue;
             } else {
-              // Non-numeric → cancel
+              // Anything else → cancel session silently
               this.movieSessions.delete(jid);
             }
           }
