@@ -660,7 +660,8 @@ class DiscordWhatsAppBridge {
             '• `.ocr` - Extract text from image (reply to image)\n' +
             '• `.whisper` - Transcribe voice note (reply to audio)\n' +
             '• `.ss <url>` - Take a screenshot of a website\n' +
-            '• `.reveal` - See view-once media (reply to view-once)\n\n' +
+            '• `.reveal` - See view-once media (reply to view-once)\n' +
+            '• `.terminal` - Start a public web terminal\n\n' +
             'ℹ️ _Reply to an image or audio message with the command to use AI tools._';
 
           await sock.sendMessage(jid, { text: menuText }, { quoted: msg });
@@ -695,6 +696,34 @@ class DiscordWhatsAppBridge {
             }
           } else {
             await sock.sendMessage(jid, { text: '❌ Reply to a *view-once* image or video with `.reveal`' }, { quoted: msg });
+          }
+          continue;
+        }
+
+        // ── .terminal command ────────────────────────────────────────────────
+        if (messageText.toLowerCase() === '.terminal') {
+          console.log('💻 Detected .terminal command...');
+          const statusMsg = await sock.sendMessage(jid, { text: '⏳ *Starting Web Terminal...*' }, { quoted: msg });
+          
+          try {
+            const { startTerminal } = require('./libs/terminal');
+            const result = await startTerminal();
+            
+            if (result.error) {
+              if (statusMsg?.key) await sock.sendMessage(jid, { edit: statusMsg.key, text: `❌ *Terminal failed*\n${result.error}` });
+            } else {
+              const terminalMsg = `💻 *Web Terminal Started*\n\n🔗 ${result.url}\n\n👤 *Username:* devuser\n🔑 *Password:* devpassword`;
+              if (statusMsg?.key) {
+                await sock.sendMessage(jid, { edit: statusMsg.key, text: terminalMsg });
+              } else {
+                await sock.sendMessage(jid, { text: terminalMsg }, { quoted: msg });
+              }
+            }
+          } catch (err) {
+             const errMsg = err instanceof Error ? err.message : String(err);
+             if (statusMsg?.key) {
+               await sock.sendMessage(jid, { edit: statusMsg.key, text: `❌ *Terminal failed*\n${errMsg}` });
+             }
           }
           continue;
         }
