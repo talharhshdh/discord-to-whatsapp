@@ -83,6 +83,16 @@ interface MovieSession {
   statusKey?: proto.IMessageKey;
 }
 
+// ---------------------------------------------------------------------------
+// Screenshot interactive session state
+// ---------------------------------------------------------------------------
+
+interface SsSession {
+  stage: 'options_picker';
+  url: string;
+  statusKey?: proto.IMessageKey;
+}
+
 /**
  * Normalizes a WhatsApp JID to its bare user form.
  * Multi-device JIDs look like "923185853847:5@s.whatsapp.net".
@@ -124,6 +134,11 @@ class DiscordWhatsAppBridge {
    * Stores the displayed search results while the user picks one.
    */
   private movieSessions = new Map<string, MovieSession>();
+
+  /**
+   * Per-JID screenshot interactive session state.
+   */
+  private ssSessions = new Map<string, SsSession>();
 
   /**
    * JIDs of all authorized senders (owner + admins).
@@ -528,13 +543,13 @@ class DiscordWhatsAppBridge {
   /**
    * Calls the local Python API to take a screenshot of a URL.
    */
-  private async takeScreenshot(url: string): Promise<Buffer> {
+  private async takeScreenshot(url: string, fullPage: boolean = false, format: string = 'png'): Promise<Buffer> {
     try {
       console.log(`🤖 Sending URL to Python API for screenshot: ${url}`);
       const response = await fetch('http://127.0.0.1:8000/screenshot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url }),
+        body: JSON.stringify({ url, full_page: fullPage, format }),
       });
 
       if (!response.ok) {
@@ -611,11 +626,19 @@ class DiscordWhatsAppBridge {
         }
         this.processedMessageIds.add(msgUniqueId);
 
-        const messageText = (
+        let messageText = (
           msg.message.conversation ||
           msg.message.extendedTextMessage?.text ||
           ''
         ).trim();
+
+        // Support button responses
+        const buttonId = msg.message?.buttonsResponseMessage?.selectedButtonId ||
+                         msg.message?.templateButtonReplyMessage?.selectedId ||
+                         msg.message?.listResponseMessage?.singleSelectReply?.selectedRowId;
+        if (buttonId) {
+          messageText = buttonId;
+        }
 
         const jid = msg.key.remoteJid!;
         const sock = this.whatsappSocket!;
@@ -707,17 +730,28 @@ class DiscordWhatsAppBridge {
             continue;
           }
 
-          const statusMsg = await sock.sendMessage(jid, { text: `📸 *Capturing screenshot of:* ${url}...` });
-          try {
-            const buffer = await this.takeScreenshot(url);
-            await sock.sendMessage(jid, { image: buffer, caption: `📸 *Screenshot:* ${url}` }, { quoted: msg });
-            if (statusMsg?.key) await sock.sendMessage(jid, { delete: statusMsg.key });
-          } catch (err) {
-            const errMsg = err instanceof Error ? err.message : String(err);
-            if (statusMsg?.key) {
-              await sock.sendMessage(jid, { edit: statusMsg.key, text: `❌ *Screenshot failed*\n${errMsg}` });
-            }
-          }
+          const statusMsg = await sock.sendMessage(jid, {
+            text: `🌐 *Screenshot Options*\n_URL:_ ${url}\n\n` +
+                  `Please choose an option using the buttons below, or reply with a number:\n` +
+                  `*1* ➔ 🖼️ Full Page (PNG)\n` +
+                  `*2* ➔ 🖼️ Start Only (PNG)\n` +
+                  `*3* ➔ 📄 Full Page (PDF)\n` +
+                  `*4* ➔ 📄 Start Only (PDF)`,
+            footer: 'Discord-WhatsApp Bridge',
+            buttons: [
+              { buttonId: '1', buttonText: { displayText: 'Full Page PNG' }, type: 1 },
+              { buttonId: '2', buttonText: { displayText: 'Start Only PNG' }, type: 1 },
+              { buttonId: '3', buttonText: { displayText: 'Full Page PDF' }, type: 1 },
+              { buttonId: '4', buttonText: { displayText: 'Start Only PDF' }, type: 1 }
+            ],
+            headerType: 1
+          } as any);
+
+          this.ssSessions.set(jid, {
+            stage: 'options_picker',
+            url,
+            statusKey: statusMsg?.key
+          });
           continue;
         }
 
@@ -832,6 +866,52 @@ class DiscordWhatsAppBridge {
         }
 
         if (!messageText) continue;
+
+        // ────────────────────────────────────────────────────────────────────
+        // Screenshot session handler
+        // ────────────────────────────────────────────────────────────────────
+        const ssSession = this.ssSessions.get(jid);
+        if (ssSession?.stage === 'options_picker') {
+          const pick = parseInt(messageText, 10);
+          if (pick >= 1 && pick <= 4) {
+            const { url, statusKey } = ssSession;
+            this.ssSessions.delete(jid);
+            
+            const isFullPage = (pick === 1 || pick === 3);
+            const isPdf = (pick === 3 || pick === 4);
+            const format = isPdf ? 'pdf' : 'png';
+            
+            const updateStatus = this.makeStatusUpdater(jid, statusKey);
+            await updateStatus(`📸 *Capturing ${isFullPage ? 'Full Page' : 'Start Only'} ${format.toUpperCase()} of:*\n_${url}_...`);
+            
+            try {
+              const buffer = await this.takeScreenshot(url, isFullPage, format);
+              
+              if (isPdf) {
+                await sock.sendMessage(jid, { 
+                  document: buffer, 
+                  mimetype: 'application/pdf', 
+                  fileName: 'screenshot.pdf', 
+                  caption: `📸 *Screenshot:* ${url}` 
+                }, { quoted: msg });
+              } else {
+                await sock.sendMessage(jid, { 
+                  image: buffer, 
+                  caption: `📸 *Screenshot:* ${url}` 
+                }, { quoted: msg });
+              }
+              if (statusKey) await sock.sendMessage(jid, { delete: statusKey });
+            } catch (err) {
+              const errMsg = err instanceof Error ? err.message : String(err);
+              await updateStatus(`❌ *Screenshot failed*\n${errMsg}`);
+            }
+            continue;
+          } else if (/^\d+$/.test(messageText)) {
+            await sock.sendMessage(jid, { text: `⚠️ Please reply with a number between 1 and 4.` });
+            continue;
+          }
+          this.ssSessions.delete(jid);
+        }
 
         // ────────────────────────────────────────────────────────────────────
         // Movie session handler (two-stage flow)

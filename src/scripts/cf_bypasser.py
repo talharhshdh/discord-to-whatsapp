@@ -23,6 +23,11 @@ reader = easyocr.Reader(['en']) # Add more languages if needed
 class FetchRequest(BaseModel):
     url: str
 
+class ScreenshotRequest(BaseModel):
+    url: str
+    full_page: bool = False
+    format: str = "png"
+
 @app.post("/get_prorcp")
 def get_prorcp(req: FetchRequest):
     try:
@@ -118,7 +123,7 @@ async def transcribe_audio(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/screenshot")
-async def take_screenshot(req: FetchRequest):
+async def take_screenshot(req: ScreenshotRequest):
     try:
         with SB(uc=True, headless=False) as sb:
             sb.uc_open_with_reconnect(req.url, 5)
@@ -128,18 +133,38 @@ async def take_screenshot(req: FetchRequest):
                 pass
             sb.sleep(5) # Wait for page to load
             
-            # Full page screenshot
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
-                sb.save_screenshot(tmp.name)
-                tmp_path = tmp.name
+            sb.execute_script("document.body.style.overflow = 'hidden';")
+            
+            if req.full_page:
+                width = sb.execute_script("return Math.max(document.body.scrollWidth, document.body.offsetWidth, document.documentElement.clientWidth, document.documentElement.scrollWidth, document.documentElement.offsetWidth);")
+                height = sb.execute_script("return Math.max(document.body.scrollHeight, document.body.offsetHeight, document.documentElement.clientHeight, document.documentElement.scrollHeight, document.documentElement.offsetHeight);")
+                sb.set_window_size(width, height)
+                sb.sleep(1)
 
-            try:
-                with open(tmp_path, "rb") as f:
-                    content = f.read()
-                return Response(content=content, media_type="image/png")
-            finally:
-                if os.path.exists(tmp_path):
-                    os.remove(tmp_path)
+            import base64
+            
+            if req.format.lower() == "pdf":
+                pdf_data = sb.driver.execute_cdp_cmd("Page.printToPDF", {
+                    "printBackground": True,
+                    "marginTop": 0,
+                    "marginBottom": 0,
+                    "marginLeft": 0,
+                    "marginRight": 0,
+                })
+                content = base64.b64decode(pdf_data['data'])
+                return Response(content=content, media_type="application/pdf")
+            else:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
+                    sb.save_screenshot(tmp.name)
+                    tmp_path = tmp.name
+
+                try:
+                    with open(tmp_path, "rb") as f:
+                        content = f.read()
+                    return Response(content=content, media_type="image/png")
+                finally:
+                    if os.path.exists(tmp_path):
+                        os.remove(tmp_path)
     except Exception as e:
         print(f"Screenshot Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
