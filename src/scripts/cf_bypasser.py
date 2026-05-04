@@ -1,10 +1,12 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, File, UploadFile, Response
 from pydantic import BaseModel
 from seleniumbase import SB
 import uvicorn
 import re
 import sys
 import threading
+import io
+from rembg import remove
 
 app = FastAPI()
 
@@ -63,6 +65,16 @@ def get_html(req: FetchRequest):
             source = sb.get_page_source()
             return {"html": source}
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/remove_bg")
+async def remove_bg(file: UploadFile = File(...)):
+    try:
+        input_image = await file.read()
+        output_image = remove(input_image)
+        return Response(content=output_image, media_type="image/png")
+    except Exception as e:
+        print(f"Error removing background: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/health")

@@ -430,6 +430,35 @@ class DiscordWhatsAppBridge {
   }
 
   /**
+   * Calls the local Python API to remove the background of an image.
+   * Falls back to the original buffer if the API fails.
+   */
+  private async removeBackground(inputBuffer: Buffer): Promise<Buffer> {
+    try {
+      console.log('🤖 Sending image to Python API for background removal...');
+      const formData = new FormData();
+      const blob = new Blob([new Uint8Array(inputBuffer)], { type: 'image/png' });
+      formData.append('file', blob, 'image.png');
+
+      const response = await fetch('http://127.0.0.1:8000/remove_bg', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Python API responded with ${response.status}`);
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      console.log('✅ Background removed successfully!');
+      return Buffer.from(arrayBuffer);
+    } catch (err) {
+      console.error('❌ Failed to remove background:', err);
+      return inputBuffer; // Fallback to original
+    }
+  }
+
+  /**
    * Processes incoming WhatsApp messages.
    *
    * @param type - Baileys upsert type:
@@ -533,20 +562,33 @@ class DiscordWhatsAppBridge {
 
         // ── .sticker command ────────────────────────────────────────────────
         const quotedMessage = msg.message.extendedTextMessage?.contextInfo?.quotedMessage;
-        if (quotedMessage?.imageMessage && messageText.toLowerCase() === '.sticker') {
-          console.log('🖼️ Detected .sticker command on image reply, converting to sticker...');
+        const isStickerCmd = messageText.toLowerCase().startsWith('.sticker');
+        const isSbgCmd = messageText.toLowerCase().startsWith('.sbg');
+
+        if (quotedMessage?.imageMessage && (isStickerCmd || isSbgCmd)) {
+          const wantBgRemoval = isSbgCmd || messageText.toLowerCase().includes('bg');
+          console.log(`🖼️ Detected sticker command (bg removal: ${wantBgRemoval}) on image reply...`);
+          
           const quotedMsg: proto.IWebMessageInfo = {
             key: msg.key,
             message: { imageMessage: quotedMessage.imageMessage },
           };
+
           const buffer = await downloadMediaMessage(quotedMsg, 'buffer', {}, {
             logger: P({ level: 'silent' }),
             reuploadRequest: sock.updateMediaMessage,
           });
-          const stickerBuffer = await sharp(buffer as Buffer)
+
+          let processedBuffer = buffer as Buffer;
+          if (wantBgRemoval) {
+            processedBuffer = await this.removeBackground(processedBuffer);
+          }
+
+          const stickerBuffer = await sharp(processedBuffer)
             .resize(512, 512, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
             .webp()
             .toBuffer();
+
           await sock.sendMessage(jid, { sticker: stickerBuffer });
           console.log('✅ Image converted to sticker and sent!');
           continue;

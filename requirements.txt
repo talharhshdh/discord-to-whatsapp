@@ -2,3 +2,6 @@ seleniumbase
 fastapi
 uvicorn
 pydantic
+rembg
+onnxruntime
+python-multipart
