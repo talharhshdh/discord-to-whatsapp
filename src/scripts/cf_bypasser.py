@@ -7,8 +7,18 @@ import sys
 import threading
 import io
 from rembg import remove
+import whisper
+import easyocr
+import tempfile
+import os
 
 app = FastAPI()
+
+# Pre-load models (will download on first run in GH Actions)
+print("Loading Whisper tiny model...")
+whisper_model = whisper.load_model("tiny")
+print("Loading EasyOCR reader...")
+reader = easyocr.Reader(['en']) # Add more languages if needed
 
 class FetchRequest(BaseModel):
     url: str
@@ -75,6 +85,36 @@ async def remove_bg(file: UploadFile = File(...)):
         return Response(content=output_image, media_type="image/png")
     except Exception as e:
         print(f"Error removing background: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/ocr")
+async def ocr_image(file: UploadFile = File(...)):
+    try:
+        content = await file.read()
+        results = reader.readtext(content)
+        text = " ".join([res[1] for res in results])
+        return {"text": text}
+    except Exception as e:
+        print(f"OCR Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/transcribe")
+async def transcribe_audio(file: UploadFile = File(...)):
+    try:
+        # Whisper requires a file on disk
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".ogg") as tmp:
+            content = await file.read()
+            tmp.write(content)
+            tmp_path = tmp.name
+
+        try:
+            result = whisper_model.transcribe(tmp_path)
+            return {"text": result["text"]}
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+    except Exception as e:
+        print(f"Transcription Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/health")

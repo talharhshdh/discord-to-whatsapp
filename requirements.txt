@@ -5,3 +5,5 @@ pydantic
 rembg
 onnxruntime
 python-multipart
+openai-whisper
+easyocr

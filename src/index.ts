@@ -459,6 +459,60 @@ class DiscordWhatsAppBridge {
   }
 
   /**
+   * Calls the local Python API to perform OCR on an image.
+   */
+  private async ocrImage(inputBuffer: Buffer): Promise<string> {
+    try {
+      console.log('🤖 Sending image to Python API for OCR...');
+      const formData = new FormData();
+      const blob = new Blob([new Uint8Array(inputBuffer)], { type: 'image/png' });
+      formData.append('file', blob, 'image.png');
+
+      const response = await fetch('http://127.0.0.1:8000/ocr', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Python API responded with ${response.status}`);
+      }
+
+      const data = (await response.json()) as { text: string };
+      return data.text || 'No text found in image.';
+    } catch (err) {
+      console.error('❌ OCR failed:', err);
+      return 'Error: Could not perform OCR.';
+    }
+  }
+
+  /**
+   * Calls the local Python API to transcribe audio using Whisper.
+   */
+  private async transcribeAudio(inputBuffer: Buffer): Promise<string> {
+    try {
+      console.log('🤖 Sending audio to Python API for transcription...');
+      const formData = new FormData();
+      const blob = new Blob([new Uint8Array(inputBuffer)], { type: 'audio/ogg' });
+      formData.append('file', blob, 'audio.ogg');
+
+      const response = await fetch('http://127.0.0.1:8000/transcribe', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Python API responded with ${response.status}`);
+      }
+
+      const data = (await response.json()) as { text: string };
+      return data.text || 'No transcription available.';
+    } catch (err) {
+      console.error('❌ Transcription failed:', err);
+      return 'Error: Could not perform transcription.';
+    }
+  }
+
+  /**
    * Processes incoming WhatsApp messages.
    *
    * @param type - Baileys upsert type:
@@ -522,6 +576,26 @@ class DiscordWhatsAppBridge {
 
         const jid = msg.key.remoteJid!;
         const sock = this.whatsappSocket!;
+
+        // ── .menu / .help command ────────────────────────────────────────────
+        if (['.menu', '.help'].includes(messageText.toLowerCase())) {
+          const menuText = 
+            '🤖 *Discord-WhatsApp Bridge Menu*\n\n' +
+            '🎥 *Movies & Shows*\n' +
+            '• `.movie <title>` - Search and download movies\n\n' +
+            '🎵 *YouTube*\n' +
+            '• Send any YouTube link for download options\n\n' +
+            '🖼️ *Stickers*\n' +
+            '• `.sticker` - Image to sticker (reply to image)\n' +
+            '• `.sbg` - Remove background + sticker (reply to image)\n\n' +
+            '🧠 *AI Tools*\n' +
+            '• `.ocr` - Extract text from image (reply to image)\n' +
+            '• `.whisper` - Transcribe voice note (reply to audio)\n\n' +
+            'ℹ️ _Reply to an image or audio message with the command to use AI tools._';
+
+          await sock.sendMessage(jid, { text: menuText }, { quoted: msg });
+          continue;
+        }
 
         // ── .movie command ───────────────────────────────────────────────────
         // Usage: .movie <query>
@@ -591,6 +665,46 @@ class DiscordWhatsAppBridge {
 
           await sock.sendMessage(jid, { sticker: stickerBuffer });
           console.log('✅ Image converted to sticker and sent!');
+          continue;
+        }
+
+        // ── .ocr command ───────────────────────────────────────────────────
+        if (quotedMessage?.imageMessage && messageText.toLowerCase() === '.ocr') {
+          console.log('🖼️ Detected .ocr command on image reply...');
+          const quotedMsg: proto.IWebMessageInfo = {
+            key: msg.key,
+            message: { imageMessage: quotedMessage.imageMessage },
+          };
+          const buffer = await downloadMediaMessage(quotedMsg, 'buffer', {}, {
+            logger: P({ level: 'silent' }),
+            reuploadRequest: sock.updateMediaMessage,
+          });
+          const text = await this.ocrImage(buffer as Buffer);
+          await sock.sendMessage(jid, { text: `📝 *OCR Result:*\n\n${text}` }, { quoted: msg });
+          continue;
+        }
+
+        // ── .whisper command ────────────────────────────────────────────────
+        const audioMsg = quotedMessage?.audioMessage || msg.message.audioMessage;
+        if (audioMsg && messageText.toLowerCase() === '.whisper') {
+          console.log('🎙️ Detected .whisper command, transcribing...');
+          const statusMsg = await sock.sendMessage(jid, { text: '⏳ *Transcribing audio...*' }, { quoted: msg });
+          
+          const quotedMsg: proto.IWebMessageInfo = {
+            key: msg.key,
+            message: { audioMessage: audioMsg },
+          };
+          const buffer = await downloadMediaMessage(quotedMsg, 'buffer', {}, {
+            logger: P({ level: 'silent' }),
+            reuploadRequest: sock.updateMediaMessage,
+          });
+          const text = await this.transcribeAudio(buffer as Buffer);
+          
+          if (statusMsg?.key) {
+            await sock.sendMessage(jid, { edit: statusMsg.key, text: `🎙️ *Transcription:*\n\n${text}` });
+          } else {
+            await sock.sendMessage(jid, { text: `🎙️ *Transcription:*\n\n${text}` }, { quoted: msg });
+          }
           continue;
         }
 
