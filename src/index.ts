@@ -13,6 +13,7 @@ import * as dotenv from 'dotenv';
 import { Boom } from '@hapi/boom';
 import P from 'pino';
 import sharp from 'sharp';
+import { generateMessageID } from '@whiskeysockets/baileys';
 import { detectAndDownload } from './libs/downloader';
 import {
   searchYouTube,
@@ -104,6 +105,7 @@ class DiscordWhatsAppBridge {
   private discordReady = false;
   private isConnecting = false;
   private testMessageSent = false;
+  private botSentMessageIds = new Set<string>();
   /**
    * Tracks message IDs that have already been processed to prevent duplicate
    * sticker sends when Baileys replays messages on reconnect. Capped at 500
@@ -195,6 +197,17 @@ class DiscordWhatsAppBridge {
         keepAliveIntervalMs: 30000,
         retryRequestDelayMs: 250
       });
+
+      const originalSendMessage = sock.sendMessage.bind(sock);
+      sock.sendMessage = async (jid, content, options = {}) => {
+        const msgId = options?.messageId || generateMessageID();
+        this.botSentMessageIds.add(msgId);
+        if (this.botSentMessageIds.size > 1000) {
+          const first = this.botSentMessageIds.values().next().value;
+          if (first !== undefined) this.botSentMessageIds.delete(first);
+        }
+        return await originalSendMessage(jid, content, { ...options, messageId: msgId });
+      };
 
       this.whatsappSocket = sock;
 
@@ -419,7 +432,7 @@ class DiscordWhatsAppBridge {
     const allowed = (
       this.authorizedJids.has(senderJid) ||
       this.authorizedJids.has(participantJid)
-    );
+    ) || msg.key.fromMe
 
     if (!allowed) {
       console.log(`🚫 Unauthorized sender — raw: ${rawJid} | resolved: ${senderJid} | lidMap size: ${this.lidToJid.size}`);
@@ -551,13 +564,18 @@ class DiscordWhatsAppBridge {
   ): Promise<void> {
     for (const msg of messages) {
       try {
+        console.log("msg", msg)
         if (!msg.message || msg.key.remoteJid === 'status@broadcast') continue;
 
         // ── Skip bot's own echoed messages (loop prevention) ─────────────────
         // WhatsApp re-delivers every message the bot sends back via
         // messages.upsert with fromMe=true.  Processing these causes the bot
         // to reply to its own replies, creating an infinite message loop.
-        if (msg.key.fromMe) continue;
+        // We track messages sent by the bot and ignore them.
+        if (msg.key.fromMe && msg.key.id && this.botSentMessageIds.has(msg.key.id)) {
+          console.log(`⏭️ Skipping bot's own echoed message`);
+          continue;
+        }
 
         // ── Age filter — only for historical syncs ('append') ─────────────────
         // 'notify' events are real-time deliveries; even if the timestamp is
@@ -629,11 +647,11 @@ class DiscordWhatsAppBridge {
         // ── .reveal command ──────────────────────────────────────────────────
         if (messageText.toLowerCase() === '.reveal') {
           const voMsg = quotedMessage?.viewOnceMessageV2?.message || quotedMessage?.viewOnceMessage?.message || quotedMessage;
-          
+
           if (voMsg?.imageMessage || voMsg?.videoMessage) {
             console.log('👀 Detected .reveal command on view-once media...');
             const statusMsg = await sock.sendMessage(jid, { text: '⏳ *Revealing view-once media...*' }, { quoted: msg });
-            
+
             try {
               const buffer = await downloadMediaMessage({ key: msg.key, message: voMsg }, 'buffer', {}, {
                 logger: P({ level: 'silent' }),
@@ -662,13 +680,13 @@ class DiscordWhatsAppBridge {
         if (quotedMessage?.imageMessage && messageText.toLowerCase() === '.rbg') {
           console.log('🖼️ Detected .rbg command on image reply...');
           const statusMsg = await sock.sendMessage(jid, { text: '⏳ *Removing background...*' }, { quoted: msg });
-          
+
           try {
             const buffer = await downloadMediaMessage({ key: msg.key, message: { imageMessage: quotedMessage.imageMessage } }, 'buffer', {}, {
               logger: P({ level: 'silent' }),
               reuploadRequest: sock.updateMediaMessage,
             });
-            
+
             const rbBuffer = await this.removeBackground(buffer as Buffer);
             await sock.sendMessage(jid, { image: rbBuffer, caption: '✨ *Background Removed*' }, { quoted: msg });
             if (statusMsg?.key) await sock.sendMessage(jid, { delete: statusMsg.key });
