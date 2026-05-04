@@ -32,6 +32,7 @@ import {
   type MovieSearchResult,
 } from './libs/movie-search';
 import { downloadMovie, getMovieStreamUrls } from './libs/movie-downloader';
+import { startDashboard, registerUrl, getAllUrls } from './libs/dashboard-server';
 
 dotenv.config();
 
@@ -395,7 +396,69 @@ class DiscordWhatsAppBridge {
     if (this.whatsappReady && this.discordReady && !this.testMessageSent) {
       console.log('🚀 Bridge is fully operational!');
       this.testMessageSent = true;
-      // await this.sendTestMessage();
+      await this.startDashboardAndNotify();
+    }
+  }
+
+  /**
+   * Starts the local dashboard HTTP server, exposes it via a Cloudflare tunnel,
+   * registers the noVNC URL, and broadcasts the dashboard URL to all admins.
+   * Called once when both WhatsApp and Discord are ready.
+   */
+  private async startDashboardAndNotify(): Promise<void> {
+    try {
+      console.log('📊 Starting dashboard server...');
+
+      // Also register the noVNC VNC viewer that is started in the workflow
+      // (websockify runs on port 6080 → Cloudflare tunnel on port 6080).
+      // We expose it here so the dashboard shows it immediately.
+      // The actual tunnel for noVNC is started by the workflow; we
+      // call getCloudflareTunnelUrl to get / create the URL lazily.
+      const { getCloudflareTunnelUrl } = require('./libs/cloudflared');
+      const novncUrl: string = await getCloudflareTunnelUrl(6080);
+      if (novncUrl) {
+        registerUrl('novnc', '🖥️ noVNC Desktop', novncUrl);
+      }
+
+      // Register the Python bypasser API (runs on 127.0.0.1:8000; not publicly tunneled,
+      // but we still list its local URL so developers know it exists).
+      registerUrl('bypasser', '⚡ Python API (local)', 'http://127.0.0.1:8000');
+
+      // Start the dashboard HTTP server on port 4000 + Cloudflare tunnel
+      const dashboardPublicUrl = await startDashboard(4000);
+
+      if (!dashboardPublicUrl) {
+        console.warn('⚠️ Dashboard tunnel failed — skipping admin notification.');
+        return;
+      }
+
+      // Calculate session time remaining
+      const uptimeSeconds = process.uptime();
+      const remainingSeconds = Math.max(0, (5 * 60 * 60) - uptimeSeconds);
+      const hoursLeft = Math.floor(remainingSeconds / 3600);
+      const minutesLeft = Math.floor((remainingSeconds % 3600) / 60);
+
+      const notifyMsg =
+        '🚀 *Bridge Session Started*\n\n' +
+        '📊 *Dev Dashboard (Frontend):*\n' +
+        `${dashboardPublicUrl}\n\n` +
+        '🔧 *Available tools (via dashboard):*\n' +
+        '• 🖥️ noVNC Desktop\n' +
+        '• ⚡ Python Bypasser API\n' +
+        '• 💻 Terminal (use .terminal)\n' +
+        '• 🔵 VSCode (use .vscode)\n' +
+        '• 🌐 Browser (use .browser)\n\n' +
+        `⏱️ *Session time left:* ${hoursLeft}h ${minutesLeft}m\n\n` +
+        '_Use `.url` to get all current links at any time._';
+
+      if (this.whatsappSocket && this.authorizedJids.size > 0) {
+        for (const jid of this.authorizedJids) {
+          await this.whatsappSocket.sendMessage(jid, { text: notifyMsg });
+        }
+        console.log('📤 Dashboard URL sent to all admins.');
+      }
+    } catch (err) {
+      console.error('❌ Failed to start dashboard or notify admins:', err);
     }
   }
 
@@ -639,6 +702,37 @@ class DiscordWhatsAppBridge {
         const sock = this.whatsappSocket!;
         const quotedMessage = msg.message.extendedTextMessage?.contextInfo?.quotedMessage;
 
+        // ── .url command ─────────────────────────────────────────────────────
+        if (messageText.toLowerCase() === '.url') {
+          console.log('📊 Detected .url command...');
+          const urls = getAllUrls();
+          const keys = Object.keys(urls);
+
+          const uptimeSeconds = process.uptime();
+          const remainingSeconds = Math.max(0, (5 * 60 * 60) - uptimeSeconds);
+          const hoursLeft = Math.floor(remainingSeconds / 3600);
+          const minutesLeft = Math.floor((remainingSeconds % 3600) / 60);
+
+          let urlsMsg = '🔗 *Live Session URLs*\n';
+          urlsMsg += `⏱️ *Time Left:* ${hoursLeft}h ${minutesLeft}m\n\n`;
+
+          if (keys.length === 0) {
+            urlsMsg += '_No URLs registered yet. The dashboard may still be starting up._';
+          } else {
+            for (const key of keys) {
+              const entry = urls[key];
+              urlsMsg += `*${entry.label || key}*\n`;
+              urlsMsg += `🔗 ${entry.url}\n`;
+              if (entry.username) urlsMsg += `👤 ${entry.username}\n`;
+              if (entry.password) urlsMsg += `🔑 ${entry.password}\n`;
+              urlsMsg += '\n';
+            }
+          }
+
+          await sock.sendMessage(jid, { text: urlsMsg.trim() }, { quoted: msg });
+          continue;
+        }
+
         // ── .menu / .help command ────────────────────────────────────────────
         if (['.menu', '.help'].includes(messageText.toLowerCase())) {
           const menuText =
@@ -658,6 +752,8 @@ class DiscordWhatsAppBridge {
             '• `.terminal` - Start a public web terminal\n' +
             '• `.vscode` - Start a public VSCode server\n' +
             '• `.browser` - Start a virtual cloud browser\n\n' +
+            '🔗 *Session*\n' +
+            '• `.url` - Get all live public URLs (dashboard, terminal, VSCode, etc.)\n\n' +
             'ℹ️ _Reply to an image or audio message with the command to use AI tools._';
 
           await sock.sendMessage(jid, { text: menuText }, { quoted: msg });
@@ -708,6 +804,14 @@ class DiscordWhatsAppBridge {
             if (result.error) {
               if (statusMsg?.key) await sock.sendMessage(jid, { edit: statusMsg.key, text: `❌ *Terminal failed*\n${result.error}` });
             } else {
+              // Register in shared dashboard registry
+              if (result.url) {
+                registerUrl('terminal', '💻 Terminal', result.url, {
+                  username: result.username,
+                  password: result.password,
+                });
+              }
+
               const uptimeSeconds = process.uptime();
               const remainingSeconds = Math.max(0, (5 * 60 * 60) - uptimeSeconds);
               const hoursLeft = Math.floor(remainingSeconds / 3600);
@@ -741,6 +845,13 @@ class DiscordWhatsAppBridge {
             if (result.error) {
               if (statusMsg?.key) await sock.sendMessage(jid, { edit: statusMsg.key, text: `❌ *VSCode failed*\n${result.error}` });
             } else {
+              // Register in shared dashboard registry
+              if (result.url) {
+                registerUrl('vscode', '🔵 VSCode Server', result.url, {
+                  password: result.password,
+                });
+              }
+
               const uptimeSeconds = process.uptime();
               const remainingSeconds = Math.max(0, (5 * 60 * 60) - uptimeSeconds);
               const hoursLeft = Math.floor(remainingSeconds / 3600);
@@ -774,6 +885,14 @@ class DiscordWhatsAppBridge {
             if (result.error) {
               if (statusMsg?.key) await sock.sendMessage(jid, { edit: statusMsg.key, text: `❌ *Browser failed*\n${result.error}` });
             } else {
+              // Register in shared dashboard registry
+              if (result.url) {
+                registerUrl('browser', '🌐 Cloud Browser', result.url, {
+                  username: result.username,
+                  password: result.password,
+                });
+              }
+
               const uptimeSeconds = process.uptime();
               const remainingSeconds = Math.max(0, (5 * 60 * 60) - uptimeSeconds);
               const hoursLeft = Math.floor(remainingSeconds / 3600);
