@@ -59,9 +59,17 @@ export async function startTerminal(): Promise<{ url?: string; error?: string }>
         const match = output.match(/https:\/\/[-0-9a-z]*\.trycloudflare\.com/);
         if (match && !cloudflareUrl) {
           cloudflareUrl = match[0];
-          console.log(`✅ Terminal Cloudflare Tunnel URL: ${cloudflareUrl}`);
-          resolve({ url: cloudflareUrl });
+          console.log(`✅ Terminal Cloudflare Tunnel URL: ${cloudflareUrl} - Waiting 5 seconds for DNS propagation...`);
+          setTimeout(() => {
+            resolve({ url: cloudflareUrl });
+          }, 5000);
         }
+      });
+
+      tunnelProcess!.on('close', (code) => {
+        console.log(`⚠️ Terminal Cloudflare Tunnel exited with code ${code}`);
+        cloudflareUrl = '';
+        isTerminalRunning = false;
       });
 
       setTimeout(() => {
