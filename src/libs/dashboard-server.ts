@@ -241,7 +241,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     // Resolve path: strip query string
     const cleanPath = url.split('?')[0];
     // Try exact file first, fall back to SPA index.html
-    const distDir = join(__dirname, '..', '..', '..', 'dashboard', 'dist');
+    const distDir = join(__dirname, '..', '..', 'dashboard', 'dist');
     const tryPaths = [
       join(distDir, cleanPath === '/' ? 'index.html' : cleanPath),
       join(distDir, 'index.html'), // SPA fallback
@@ -439,6 +439,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 
 export function startLocalServer(port = 4000): Promise<string> {
   return new Promise((resolve, reject) => {
+    const distDir = join(__dirname, '..', '..', 'dashboard', 'dist');
+    console.log(`📂 Dashboard dist → ${distDir} (exists: ${existsSync(distDir)})`);
     const server = createServer((req, res) => {
       handleRequest(req, res).catch((e) => {
         console.error('Dashboard handler error:', e);
