@@ -1,30 +1,23 @@
-import { exec, spawn, ChildProcess } from 'child_process';
+import { exec, spawn } from 'child_process';
 import util from 'util';
+import crypto from 'crypto';
 
 const execAsync = util.promisify(exec);
 
-let terminalProcess: ChildProcess | null = null;
-let cloudflareUrl = '';
-let tunnelProcess: ChildProcess | null = null;
-let isTerminalRunning = false;
+let nextPort = 8080;
 
-export async function startTerminal(): Promise<{ url?: string; error?: string }> {
-  if (isTerminalRunning && cloudflareUrl) {
-    return { url: cloudflareUrl };
-  }
-
-  isTerminalRunning = true;
-
+export async function startTerminal(): Promise<{ url?: string; username?: string; password?: string; error?: string }> {
   try {
-    console.log('🚀 Setting up Terminal User and dependencies...');
-    // Create devuser if it doesn't exist
-    try {
-      await execAsync('id -u devuser');
-    } catch {
-      await execAsync('sudo useradd -m -s /bin/bash devuser');
-      await execAsync('echo "devuser:devpassword" | sudo chpasswd');
-      await execAsync('sudo usermod -aG sudo devuser');
-    }
+    const port = nextPort++;
+    const username = `dev_${crypto.randomBytes(3).toString('hex')}`;
+    const password = crypto.randomBytes(6).toString('hex');
+
+    console.log(`🚀 Setting up Terminal User ${username} on port ${port}...`);
+
+    // Create the random user
+    await execAsync(`sudo useradd -m -s /bin/bash ${username}`);
+    await execAsync(`echo "${username}:${password}" | sudo chpasswd`);
+    await execAsync(`sudo usermod -aG sudo ${username}`);
 
     // Install ttyd if not present
     try {
@@ -33,55 +26,43 @@ export async function startTerminal(): Promise<{ url?: string; error?: string }>
       await execAsync('sudo apt-get update && sudo apt-get install -y ttyd');
     }
 
-    // Start ttyd
-    if (terminalProcess) {
-      terminalProcess.kill();
-    }
-    
-    console.log('🚀 Starting ttyd...');
-    terminalProcess = spawn('sudo', ['ttyd', '-W', '-p', '8080', 'login']);
+    console.log(`🚀 Starting ttyd for ${username} on port ${port}...`);
+    const terminalProcess = spawn('sudo', ['ttyd', '-W', '-p', port.toString(), 'login']);
     
     terminalProcess.on('error', (err) => {
-      console.error('❌ ttyd spawn error:', err);
+      console.error(`❌ ttyd spawn error for ${username}:`, err);
     });
 
-    // Start Cloudflare tunnel for port 8080
-    if (tunnelProcess) {
-      tunnelProcess.kill();
-    }
-    
-    console.log('🚀 Starting Cloudflare Tunnel for Terminal...');
-    tunnelProcess = spawn('cloudflared', ['tunnel', '--url', 'http://localhost:8080']);
+    console.log(`🚀 Starting Cloudflare Tunnel for port ${port}...`);
+    const tunnelProcess = spawn('cloudflared', ['tunnel', '--url', `http://localhost:${port}`]);
     
     return new Promise((resolve) => {
-      tunnelProcess!.stderr?.on('data', (data) => {
+      let cloudflareUrl = '';
+
+      tunnelProcess.stderr?.on('data', (data) => {
         const output = data.toString();
         const match = output.match(/https:\/\/[-0-9a-z]*\.trycloudflare\.com/);
         if (match && !cloudflareUrl) {
           cloudflareUrl = match[0];
-          console.log(`✅ Terminal Cloudflare Tunnel URL: ${cloudflareUrl} - Waiting 5 seconds for DNS propagation...`);
+          console.log(`✅ Terminal Cloudflare Tunnel URL for ${username}: ${cloudflareUrl} - Waiting 5 seconds...`);
           setTimeout(() => {
-            resolve({ url: cloudflareUrl });
+            resolve({ url: cloudflareUrl, username, password });
           }, 5000);
         }
       });
 
-      tunnelProcess!.on('close', (code) => {
-        console.log(`⚠️ Terminal Cloudflare Tunnel exited with code ${code}`);
-        cloudflareUrl = '';
-        isTerminalRunning = false;
+      tunnelProcess.on('close', (code) => {
+        console.log(`⚠️ Terminal Cloudflare Tunnel for ${username} exited with code ${code}`);
       });
 
       setTimeout(() => {
         if (!cloudflareUrl) {
-          isTerminalRunning = false;
           resolve({ error: 'Timed out waiting for Cloudflare Tunnel URL.' });
         }
       }, 15000);
     });
 
   } catch (error) {
-    isTerminalRunning = false;
     const errMsg = error instanceof Error ? error.message : String(error);
     return { error: `Failed to set up terminal: ${errMsg}` };
   }

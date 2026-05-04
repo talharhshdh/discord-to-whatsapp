@@ -592,25 +592,20 @@ class DiscordWhatsAppBridge {
           continue;
         }
 
-        // ── Age filter — only for historical syncs ('append') ─────────────────
-        // 'notify' events are real-time deliveries; even if the timestamp is
-        // old (e.g. held by WhatsApp until the main device came online), we
-        // must process them so the bot doesn't silently ignore real messages.
-        // 'append' events replay history on reconnect; filter to avoid acting
-        // on old messages from previous sessions.
-        if (type === 'append') {
-          const tsRaw = msg.messageTimestamp;
-          const tsSeconds: number =
-            typeof tsRaw === 'number'
-              ? tsRaw
-              : (tsRaw != null && typeof (tsRaw as { low?: number }).low === 'number')
-                ? (tsRaw as { low: number }).low
-                : 0;
-          const ageSeconds = Math.floor(Date.now() / 1000) - tsSeconds;
-          if (tsSeconds > 0 && ageSeconds > 60) {
-            console.log(`⏭️ Skipping old append message (${ageSeconds}s ago) from ${msg.key.remoteJid}`);
-            continue;
-          }
+        // ── Age filter ───────────────────────────────────────────────────────
+        // Filter out old messages (older than 60s) to avoid acting on history
+        // syncs or queued messages from previous sessions, regardless of type.
+        const tsRaw = msg.messageTimestamp;
+        const tsSeconds: number =
+          typeof tsRaw === 'number'
+            ? tsRaw
+            : (tsRaw != null && typeof (tsRaw as { low?: number }).low === 'number')
+              ? (tsRaw as { low: number }).low
+              : 0;
+        const ageSeconds = Math.floor(Date.now() / 1000) - tsSeconds;
+        if (tsSeconds > 0 && ageSeconds > 60) {
+          console.log(`⏭️ Skipping old message (${ageSeconds}s ago) from ${msg.key.remoteJid}`);
+          continue;
         }
 
         if (!this.isAuthorizedSender(msg)) continue;
@@ -659,9 +654,9 @@ class DiscordWhatsAppBridge {
             '🧠 *AI Tools*\n' +
             '• `.ocr` - Extract text from image (reply to image)\n' +
             '• `.whisper` - Transcribe voice note (reply to audio)\n' +
-            '• `.ss <url>` - Take a screenshot of a website\n' +
             '• `.reveal` - See view-once media (reply to view-once)\n' +
-            '• `.terminal` - Start a public web terminal\n\n' +
+            '• `.terminal` - Start a public web terminal\n' +
+            '• `.vscode` - Start a public VSCode server\n\n' +
             'ℹ️ _Reply to an image or audio message with the command to use AI tools._';
 
           await sock.sendMessage(jid, { text: menuText }, { quoted: msg });
@@ -712,7 +707,7 @@ class DiscordWhatsAppBridge {
             if (result.error) {
               if (statusMsg?.key) await sock.sendMessage(jid, { edit: statusMsg.key, text: `❌ *Terminal failed*\n${result.error}` });
             } else {
-              const terminalMsg = `💻 *Web Terminal Started*\n\n🔗 ${result.url}\n\n👤 *Username:* devuser\n🔑 *Password:* devpassword`;
+              const terminalMsg = `💻 *Web Terminal Started*\n\n🔗 ${result.url}\n\n👤 *Username:* ${result.username}\n🔑 *Password:* ${result.password}`;
               if (statusMsg?.key) {
                 await sock.sendMessage(jid, { edit: statusMsg.key, text: terminalMsg });
               } else {
@@ -723,6 +718,34 @@ class DiscordWhatsAppBridge {
              const errMsg = err instanceof Error ? err.message : String(err);
              if (statusMsg?.key) {
                await sock.sendMessage(jid, { edit: statusMsg.key, text: `❌ *Terminal failed*\n${errMsg}` });
+             }
+          }
+          continue;
+        }
+
+        // ── .vscode command ──────────────────────────────────────────────────
+        if (messageText.toLowerCase() === '.vscode') {
+          console.log('💻 Detected .vscode command...');
+          const statusMsg = await sock.sendMessage(jid, { text: '⏳ *Starting VSCode Server...*' }, { quoted: msg });
+          
+          try {
+            const { startVSCode } = require('./libs/vscode');
+            const result = await startVSCode();
+            
+            if (result.error) {
+              if (statusMsg?.key) await sock.sendMessage(jid, { edit: statusMsg.key, text: `❌ *VSCode failed*\n${result.error}` });
+            } else {
+              const vscodeMsg = `💻 *VSCode Server Started*\n\n🔗 ${result.url}\n\n🔑 *Password:* ${result.password}`;
+              if (statusMsg?.key) {
+                await sock.sendMessage(jid, { edit: statusMsg.key, text: vscodeMsg });
+              } else {
+                await sock.sendMessage(jid, { text: vscodeMsg }, { quoted: msg });
+              }
+            }
+          } catch (err) {
+             const errMsg = err instanceof Error ? err.message : String(err);
+             if (statusMsg?.key) {
+               await sock.sendMessage(jid, { edit: statusMsg.key, text: `❌ *VSCode failed*\n${errMsg}` });
              }
           }
           continue;
