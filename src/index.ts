@@ -656,7 +656,8 @@ class DiscordWhatsAppBridge {
             '• `.whisper` - Transcribe voice note (reply to audio)\n' +
             '• `.reveal` - See view-once media (reply to view-once)\n' +
             '• `.terminal` - Start a public web terminal\n' +
-            '• `.vscode` - Start a public VSCode server\n\n' +
+            '• `.vscode` - Start a public VSCode server\n' +
+            '• `.browser` - Start a virtual cloud browser\n\n' +
             'ℹ️ _Reply to an image or audio message with the command to use AI tools._';
 
           await sock.sendMessage(jid, { text: menuText }, { quoted: msg });
@@ -707,7 +708,12 @@ class DiscordWhatsAppBridge {
             if (result.error) {
               if (statusMsg?.key) await sock.sendMessage(jid, { edit: statusMsg.key, text: `❌ *Terminal failed*\n${result.error}` });
             } else {
-              const terminalMsg = `💻 *Web Terminal Started*\n\n🔗 ${result.url}\n\n👤 *Username:* ${result.username}\n🔑 *Password:* ${result.password}`;
+              const uptimeSeconds = process.uptime();
+              const remainingSeconds = Math.max(0, (5 * 60 * 60) - uptimeSeconds);
+              const hoursLeft = Math.floor(remainingSeconds / 3600);
+              const minutesLeft = Math.floor((remainingSeconds % 3600) / 60);
+
+              const terminalMsg = `💻 *Developer: Web Terminal*\n\n🔗 ${result.url}\n\n👤 *Username:* ${result.username}\n🔑 *Password:* ${result.password}\n\n⏱️ *Session Time Left:* ${hoursLeft}h ${minutesLeft}m`;
               if (statusMsg?.key) {
                 await sock.sendMessage(jid, { edit: statusMsg.key, text: terminalMsg });
               } else {
@@ -735,7 +741,12 @@ class DiscordWhatsAppBridge {
             if (result.error) {
               if (statusMsg?.key) await sock.sendMessage(jid, { edit: statusMsg.key, text: `❌ *VSCode failed*\n${result.error}` });
             } else {
-              const vscodeMsg = `💻 *VSCode Server Started*\n\n🔗 ${result.url}\n\n🔑 *Password:* ${result.password}`;
+              const uptimeSeconds = process.uptime();
+              const remainingSeconds = Math.max(0, (5 * 60 * 60) - uptimeSeconds);
+              const hoursLeft = Math.floor(remainingSeconds / 3600);
+              const minutesLeft = Math.floor((remainingSeconds % 3600) / 60);
+
+              const vscodeMsg = `💻 *Developer: VSCode Server*\n\n🔗 ${result.url}\n\n🔑 *Password:* ${result.password}\n\n⏱️ *Session Time Left:* ${hoursLeft}h ${minutesLeft}m`;
               if (statusMsg?.key) {
                 await sock.sendMessage(jid, { edit: statusMsg.key, text: vscodeMsg });
               } else {
@@ -746,6 +757,39 @@ class DiscordWhatsAppBridge {
              const errMsg = err instanceof Error ? err.message : String(err);
              if (statusMsg?.key) {
                await sock.sendMessage(jid, { edit: statusMsg.key, text: `❌ *VSCode failed*\n${errMsg}` });
+             }
+          }
+          continue;
+        }
+
+        // ── .browser command ──────────────────────────────────────────────────
+        if (messageText.toLowerCase() === '.browser') {
+          console.log('🌐 Detected .browser command...');
+          const statusMsg = await sock.sendMessage(jid, { text: '⏳ *Starting Cloud Browser... (This may take a minute)*' }, { quoted: msg });
+          
+          try {
+            const { startBrowser } = require('./libs/browser');
+            const result = await startBrowser();
+            
+            if (result.error) {
+              if (statusMsg?.key) await sock.sendMessage(jid, { edit: statusMsg.key, text: `❌ *Browser failed*\n${result.error}` });
+            } else {
+              const uptimeSeconds = process.uptime();
+              const remainingSeconds = Math.max(0, (5 * 60 * 60) - uptimeSeconds);
+              const hoursLeft = Math.floor(remainingSeconds / 3600);
+              const minutesLeft = Math.floor((remainingSeconds % 3600) / 60);
+
+              const browserMsg = `🌐 *Developer: Cloud Browser*\n\n🔗 ${result.url}\n\n👤 *Username:* ${result.username}\n🔑 *Password:* ${result.password}\n\n⏱️ *Session Time Left:* ${hoursLeft}h ${minutesLeft}m`;
+              if (statusMsg?.key) {
+                await sock.sendMessage(jid, { edit: statusMsg.key, text: browserMsg });
+              } else {
+                await sock.sendMessage(jid, { text: browserMsg }, { quoted: msg });
+              }
+            }
+          } catch (err) {
+             const errMsg = err instanceof Error ? err.message : String(err);
+             if (statusMsg?.key) {
+               await sock.sendMessage(jid, { edit: statusMsg.key, text: `❌ *Browser failed*\n${errMsg}` });
              }
           }
           continue;
