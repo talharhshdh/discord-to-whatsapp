@@ -117,6 +117,33 @@ async def transcribe_audio(file: UploadFile = File(...)):
         print(f"Transcription Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/screenshot")
+async def take_screenshot(req: FetchRequest):
+    try:
+        with SB(uc=True, headless=False) as sb:
+            sb.uc_open_with_reconnect(req.url, 5)
+            try:
+                sb.uc_gui_click_captcha()
+            except Exception:
+                pass
+            sb.sleep(5) # Wait for page to load
+            
+            # Full page screenshot
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
+                sb.save_screenshot(tmp.name)
+                tmp_path = tmp.name
+
+            try:
+                with open(tmp_path, "rb") as f:
+                    content = f.read()
+                return Response(content=content, media_type="image/png")
+            finally:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+    except Exception as e:
+        print(f"Screenshot Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/health")
 def health():
     return {"status": "ok"}

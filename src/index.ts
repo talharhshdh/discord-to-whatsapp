@@ -513,6 +513,31 @@ class DiscordWhatsAppBridge {
   }
 
   /**
+   * Calls the local Python API to take a screenshot of a URL.
+   */
+  private async takeScreenshot(url: string): Promise<Buffer> {
+    try {
+      console.log(`🤖 Sending URL to Python API for screenshot: ${url}`);
+      const response = await fetch('http://127.0.0.1:8000/screenshot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Python API responded with ${response.status}`);
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      console.log('✅ Screenshot captured successfully!');
+      return Buffer.from(arrayBuffer);
+    } catch (err) {
+      console.error('❌ Screenshot failed:', err);
+      throw err;
+    }
+  }
+
+  /**
    * Processes incoming WhatsApp messages.
    *
    * @param type - Baileys upsert type:
@@ -590,10 +615,33 @@ class DiscordWhatsAppBridge {
             '• `.sbg` - Remove background + sticker (reply to image)\n\n' +
             '🧠 *AI Tools*\n' +
             '• `.ocr` - Extract text from image (reply to image)\n' +
-            '• `.whisper` - Transcribe voice note (reply to audio)\n\n' +
+            '• `.whisper` - Transcribe voice note (reply to audio)\n' +
+            '• `.ss <url>` - Take a screenshot of a website\n\n' +
             'ℹ️ _Reply to an image or audio message with the command to use AI tools._';
 
           await sock.sendMessage(jid, { text: menuText }, { quoted: msg });
+          continue;
+        }
+
+        // ── .ss command ──────────────────────────────────────────────────────
+        if (messageText.toLowerCase().startsWith('.ss')) {
+          const url = messageText.slice('.ss'.length).trim();
+          if (!url) {
+            await sock.sendMessage(jid, { text: '🌐 *Screenshot*\n\nUsage: `.ss <url>`\nExample: `.ss https://google.com`' });
+            continue;
+          }
+
+          const statusMsg = await sock.sendMessage(jid, { text: `📸 *Capturing screenshot of:* ${url}...` });
+          try {
+            const buffer = await this.takeScreenshot(url);
+            await sock.sendMessage(jid, { image: buffer, caption: `📸 *Screenshot:* ${url}` }, { quoted: msg });
+            if (statusMsg?.key) await sock.sendMessage(jid, { delete: statusMsg.key });
+          } catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            if (statusMsg?.key) {
+              await sock.sendMessage(jid, { edit: statusMsg.key, text: `❌ *Screenshot failed*\n${errMsg}` });
+            }
+          }
           continue;
         }
 
