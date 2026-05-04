@@ -187,7 +187,7 @@ class DiscordWhatsAppBridge {
         auth: state,
         printQRInTerminal: false,
         logger: P({ level: 'silent' }),
-        browser: ['Discord Bridge', 'Chrome', '1.0.0'],
+        browser: ['iOS', 'Safari', '1.0.0'],
         defaultQueryTimeoutMs: 60000,
         syncFullHistory: false,
         markOnlineOnConnect: true,
@@ -601,10 +601,11 @@ class DiscordWhatsAppBridge {
 
         const jid = msg.key.remoteJid!;
         const sock = this.whatsappSocket!;
+        const quotedMessage = msg.message.extendedTextMessage?.contextInfo?.quotedMessage;
 
         // ── .menu / .help command ────────────────────────────────────────────
         if (['.menu', '.help'].includes(messageText.toLowerCase())) {
-          const menuText = 
+          const menuText =
             '🤖 *Discord-WhatsApp Bridge Menu*\n\n' +
             '🎥 *Movies & Shows*\n' +
             '• `.movie <title>` - Search and download movies\n\n' +
@@ -612,14 +613,71 @@ class DiscordWhatsAppBridge {
             '• Send any YouTube link for download options\n\n' +
             '🖼️ *Stickers*\n' +
             '• `.sticker` - Image to sticker (reply to image)\n' +
-            '• `.sbg` - Remove background + sticker (reply to image)\n\n' +
+            '• `.sbg` - Remove background + sticker (reply to image)\n' +
+            '• `.rbg` - Just remove background (reply to image)\n\n' +
             '🧠 *AI Tools*\n' +
             '• `.ocr` - Extract text from image (reply to image)\n' +
             '• `.whisper` - Transcribe voice note (reply to audio)\n' +
-            '• `.ss <url>` - Take a screenshot of a website\n\n' +
+            '• `.ss <url>` - Take a screenshot of a website\n' +
+            '• `.reveal` - See view-once media (reply to view-once)\n\n' +
             'ℹ️ _Reply to an image or audio message with the command to use AI tools._';
 
           await sock.sendMessage(jid, { text: menuText }, { quoted: msg });
+          continue;
+        }
+
+        // ── .reveal command ──────────────────────────────────────────────────
+        if (messageText.toLowerCase() === '.reveal') {
+          const voMsg = quotedMessage?.viewOnceMessageV2?.message || quotedMessage?.viewOnceMessage?.message || quotedMessage;
+          
+          if (voMsg?.imageMessage || voMsg?.videoMessage) {
+            console.log('👀 Detected .reveal command on view-once media...');
+            const statusMsg = await sock.sendMessage(jid, { text: '⏳ *Revealing view-once media...*' }, { quoted: msg });
+            
+            try {
+              const buffer = await downloadMediaMessage({ key: msg.key, message: voMsg }, 'buffer', {}, {
+                logger: P({ level: 'silent' }),
+                reuploadRequest: sock.updateMediaMessage,
+              });
+
+              if (voMsg.imageMessage) {
+                await sock.sendMessage(jid, { image: buffer as Buffer, caption: '👀 *Revealed View-Once Image*' }, { quoted: msg });
+              } else {
+                await sock.sendMessage(jid, { video: buffer as Buffer, caption: '👀 *Revealed View-Once Video*' }, { quoted: msg });
+              }
+              if (statusMsg?.key) await sock.sendMessage(jid, { delete: statusMsg.key });
+            } catch (err) {
+              const errMsg = err instanceof Error ? err.message : String(err);
+              if (statusMsg?.key) {
+                await sock.sendMessage(jid, { edit: statusMsg.key, text: `❌ *Reveal failed*\n${errMsg}` });
+              }
+            }
+          } else {
+            await sock.sendMessage(jid, { text: '❌ Reply to a *view-once* image or video with `.reveal`' }, { quoted: msg });
+          }
+          continue;
+        }
+
+        // ── .rbg command ─────────────────────────────────────────────────────
+        if (quotedMessage?.imageMessage && messageText.toLowerCase() === '.rbg') {
+          console.log('🖼️ Detected .rbg command on image reply...');
+          const statusMsg = await sock.sendMessage(jid, { text: '⏳ *Removing background...*' }, { quoted: msg });
+          
+          try {
+            const buffer = await downloadMediaMessage({ key: msg.key, message: { imageMessage: quotedMessage.imageMessage } }, 'buffer', {}, {
+              logger: P({ level: 'silent' }),
+              reuploadRequest: sock.updateMediaMessage,
+            });
+            
+            const rbBuffer = await this.removeBackground(buffer as Buffer);
+            await sock.sendMessage(jid, { image: rbBuffer, caption: '✨ *Background Removed*' }, { quoted: msg });
+            if (statusMsg?.key) await sock.sendMessage(jid, { delete: statusMsg.key });
+          } catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            if (statusMsg?.key) {
+              await sock.sendMessage(jid, { edit: statusMsg.key, text: `❌ *Background removal failed*\n${errMsg}` });
+            }
+          }
           continue;
         }
 
@@ -683,14 +741,13 @@ class DiscordWhatsAppBridge {
         }
 
         // ── .sticker command ────────────────────────────────────────────────
-        const quotedMessage = msg.message.extendedTextMessage?.contextInfo?.quotedMessage;
         const isStickerCmd = messageText.toLowerCase().startsWith('.sticker');
         const isSbgCmd = messageText.toLowerCase().startsWith('.sbg');
 
         if (quotedMessage?.imageMessage && (isStickerCmd || isSbgCmd)) {
           const wantBgRemoval = isSbgCmd || messageText.toLowerCase().includes('bg');
           console.log(`🖼️ Detected sticker command (bg removal: ${wantBgRemoval}) on image reply...`);
-          
+
           const quotedMsg: proto.IWebMessageInfo = {
             key: msg.key,
             message: { imageMessage: quotedMessage.imageMessage },
@@ -737,7 +794,7 @@ class DiscordWhatsAppBridge {
         if (audioMsg && messageText.toLowerCase() === '.whisper') {
           console.log('🎙️ Detected .whisper command, transcribing...');
           const statusMsg = await sock.sendMessage(jid, { text: '⏳ *Transcribing audio...*' }, { quoted: msg });
-          
+
           const quotedMsg: proto.IWebMessageInfo = {
             key: msg.key,
             message: { audioMessage: audioMsg },
@@ -747,7 +804,7 @@ class DiscordWhatsAppBridge {
             reuploadRequest: sock.updateMediaMessage,
           });
           const text = await this.transcribeAudio(buffer as Buffer);
-          
+
           if (statusMsg?.key) {
             await sock.sendMessage(jid, { edit: statusMsg.key, text: `🎙️ *Transcription:*\n\n${text}` });
           } else {
@@ -845,7 +902,7 @@ class DiscordWhatsAppBridge {
 
                 const { getCloudflareTunnelUrl } = require('./libs/cloudflared');
                 let vncUrl = await getCloudflareTunnelUrl();
-                
+
                 if (vncUrl) {
                   await sock.sendMessage(jid, { text: `🤖 *Download starting!*\n\nIf the automated bypass gets stuck on Cloudflare, please open this remote browser link and click the verify checkbox:\n🔗 ${vncUrl}/vnc.html` });
                 }
