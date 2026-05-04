@@ -39,7 +39,7 @@ export async function startTerminal(): Promise<{ url?: string; error?: string }>
     }
     
     console.log('🚀 Starting ttyd...');
-    terminalProcess = spawn('sudo', ['ttyd', '-p', '8080', 'login']);
+    terminalProcess = spawn('sudo', ['ttyd', '-W', '-p', '8080', 'login']);
     
     terminalProcess.on('error', (err) => {
       console.error('❌ ttyd spawn error:', err);
