@@ -45,6 +45,12 @@ jobs:
       - name: Build project
         run: npm run build
 
+      - name: Install & build dashboard
+        run: |
+          npm run dashboard:install
+          npm run dashboard:build
+          echo "✅ Dashboard built (served at same origin as API)"
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
