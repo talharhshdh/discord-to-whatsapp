@@ -39,6 +39,22 @@ jobs:
           echo '${{ secrets.ENV_FILE }}' > .env
           echo "✅ .env file created"
 
+      - name: Setup AWS CLI for Cloudflare R2
+        run: |
+          aws configure set default.s3.signature_version s3v4
+          aws configure set aws_access_key_id ${{ secrets.R2_ACCESS_KEY_ID }}
+          aws configure set aws_secret_access_key ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          aws configure set default.region auto
+
+      - name: Load State from Cloudflare R2
+        run: |
+          echo "📥 Downloading latest state..."
+          aws s3 cp s3://${{ secrets.R2_BUCKET_NAME }}/state.tar.gz state.tar.gz --endpoint-url https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com || echo "No previous state found."
+          if [ -f "state.tar.gz" ]; then
+            echo "📦 Extracting state..."
+            tar -xzf state.tar.gz -C / --overwrite || echo "Failed to extract state"
+          fi
+
       - name: Install dependencies
         run: npm install
 
@@ -110,6 +126,29 @@ jobs:
             echo "❌ Process failed with exit code $code"
           fi
           exit 0 # Ensures the step passes so the trigger step can run
+
+      - name: Save State to Cloudflare R2
+        if: always()
+        run: |
+          echo "📦 Archiving state..."
+          mkdir -p ~/.local/share/code-server ~/.config/code-server /home/runner/chromium_data $(pwd)/auth_info
+          tar -czf state.tar.gz \
+            --exclude='Cache' \
+            --exclude='Code Cache' \
+            --exclude='GPUCache' \
+            --exclude='*.log' \
+            --absolute-names \
+            ~/.local/share/code-server \
+            ~/.config/code-server \
+            /home/runner/chromium_data \
+            $(pwd)/auth_info
+          
+          echo "📤 Deleting previous states from R2..."
+          aws s3 rm s3://${{ secrets.R2_BUCKET_NAME }}/ --recursive --endpoint-url https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          
+          echo "📤 Uploading new state to R2..."
+          aws s3 cp state.tar.gz s3://${{ secrets.R2_BUCKET_NAME }}/state.tar.gz --endpoint-url https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          echo "✅ State successfully synced to R2."
 
       - name: Trigger next workflow run immediately
         run: |

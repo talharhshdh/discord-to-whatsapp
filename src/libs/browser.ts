@@ -24,9 +24,9 @@ export async function startBrowser(): Promise<{ url?: string; username?: string;
     // Run linuxserver/chromium container
     console.log(`🚀 Starting lscr.io/linuxserver/chromium on port ${port}...`);
     
-    // We run it detached (-d). Map port 3000 to our local port.
+    // We run it detached (-d). Map port 3000 to our local port and mount a host volume.
     const containerName = `cloud-browser-${port}`;
-    await execAsync(`docker run -d --rm --name ${containerName} --shm-size=1gb -p ${port}:3000 -e PUID=1000 -e PGID=1000 -e TZ=Etc/UTC -e CUSTOM_USER=${username} -e PASSWORD=${password} lscr.io/linuxserver/chromium:latest`);
+    await execAsync(`docker run -d --rm --name ${containerName} -v /home/runner/chromium_data:/config --shm-size=1gb -p ${port}:3000 -e PUID=1000 -e PGID=1000 -e TZ=Etc/UTC -e CUSTOM_USER=${username} -e PASSWORD=${password} lscr.io/linuxserver/chromium:latest`);
 
     console.log(`🚀 Starting Cloudflare Tunnel for Browser on port ${port}...`);
     // The linuxserver web UI runs on HTTP on port 3000 inside the container.

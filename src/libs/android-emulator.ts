@@ -148,10 +148,17 @@ async function startTunnel(port: number): Promise<string> {
   return new Promise((resolve, reject) => {
     let url = '';
     
+    console.log(`🌐 Starting Cloudflare tunnel for port ${port}...`);
     tunnelProcess = spawn('cloudflared', ['tunnel', '--url', `http://localhost:${port}`]);
+    
+    tunnelProcess.stdout?.on('data', (data) => {
+      console.log('[cloudflared-android]', data.toString().trim());
+    });
     
     tunnelProcess.stderr?.on('data', (data) => {
       const output = data.toString();
+      console.log('[cloudflared-android]', output.trim());
+      
       const match = output.match(/https:\/\/[-0-9a-z]*\.trycloudflare\.com/);
       if (match && !url) {
         url = match[0];
@@ -173,6 +180,7 @@ async function startTunnel(port: number): Promise<string> {
     // Timeout after 30 seconds
     setTimeout(() => {
       if (!url) {
+        console.error('❌ Tunnel creation timed out after 30s');
         reject(new Error('Tunnel creation timed out'));
       }
     }, 30000);
