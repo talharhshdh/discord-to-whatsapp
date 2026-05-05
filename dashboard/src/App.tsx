@@ -6,9 +6,11 @@ import MediaPanel from './components/MediaPanel';
 import YoutubePanel from './components/YoutubePanel';
 import MoviesPanel from './components/MoviesPanel';
 import URLsPanel from './components/URLsPanel';
+import AndroidPanel from './components/AndroidPanel';
 
 const NAV: { id: NavSection; label: string; icon: string }[] = [
   { id: 'sessions',  label: 'Dev Sessions',  icon: '🖥️' },
+  { id: 'android',   label: 'Android',       icon: '📱' },
   { id: 'ai-tools',  label: 'AI Tools',      icon: '🧠' },
   { id: 'media',     label: 'Media DL',      icon: '📥' },
   { id: 'youtube',   label: 'YouTube',        icon: '▶️' },
@@ -125,6 +127,7 @@ export default function App() {
               </div>
 
               {section === 'sessions' && <SessionsPanel />}
+              {section === 'android' && <AndroidPanel />}
               {section === 'ai-tools' && <AIToolsPanel />}
               {section === 'media' && <MediaPanel />}
               {section === 'youtube' && <YoutubePanel />}

@@ -1,0 +1,198 @@
+import React, { useState } from 'react';
+import { api } from '../api';
+
+export default function AndroidPanel() {
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<string>('');
+  const [status, setStatus] = useState<{
+    running: boolean;
+    uptime?: string;
+    deviceInfo?: string;
+    vncUrl?: string;
+  } | null>(null);
+
+  const startEmulator = async () => {
+    setLoading(true);
+    setResult('');
+    try {
+      // Note: This would require adding an API endpoint in dashboard-server.ts
+      // For now, show instructions to use WhatsApp command
+      setResult(
+        '📱 To start the Android emulator, send this command in WhatsApp:\n\n' +
+        '`.android start`\n\n' +
+        'The emulator will start in 2-3 minutes and will be accessible via the noVNC link.'
+      );
+    } catch (err: any) {
+      setResult(`❌ Error: ${err.message || String(err)}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const checkStatus = async () => {
+    setLoading(true);
+    setResult('');
+    try {
+      // Note: This would require adding an API endpoint
+      setResult(
+        '📱 To check emulator status, send this command in WhatsApp:\n\n' +
+        '`.android status`'
+      );
+    } catch (err: any) {
+      setResult(`❌ Error: ${err.message || String(err)}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const stopEmulator = async () => {
+    setLoading(true);
+    setResult('');
+    try {
+      setResult(
+        '📱 To stop the Android emulator, send this command in WhatsApp:\n\n' +
+        '`.android stop`'
+      );
+    } catch (err: any) {
+      setResult(`❌ Error: ${err.message || String(err)}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Info card */}
+      <div className="glass rounded-2xl p-5 border border-white/[0.07]">
+        <div className="flex items-start gap-3 mb-4">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center text-xl flex-shrink-0">
+            📱
+          </div>
+          <div className="flex-1">
+            <h3 className="font-semibold text-white mb-1">Android Emulator</h3>
+            <p className="text-xs text-white/40 leading-relaxed">
+              Run a full Android 13 device in the cloud with noVNC access. Perfect for testing apps, automation, or remote Android access.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+          <div className="bg-white/[0.03] rounded-lg p-3 border border-white/[0.05]">
+            <div className="text-white/40 mb-1">Android Version</div>
+            <div className="text-white font-medium">Android 13 (API 33)</div>
+          </div>
+          <div className="bg-white/[0.03] rounded-lg p-3 border border-white/[0.05]">
+            <div className="text-white/40 mb-1">Device Profile</div>
+            <div className="text-white font-medium">Google Pixel 5</div>
+          </div>
+          <div className="bg-white/[0.03] rounded-lg p-3 border border-white/[0.05]">
+            <div className="text-white/40 mb-1">Access Method</div>
+            <div className="text-white font-medium">noVNC (Browser)</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Control buttons */}
+      <div className="glass rounded-2xl p-5 border border-white/[0.07]">
+        <h4 className="text-sm font-semibold text-white mb-3">Emulator Controls</h4>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <button
+            onClick={startEmulator}
+            disabled={loading}
+            className="px-4 py-3 rounded-xl bg-green-500/10 border border-green-500/20 text-green-400 hover:bg-green-500/20 disabled:opacity-50 transition-all text-sm font-medium"
+          >
+            {loading ? '⏳ Loading...' : '▶️ Start Emulator'}
+          </button>
+
+          <button
+            onClick={checkStatus}
+            disabled={loading}
+            className="px-4 py-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 hover:bg-blue-500/20 disabled:opacity-50 transition-all text-sm font-medium"
+          >
+            {loading ? '⏳ Loading...' : '📊 Check Status'}
+          </button>
+
+          <button
+            onClick={stopEmulator}
+            disabled={loading}
+            className="px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 disabled:opacity-50 transition-all text-sm font-medium"
+          >
+            {loading ? '⏳ Loading...' : '⏹️ Stop Emulator'}
+          </button>
+        </div>
+      </div>
+
+      {/* WhatsApp Commands */}
+      <div className="glass rounded-2xl p-5 border border-white/[0.07]">
+        <h4 className="text-sm font-semibold text-white mb-3">📱 WhatsApp Commands</h4>
+        <div className="space-y-2 text-xs">
+          <div className="bg-white/[0.03] rounded-lg p-3 border border-white/[0.05] font-mono">
+            <div className="text-white/40 mb-1">Start emulator:</div>
+            <div className="text-teal-400">.android start</div>
+          </div>
+          <div className="bg-white/[0.03] rounded-lg p-3 border border-white/[0.05] font-mono">
+            <div className="text-white/40 mb-1">Check status:</div>
+            <div className="text-teal-400">.android status</div>
+          </div>
+          <div className="bg-white/[0.03] rounded-lg p-3 border border-white/[0.05] font-mono">
+            <div className="text-white/40 mb-1">Stop emulator:</div>
+            <div className="text-teal-400">.android stop</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Features */}
+      <div className="glass rounded-2xl p-5 border border-white/[0.07]">
+        <h4 className="text-sm font-semibold text-white mb-3">✨ Features</h4>
+        <ul className="space-y-2 text-xs text-white/60">
+          <li className="flex items-start gap-2">
+            <span className="text-green-400 mt-0.5">✓</span>
+            <span>Full Android 13 system with Google APIs</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span className="text-green-400 mt-0.5">✓</span>
+            <span>Hardware acceleration (KVM) for smooth performance</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span className="text-green-400 mt-0.5">✓</span>
+            <span>Screen mirroring via scrcpy to noVNC</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span className="text-green-400 mt-0.5">✓</span>
+            <span>Full touch and keyboard support in browser</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span className="text-green-400 mt-0.5">✓</span>
+            <span>ADB access for app installation and debugging</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span className="text-green-400 mt-0.5">✓</span>
+            <span>4GB RAM, 2 CPU cores allocated</span>
+          </li>
+        </ul>
+      </div>
+
+      {/* Result display */}
+      {result && (
+        <div className="glass rounded-2xl p-5 border border-white/[0.07]">
+          <h4 className="text-sm font-semibold text-white mb-3">Result</h4>
+          <pre className="text-xs text-white/70 whitespace-pre-wrap font-mono bg-black/20 rounded-lg p-3 border border-white/[0.05]">
+            {result}
+          </pre>
+        </div>
+      )}
+
+      {/* Usage tips */}
+      <div className="glass rounded-2xl p-5 border border-yellow-500/10">
+        <div className="flex items-start gap-3">
+          <span className="text-xl">💡</span>
+          <div className="flex-1 text-xs text-white/60 leading-relaxed">
+            <strong className="text-white/80">Startup time:</strong> The emulator takes 2-3 minutes to fully boot.
+            Once started, access it via the noVNC link (use <code className="text-teal-400">.url</code> command to get the link).
+            The emulator will remain active for the duration of your GitHub Actions session.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

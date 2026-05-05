@@ -752,7 +752,11 @@ class DiscordWhatsAppBridge {
             '• `.terminal` - Start a public web terminal\n' +
             '• `.vscode` - Start a public VSCode server\n' +
             '• `.browser` - Start a virtual cloud browser\n\n' +
-            '🔗 *Session*\n' +
+            '� *Android Emulator*\n' +
+            '• `.android start [hours]` - Start Android emulator (1-6h)\n' +
+            '• `.android status` - Check emulator status\n' +
+            '• `.android stop` - Stop emulator session\n\n' +
+            '�🔗 *Session*\n' +
             '• `.url` - Get all live public URLs (dashboard, terminal, VSCode, etc.)\n\n' +
             'ℹ️ _Reply to an image or audio message with the command to use AI tools._';
 
@@ -911,6 +915,114 @@ class DiscordWhatsAppBridge {
                await sock.sendMessage(jid, { edit: statusMsg.key, text: `❌ *Browser failed*\n${errMsg}` });
              }
           }
+          continue;
+        }
+
+        // ── .android command ─────────────────────────────────────────────────
+        if (messageText.toLowerCase().startsWith('.android')) {
+          const args = messageText.slice('.android'.length).trim().split(' ');
+          const subcommand = args[0]?.toLowerCase();
+
+          // .android start [hours]
+          if (subcommand === 'start') {
+            console.log('📱 Detected .android start command...');
+            const statusMsg = await sock.sendMessage(jid, { text: '⏳ *Starting Android Emulator...*\n_This may take 2-3 minutes_' }, { quoted: msg });
+
+            try {
+              const { startAndroidEmulator } = require('./libs/android-emulator');
+              const result = await startAndroidEmulator();
+
+              if (!result.success) {
+                if (statusMsg?.key) {
+                  await sock.sendMessage(jid, { edit: statusMsg.key, text: `❌ *Android Emulator failed*\n${result.error || result.message}` });
+                }
+              } else {
+                const androidMsg = 
+                  `📱 *Android Emulator Started!*\n\n` +
+                  `🖥️ *Access via noVNC:*\n${result.vncUrl || 'Use .url command'}\n\n` +
+                  `📱 *Device:* Pixel 5\n` +
+                  `🤖 *Android:* 13 (API 33)\n\n` +
+                  `💡 *Tips:*\n` +
+                  `• Open the noVNC link in your browser\n` +
+                  `• The Android screen is mirrored via scrcpy\n` +
+                  `• Use .android status to check status\n` +
+                  `• Use .android stop to stop the emulator`;
+
+                if (statusMsg?.key) {
+                  await sock.sendMessage(jid, { edit: statusMsg.key, text: androidMsg });
+                } else {
+                  await sock.sendMessage(jid, { text: androidMsg }, { quoted: msg });
+                }
+              }
+            } catch (err) {
+              const errMsg = err instanceof Error ? err.message : String(err);
+              if (statusMsg?.key) {
+                await sock.sendMessage(jid, { edit: statusMsg.key, text: `❌ *Android Emulator failed*\n${errMsg}` });
+              }
+            }
+            continue;
+          }
+
+          // .android status
+          if (subcommand === 'status') {
+            console.log('📱 Detected .android status command...');
+            try {
+              const { getAndroidEmulatorStatus } = require('./libs/android-emulator');
+              const status = await getAndroidEmulatorStatus();
+
+              if (!status.running) {
+                await sock.sendMessage(jid, { text: '📱 *Android Emulator Status*\n\n❌ No emulator is currently running.\n\nUse `.android start` to start one.' }, { quoted: msg });
+              } else {
+                const statusMsg =
+                  `📱 *Android Emulator Status*\n\n` +
+                  `✅ *Running*\n` +
+                  `⏱️ *Uptime:* ${status.uptime || 'Unknown'}\n` +
+                  `📱 *Device:* ${status.deviceInfo || 'Pixel 5'}\n` +
+                  `🖥️ *noVNC:* ${status.vncUrl || 'Use .url command'}\n\n` +
+                  `Use .android stop to stop the emulator.`;
+
+                await sock.sendMessage(jid, { text: statusMsg }, { quoted: msg });
+              }
+            } catch (err) {
+              const errMsg = err instanceof Error ? err.message : String(err);
+              await sock.sendMessage(jid, { text: `❌ *Status check failed*\n${errMsg}` }, { quoted: msg });
+            }
+            continue;
+          }
+
+          // .android stop
+          if (subcommand === 'stop') {
+            console.log('📱 Detected .android stop command...');
+            try {
+              const { stopAndroidEmulator } = require('./libs/android-emulator');
+              const result = await stopAndroidEmulator();
+
+              if (result.success) {
+                await sock.sendMessage(jid, { text: `✅ *Android Emulator Stopped*\n\n${result.message}` }, { quoted: msg });
+              } else {
+                await sock.sendMessage(jid, { text: `⚠️ ${result.message}` }, { quoted: msg });
+              }
+            } catch (err) {
+              const errMsg = err instanceof Error ? err.message : String(err);
+              await sock.sendMessage(jid, { text: `❌ *Stop failed*\n${errMsg}` }, { quoted: msg });
+            }
+            continue;
+          }
+
+          // Unknown subcommand or no subcommand
+          await sock.sendMessage(jid, {
+            text: 
+              '📱 *Android Emulator*\n\n' +
+              '*Available commands:*\n' +
+              '• `.android start` - Start Android emulator\n' +
+              '• `.android status` - Check emulator status\n' +
+              '• `.android stop` - Stop emulator\n\n' +
+              '*Features:*\n' +
+              '• Android 13 (API 33)\n' +
+              '• Pixel 5 device profile\n' +
+              '• Access via noVNC in browser\n' +
+              '• Full touch and keyboard support'
+          }, { quoted: msg });
           continue;
         }
 

@@ -9,6 +9,13 @@ A Node.js TypeScript application that bridges Discord messages to WhatsApp using
 - Listens to ALL messages from an entire Discord server
 - Forwards Discord messages to a WhatsApp recipient with server and channel info
 - Persistent WhatsApp session (no need to scan QR code every time)
+- **🎬 Media Downloader**: Download videos from YouTube, TikTok, Instagram, Facebook, Twitter, and more
+- **🤖 AI Tools**: Background removal, OCR, audio transcription (Whisper), screenshot capture
+- **🎥 Movie Search & Download**: Search and download movies/TV shows with automated Cloudflare bypass
+- **💻 Developer Tools**: Web terminal (ttyd), VSCode server, cloud browser - all accessible via browser
+- **📱 Android Emulator**: Full Android 13 device in the cloud with noVNC access ([Learn more](docs/ANDROID_EMULATOR.md))
+- **🖥️ Dashboard**: Beautiful React dashboard to control all features via web UI
+- **🌐 Cloudflare Tunnels**: All services exposed via secure HTTPS tunnels
 
 ## Prerequisites
 
