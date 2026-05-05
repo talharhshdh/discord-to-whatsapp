@@ -105,6 +105,9 @@ export async function startAndroidEmulator(): Promise<{
       throw new Error('Failed to create Cloudflare tunnel');
     }
 
+    // Append the correct path for noVNC
+    emulatorUrl = emulatorUrl + '/vnc.html';
+
     isEmulatorRunning = true;
     emulatorStartTime = new Date();
 
