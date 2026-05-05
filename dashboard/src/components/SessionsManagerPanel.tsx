@@ -9,6 +9,9 @@ interface Session {
   startedAt: string;
   metadata?: {
     targetUrl?: string;
+    port?: number;
+    containerName?: string;
+    cloudflaredUrl?: string;
   };
 }
 
@@ -86,22 +89,38 @@ export default function SessionsManagerPanel() {
   };
 
   const totalSessions = sessions.length + browsers.length + (android ? 1 : 0);
+  
+  // Group sessions by type
+  const customBrowserSessions = sessions.filter(s => s.type === 'custom-browser');
+  const terminalSessions = sessions.filter(s => s.type === 'terminal');
+  const vscodeSessions = sessions.filter(s => s.type === 'vscode');
+  const browserSessions = sessions.filter(s => s.type === 'browser');
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setResult('✅ Copied to clipboard!');
+    setTimeout(() => setResult(''), 2000);
+  };
 
   return (
     <div className="space-y-4">
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
         <div className="glass rounded-xl p-4 border border-white/[0.07]">
           <div className="text-white/40 text-xs mb-1">Total Sessions</div>
           <div className="text-2xl font-bold text-white">{totalSessions}</div>
         </div>
         <div className="glass rounded-xl p-4 border border-white/[0.07]">
-          <div className="text-white/40 text-xs mb-1">Custom Browsers</div>
-          <div className="text-2xl font-bold text-teal-400">{sessions.filter(s => s.type === 'custom-browser').length}</div>
+          <div className="text-white/40 text-xs mb-1">Terminals</div>
+          <div className="text-2xl font-bold text-purple-400">{terminalSessions.length}</div>
         </div>
         <div className="glass rounded-xl p-4 border border-white/[0.07]">
-          <div className="text-white/40 text-xs mb-1">General Browsers</div>
-          <div className="text-2xl font-bold text-blue-400">{browsers.length}</div>
+          <div className="text-white/40 text-xs mb-1">VSCode</div>
+          <div className="text-2xl font-bold text-blue-400">{vscodeSessions.length}</div>
+        </div>
+        <div className="glass rounded-xl p-4 border border-white/[0.07]">
+          <div className="text-white/40 text-xs mb-1">Browsers</div>
+          <div className="text-2xl font-bold text-teal-400">{customBrowserSessions.length + browsers.length}</div>
         </div>
         <div className="glass rounded-xl p-4 border border-white/[0.07]">
           <div className="text-white/40 text-xs mb-1">Android</div>
@@ -132,6 +151,119 @@ export default function SessionsManagerPanel() {
           Creates an isolated browser session that opens only this URL
         </p>
       </div>
+
+      {/* Terminal Sessions */}
+      {terminalSessions.length > 0 && (
+        <div className="glass rounded-2xl p-5 border border-white/[0.07]">
+          <h3 className="text-sm font-semibold text-white mb-3">💻 Terminal Sessions</h3>
+          <div className="space-y-2">
+            {terminalSessions.map((session) => (
+              <div key={session.id} className="bg-white/[0.03] rounded-lg p-3 border border-white/[0.05]">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0 space-y-2">
+                    <div className="text-white text-sm font-medium">Terminal Session</div>
+                    <div className="text-xs text-white/60 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-white/40">🔗 URL:</span>
+                        <button
+                          onClick={() => copyToClipboard(session.metadata?.cloudflaredUrl || session.url)}
+                          className="text-teal-400 hover:text-teal-300 truncate flex-1 text-left"
+                        >
+                          {session.metadata?.cloudflaredUrl || session.url}
+                        </button>
+                      </div>
+                      {session.username && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-white/40">👤 Username:</span>
+                          <button
+                            onClick={() => copyToClipboard(session.username!)}
+                            className="text-teal-400 hover:text-teal-300"
+                          >
+                            {session.username}
+                          </button>
+                        </div>
+                      )}
+                      {session.password && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-white/40">🔑 Password:</span>
+                          <button
+                            onClick={() => copyToClipboard(session.password!)}
+                            className="text-teal-400 hover:text-teal-300"
+                          >
+                            {session.password}
+                          </button>
+                        </div>
+                      )}
+                      {session.metadata?.port && (
+                        <div className="text-white/40">🔌 Port: {session.metadata.port}</div>
+                      )}
+                      <div className="text-white/40">⏱️ Started: {new Date(session.startedAt).toLocaleString()}</div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => stopSession(session.id, session.type)}
+                    disabled={loading}
+                    className="px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 disabled:opacity-50 transition-all text-xs"
+                  >
+                    Stop
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* VSCode Sessions */}
+      {vscodeSessions.length > 0 && (
+        <div className="glass rounded-2xl p-5 border border-white/[0.07]">
+          <h3 className="text-sm font-semibold text-white mb-3">💻 VSCode Sessions</h3>
+          <div className="space-y-2">
+            {vscodeSessions.map((session) => (
+              <div key={session.id} className="bg-white/[0.03] rounded-lg p-3 border border-white/[0.05]">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0 space-y-2">
+                    <div className="text-white text-sm font-medium">VSCode Server</div>
+                    <div className="text-xs text-white/60 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-white/40">🔗 URL:</span>
+                        <button
+                          onClick={() => copyToClipboard(session.metadata?.cloudflaredUrl || session.url)}
+                          className="text-blue-400 hover:text-blue-300 truncate flex-1 text-left"
+                        >
+                          {session.metadata?.cloudflaredUrl || session.url}
+                        </button>
+                      </div>
+                      {session.password && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-white/40">🔑 Password:</span>
+                          <button
+                            onClick={() => copyToClipboard(session.password!)}
+                            className="text-blue-400 hover:text-blue-300"
+                          >
+                            {session.password}
+                          </button>
+                        </div>
+                      )}
+                      {session.metadata?.port && (
+                        <div className="text-white/40">🔌 Port: {session.metadata.port}</div>
+                      )}
+                      <div className="text-white/40">⏱️ Started: {new Date(session.startedAt).toLocaleString()}</div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => stopSession(session.id, session.type)}
+                    disabled={loading}
+                    className="px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 disabled:opacity-50 transition-all text-xs"
+                  >
+                    Stop
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Custom Browser Sessions */}
       {sessions.filter(s => s.type === 'custom-browser').length > 0 && (

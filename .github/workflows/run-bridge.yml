@@ -5,7 +5,7 @@ on:
     branches: [main] # Restart bridge on every push to main
   workflow_dispatch: # Allows manual trigger
   schedule:
-    - cron: "0 */6 * * *" # Fallback every 6h in case the self-trigger fails
+    - cron: "0 */5 * * *" # Fallback every 6h in case the self-trigger fails
 
 concurrency:
   group: discord-whatsapp-bridge
@@ -139,6 +139,30 @@ jobs:
             --exclude='Code Cache' \
             --exclude='GPUCache' \
             --exclude='*.log' \
+            --exclude='*.sock' \
+            --exclude='*/proot-apps/*' \
+            --exclude='*/.cache/*' \
+            --exclude='*/.local/share/*' \
+            --exclude='*/.config/pulse/*' \
+            --exclude='*/.XDG/*' \
+            --exclude='*/ssl/cert.key' \
+            --exclude='*/.bash_history' \
+            --exclude='*/shadow' \
+            --exclude='*/shadow-' \
+            --exclude='*/gshadow' \
+            --exclude='*/gshadow-' \
+            --exclude='*/opasswd' \
+            --exclude='*/credstore*' \
+            --exclude='*/.pwd.lock' \
+            --exclude='*/lock' \
+            --exclude='*/Lock' \
+            --exclude='*/*.lock' \
+            --exclude='*/private' \
+            --exclude='*/btmp' \
+            --exclude='*/partial' \
+            --exclude='*/dbus-daemon-launch-helper' \
+            --warning=no-file-changed \
+            --ignore-failed-read \
             --absolute-names \
             ~/.local/share/code-server \
             ~/.config/code-server \

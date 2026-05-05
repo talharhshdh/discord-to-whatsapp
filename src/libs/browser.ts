@@ -156,6 +156,16 @@ async function startBrowserInstance(targetUrl?: string): Promise<{
               tunnelProcess,
               targetUrl,
             });
+            
+            // Update session with cloudflared URL if this is a custom browser
+            if (targetUrl) {
+              const sessions = sessionManager.getSessionsByType('custom-browser');
+              const session = sessions.find(s => s.metadata?.targetUrl === targetUrl);
+              if (session) {
+                sessionManager.updateSessionMetadata(session.id, { cloudflaredUrl: cloudflareUrl });
+              }
+            }
+            
             resolve({ url: cloudflareUrl, username, password });
           }, 5000);
         }

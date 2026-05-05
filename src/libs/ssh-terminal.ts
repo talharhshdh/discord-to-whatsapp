@@ -85,18 +85,28 @@ export async function startSSHTerminal(): Promise<{
     // Start Cloudflare tunnel for SSH
     console.log(`🌐 Starting Cloudflare tunnel for SSH...`);
     const tunnelProcess = spawn('cloudflared', [
-      'access', 'tcp',
-      '--hostname', 'ssh.example.com', // This will be overridden by quick tunnel
-      '--url', `localhost:${port}`
+      'tunnel',
+      '--url', `tcp://localhost:${port}`
     ]);
 
-    // For quick tunnel, we'll use a different approach
-    // Since SSH over Cloudflare Tunnel requires cloudflared on client side,
-    // we'll just expose the port and give instructions
+    let cloudflaredUrl = '';
+    
+    // Capture cloudflared URL from stderr
+    tunnelProcess.stderr?.on('data', (data) => {
+      const output = data.toString();
+      const match = output.match(/https:\/\/[-0-9a-z]*\.trycloudflare\.com/);
+      if (match && !cloudflaredUrl) {
+        cloudflaredUrl = match[0];
+        console.log(`✅ SSH Cloudflare Tunnel URL: ${cloudflaredUrl}`);
+        
+        // Update session with cloudflared URL
+        sessionManager.updateSessionMetadata(sessionId, { cloudflaredUrl });
+      }
+    });
 
     const instance: SSHTerminalInstance = {
       sessionId,
-      host: 'localhost', // Will be updated with tunnel URL
+      host: 'localhost',
       port,
       username,
       password,
@@ -117,6 +127,7 @@ export async function startSSHTerminal(): Promise<{
       metadata: {
         port,
         containerName,
+        cloudflaredUrl: cloudflaredUrl || undefined,
       },
     });
 
