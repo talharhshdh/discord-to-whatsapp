@@ -104,6 +104,24 @@ export default function SessionsManagerPanel() {
 
   return (
     <div className="space-y-4">
+      {/* Restored Sessions Alert */}
+      {sessions.length > 0 && (
+        <div className="glass rounded-2xl p-4 border border-teal-500/30 bg-teal-500/5">
+          <div className="flex items-start gap-3">
+            <div className="text-2xl">💾</div>
+            <div className="flex-1">
+              <div className="text-white font-medium text-sm mb-1">
+                Sessions Restored from Cloudflare R2
+              </div>
+              <div className="text-white/60 text-xs">
+                {sessions.length} session{sessions.length !== 1 ? 's' : ''} restored from previous workflow run. 
+                All credentials and Cloudflare tunnel URLs are preserved.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
         <div className="glass rounded-xl p-4 border border-white/[0.07]">
@@ -266,21 +284,50 @@ export default function SessionsManagerPanel() {
       )}
 
       {/* Custom Browser Sessions */}
-      {sessions.filter(s => s.type === 'custom-browser').length > 0 && (
+      {customBrowserSessions.length > 0 && (
         <div className="glass rounded-2xl p-5 border border-white/[0.07]">
           <h3 className="text-sm font-semibold text-white mb-3">🌐 Custom Browser Sessions</h3>
           <div className="space-y-2">
-            {sessions.filter(s => s.type === 'custom-browser').map((session) => (
+            {customBrowserSessions.map((session) => (
               <div key={session.id} className="bg-white/[0.03] rounded-lg p-3 border border-white/[0.05]">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-white text-sm font-medium mb-1 truncate">
+                  <div className="flex-1 min-w-0 space-y-2">
+                    <div className="text-white text-sm font-medium truncate">
                       {session.metadata?.targetUrl || 'Custom Browser'}
                     </div>
-                    <div className="text-xs text-white/40 space-y-1">
-                      <div className="truncate">🔗 {session.url}</div>
-                      <div>👤 {session.username} · 🔑 {session.password}</div>
-                      <div>⏱️ Started: {new Date(session.startedAt).toLocaleTimeString()}</div>
+                    <div className="text-xs text-white/60 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-white/40">🔗 URL:</span>
+                        <button
+                          onClick={() => copyToClipboard(session.metadata?.cloudflaredUrl || session.url)}
+                          className="text-teal-400 hover:text-teal-300 truncate flex-1 text-left"
+                        >
+                          {session.metadata?.cloudflaredUrl || session.url}
+                        </button>
+                      </div>
+                      {session.username && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-white/40">👤 Username:</span>
+                          <button
+                            onClick={() => copyToClipboard(session.username!)}
+                            className="text-teal-400 hover:text-teal-300"
+                          >
+                            {session.username}
+                          </button>
+                        </div>
+                      )}
+                      {session.password && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-white/40">🔑 Password:</span>
+                          <button
+                            onClick={() => copyToClipboard(session.password!)}
+                            className="text-teal-400 hover:text-teal-300"
+                          >
+                            {session.password}
+                          </button>
+                        </div>
+                      )}
+                      <div className="text-white/40">⏱️ Started: {new Date(session.startedAt).toLocaleString()}</div>
                     </div>
                   </div>
                   <button
