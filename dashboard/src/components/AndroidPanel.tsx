@@ -79,15 +79,15 @@ export default function AndroidPanel() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
           <div className="bg-white/[0.03] rounded-lg p-3 border border-white/[0.05]">
             <div className="text-white/40 mb-1">Android Version</div>
-            <div className="text-white font-medium">Android 13 (API 33)</div>
+            <div className="text-white font-medium">Android 13</div>
           </div>
           <div className="bg-white/[0.03] rounded-lg p-3 border border-white/[0.05]">
             <div className="text-white/40 mb-1">Device Profile</div>
-            <div className="text-white font-medium">Google Pixel 5</div>
+            <div className="text-white font-medium">Samsung Galaxy S10</div>
           </div>
           <div className="bg-white/[0.03] rounded-lg p-3 border border-white/[0.05]">
             <div className="text-white/40 mb-1">Access Method</div>
-            <div className="text-white font-medium">noVNC (Browser)</div>
+            <div className="text-white font-medium">Web UI (Docker)</div>
           </div>
         </div>
       </div>
@@ -147,15 +147,15 @@ export default function AndroidPanel() {
         <ul className="space-y-2 text-xs text-white/60">
           <li className="flex items-start gap-2">
             <span className="text-green-400 mt-0.5">✓</span>
-            <span>Full Android 13 system with Google APIs</span>
+            <span>Full Android 13 system in Docker container</span>
           </li>
           <li className="flex items-start gap-2">
             <span className="text-green-400 mt-0.5">✓</span>
-            <span>Hardware acceleration (KVM) for smooth performance</span>
+            <span>Web-based interface (no VNC client needed)</span>
           </li>
           <li className="flex items-start gap-2">
             <span className="text-green-400 mt-0.5">✓</span>
-            <span>Screen mirroring via scrcpy to noVNC</span>
+            <span>Samsung Galaxy S10 device profile</span>
           </li>
           <li className="flex items-start gap-2">
             <span className="text-green-400 mt-0.5">✓</span>
@@ -163,11 +163,11 @@ export default function AndroidPanel() {
           </li>
           <li className="flex items-start gap-2">
             <span className="text-green-400 mt-0.5">✓</span>
-            <span>ADB access for app installation and debugging</span>
+            <span>Lightweight and fast (Docker-based)</span>
           </li>
           <li className="flex items-start gap-2">
             <span className="text-green-400 mt-0.5">✓</span>
-            <span>4GB RAM, 2 CPU cores allocated</span>
+            <span>Exposed via Cloudflare tunnel (HTTPS)</span>
           </li>
         </ul>
       </div>
@@ -187,8 +187,8 @@ export default function AndroidPanel() {
         <div className="flex items-start gap-3">
           <span className="text-xl">💡</span>
           <div className="flex-1 text-xs text-white/60 leading-relaxed">
-            <strong className="text-white/80">Startup time:</strong> The emulator takes 2-3 minutes to fully boot.
-            Once started, access it via the noVNC link (use <code className="text-teal-400">.url</code> command to get the link).
+            <strong className="text-white/80">Startup time:</strong> The Docker container takes 30-60 seconds to start.
+            Once started, you'll get a direct web link to access the Android interface in your browser.
             The emulator will remain active for the duration of your GitHub Actions session.
           </div>
         </div>

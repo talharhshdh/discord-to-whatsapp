@@ -1,9 +1,9 @@
 /**
  * @file android-emulator.ts
- * @description Manages Android emulator running in the same GitHub Actions runner.
+ * @description Manages Docker-based Android emulator with web interface.
  * 
- * The emulator runs via scrcpy mirrored to the existing X11 display (DISPLAY=:99)
- * which is already exposed via noVNC + Cloudflare tunnel.
+ * Uses budtmo/docker-android for a lightweight Android emulator with built-in web UI.
+ * Exposes via Cloudflare tunnel on a dedicated port.
  */
 
 import { spawn, ChildProcess, exec } from 'child_process';
@@ -11,70 +11,22 @@ import { promisify } from 'util';
 
 const execAsync = promisify(exec);
 
-let emulatorProcess: ChildProcess | null = null;
-let scrcpyProcess: ChildProcess | null = null;
+let dockerProcess: ChildProcess | null = null;
+let tunnelProcess: ChildProcess | null = null;
 let isEmulatorRunning = false;
 let emulatorStartTime: Date | null = null;
+let emulatorUrl: string | null = null;
+
+const ANDROID_PORT = 6080; // Web UI port
+const CONTAINER_NAME = 'android-emulator';
 
 /**
- * Checks if Android SDK and emulator are available in the environment.
- */
-async function checkAndroidEnvironment(): Promise<{ available: boolean; error?: string }> {
-  try {
-    // Check if ANDROID_HOME is set
-    if (!process.env.ANDROID_HOME) {
-      return { available: false, error: 'ANDROID_HOME not set' };
-    }
-
-    // Check if emulator binary exists
-    await execAsync('which emulator');
-    await execAsync('which adb');
-    
-    return { available: true };
-  } catch (err) {
-    return { available: false, error: 'Android SDK not installed' };
-  }
-}
-
-/**
- * Creates an Android Virtual Device (AVD) if it doesn't exist.
- */
-async function ensureAVDExists(): Promise<void> {
-  try {
-    // Check if AVD already exists
-    const { stdout } = await execAsync('avdmanager list avd');
-    
-    if (stdout.includes('android_emulator')) {
-      console.log('✅ AVD "android_emulator" already exists');
-      return;
-    }
-
-    console.log('📱 Creating Android AVD...');
-    
-    // Create AVD with Pixel 5 profile, Android 13 (API 33)
-    await execAsync(
-      'echo "no" | avdmanager create avd ' +
-      '--force ' +
-      '--name android_emulator ' +
-      '--package "system-images;android-33;google_apis;x86_64" ' +
-      '--device "pixel_5" ' +
-      '--abi x86_64'
-    );
-    
-    console.log('✅ AVD created successfully');
-  } catch (err) {
-    throw new Error(`Failed to create AVD: ${err instanceof Error ? err.message : String(err)}`);
-  }
-}
-
-/**
- * Starts the Android emulator in the background.
- * The emulator will be visible via scrcpy on the existing X11 display.
+ * Starts the Docker Android emulator with web interface.
  */
 export async function startAndroidEmulator(): Promise<{
   success: boolean;
   message: string;
-  vncUrl?: string;
+  webUrl?: string;
   error?: string;
 }> {
   if (isEmulatorRunning) {
@@ -86,111 +38,86 @@ export async function startAndroidEmulator(): Promise<{
   }
 
   try {
-    // Check environment
-    const envCheck = await checkAndroidEnvironment();
-    if (!envCheck.available) {
-      return {
-        success: false,
-        message: 'Android SDK not available',
-        error: envCheck.error || 'Android SDK not installed in this environment',
-      };
+    console.log('🚀 Starting Docker Android emulator...');
+
+    // Pull the image if not exists
+    console.log('📦 Pulling Docker image (if needed)...');
+    await execAsync('docker pull budtmo/docker-android:emulator_13.0', { timeout: 120000 });
+
+    // Start the container
+    console.log('� Starting Android container...');
+    dockerProcess = spawn('docker', [
+      'run',
+      '--rm',
+      '--name', CONTAINER_NAME,
+      '--privileged',
+      '-p', `${ANDROID_PORT}:6080`,
+      '-e', 'EMULATOR_DEVICE=Samsung Galaxy S10',
+      '-e', 'WEB_VNC=true',
+      'budtmo/docker-android:emulator_13.0'
+    ], {
+      detached: false,
+    });
+
+    dockerProcess.stdout?.on('data', (data) => {
+      console.log('[android-docker]', data.toString().trim());
+    });
+
+    dockerProcess.stderr?.on('data', (data) => {
+      console.log('[android-docker]', data.toString().trim());
+    });
+
+    dockerProcess.on('error', (err) => {
+      console.error('❌ Docker process error:', err);
+      isEmulatorRunning = false;
+    });
+
+    dockerProcess.on('exit', (code) => {
+      console.log(`⚠️ Android container exited with code ${code}`);
+      isEmulatorRunning = false;
+      dockerProcess = null;
+      emulatorUrl = null;
+    });
+
+    // Wait for container to be ready
+    console.log('⏳ Waiting for Android to boot (30-60 seconds)...');
+    await new Promise(resolve => setTimeout(resolve, 10000)); // Initial wait
+
+    // Check if container is running
+    for (let i = 0; i < 12; i++) {
+      try {
+        const { stdout } = await execAsync(`docker ps --filter name=${CONTAINER_NAME} --format "{{.Status}}"`);
+        if (stdout.includes('Up')) {
+          console.log('✅ Container is running');
+          break;
+        }
+      } catch (err) {
+        // Continue waiting
+      }
+      await new Promise(resolve => setTimeout(resolve, 5000));
     }
 
-    // Ensure AVD exists
-    await ensureAVDExists();
+    // Start Cloudflare tunnel for the web UI
+    console.log('🌐 Starting Cloudflare tunnel for Android web UI...');
+    emulatorUrl = await startTunnel(ANDROID_PORT);
 
-    console.log('🚀 Starting Android emulator...');
-
-    // Start emulator in background
-    const androidHome = process.env.ANDROID_HOME;
-    emulatorProcess = spawn(
-      `${androidHome}/emulator/emulator`,
-      [
-        '-avd', 'android_emulator',
-        '-no-snapshot-save',
-        '-no-audio',
-        '-gpu', 'swiftshader_indirect',
-        '-camera-back', 'none',
-        '-camera-front', 'none',
-        '-memory', '4096',
-        '-cores', '2',
-        '-accel', 'on',
-      ],
-      {
-        env: { ...process.env, DISPLAY: ':99' },
-        detached: false,
-      }
-    );
-
-    emulatorProcess.stdout?.on('data', (data) => {
-      console.log('[emulator]', data.toString().trim());
-    });
-
-    emulatorProcess.stderr?.on('data', (data) => {
-      console.log('[emulator]', data.toString().trim());
-    });
-
-    emulatorProcess.on('error', (err) => {
-      console.error('❌ Emulator process error:', err);
-      isEmulatorRunning = false;
-    });
-
-    emulatorProcess.on('exit', (code) => {
-      console.log(`⚠️ Emulator exited with code ${code}`);
-      isEmulatorRunning = false;
-      emulatorProcess = null;
-      scrcpyProcess = null;
-    });
-
-    // Wait for emulator to boot (this can take 1-2 minutes)
-    console.log('⏳ Waiting for emulator to boot (this may take 1-2 minutes)...');
-    
-    await execAsync('adb wait-for-device shell \'while [[ -z $(getprop sys.boot_completed) ]]; do sleep 1; done\'', {
-      timeout: 180000, // 3 minutes timeout
-    });
-
-    console.log('✅ Android emulator booted successfully!');
-
-    // Start scrcpy to mirror the Android screen to X11 display
-    console.log('🖥️ Starting scrcpy screen mirroring...');
-    
-    scrcpyProcess = spawn(
-      'scrcpy',
-      [
-        '--max-size', '1280',
-        '--window-title', 'Android Emulator',
-        '--window-x', '50',
-        '--window-y', '50',
-      ],
-      {
-        env: { ...process.env, DISPLAY: ':99' },
-        detached: false,
-      }
-    );
-
-    scrcpyProcess.stdout?.on('data', (data) => {
-      console.log('[scrcpy]', data.toString().trim());
-    });
-
-    scrcpyProcess.stderr?.on('data', (data) => {
-      console.log('[scrcpy]', data.toString().trim());
-    });
-
-    scrcpyProcess.on('error', (err) => {
-      console.error('❌ scrcpy error:', err);
-    });
+    if (!emulatorUrl) {
+      throw new Error('Failed to create Cloudflare tunnel');
+    }
 
     isEmulatorRunning = true;
     emulatorStartTime = new Date();
 
-    // Get the noVNC URL (already exposed via Cloudflare tunnel)
-    const { getCloudflareTunnelUrl } = require('./cloudflared');
-    const vncUrl = await getCloudflareTunnelUrl(6080);
+    // Register in dashboard
+    const { registerUrl } = require('./dashboard-server');
+    registerUrl('android', '📱 Android Emulator', emulatorUrl);
+
+    console.log(`✅ Android emulator ready at: ${emulatorUrl}`);
 
     return {
       success: true,
       message: 'Android emulator started successfully',
-      vncUrl: vncUrl || 'Check .url command for noVNC link',
+      webUrl: emulatorUrl,
     };
 
   } catch (err) {
@@ -198,15 +125,7 @@ export async function startAndroidEmulator(): Promise<{
     console.error('❌ Failed to start Android emulator:', errMsg);
     
     // Cleanup on failure
-    if (emulatorProcess) {
-      emulatorProcess.kill();
-      emulatorProcess = null;
-    }
-    if (scrcpyProcess) {
-      scrcpyProcess.kill();
-      scrcpyProcess = null;
-    }
-    isEmulatorRunning = false;
+    await cleanupDocker();
 
     return {
       success: false,
@@ -217,24 +136,61 @@ export async function startAndroidEmulator(): Promise<{
 }
 
 /**
+ * Starts a Cloudflare tunnel for the given port.
+ */
+async function startTunnel(port: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let url = '';
+    
+    tunnelProcess = spawn('cloudflared', ['tunnel', '--url', `http://localhost:${port}`]);
+    
+    tunnelProcess.stderr?.on('data', (data) => {
+      const output = data.toString();
+      const match = output.match(/https:\/\/[-0-9a-z]*\.trycloudflare\.com/);
+      if (match && !url) {
+        url = match[0];
+        console.log(`✅ Cloudflare tunnel URL: ${url}`);
+        resolve(url);
+      }
+    });
+    
+    tunnelProcess.on('error', (err) => {
+      console.error('❌ Cloudflare tunnel error:', err);
+      reject(err);
+    });
+
+    tunnelProcess.on('close', (code) => {
+      console.log(`⚠️ Cloudflare tunnel exited with code ${code}`);
+      emulatorUrl = null;
+    });
+    
+    // Timeout after 30 seconds
+    setTimeout(() => {
+      if (!url) {
+        reject(new Error('Tunnel creation timed out'));
+      }
+    }, 30000);
+  });
+}
+
+/**
  * Gets the current Android emulator status.
  */
 export async function getAndroidEmulatorStatus(): Promise<{
   running: boolean;
   uptime?: string;
   deviceInfo?: string;
-  vncUrl?: string;
+  webUrl?: string;
 }> {
   if (!isEmulatorRunning) {
     return { running: false };
   }
 
   try {
-    // Check if emulator is still connected
-    const { stdout } = await execAsync('adb devices');
-    const hasEmulator = stdout.includes('emulator-');
-
-    if (!hasEmulator) {
+    // Check if container is still running
+    const { stdout } = await execAsync(`docker ps --filter name=${CONTAINER_NAME} --format "{{.Status}}"`);
+    
+    if (!stdout.includes('Up')) {
       isEmulatorRunning = false;
       return { running: false };
     }
@@ -249,25 +205,16 @@ export async function getAndroidEmulatorStatus(): Promise<{
       uptime = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
     }
 
-    // Get device info
-    const { stdout: androidVersion } = await execAsync('adb shell getprop ro.build.version.release');
-    const { stdout: deviceModel } = await execAsync('adb shell getprop ro.product.model');
-
-    const deviceInfo = `Android ${androidVersion.trim()} - ${deviceModel.trim()}`;
-
-    // Get noVNC URL
-    const { getCloudflareTunnelUrl } = require('./cloudflared');
-    const vncUrl = await getCloudflareTunnelUrl(6080);
-
     return {
       running: true,
       uptime,
-      deviceInfo,
-      vncUrl: vncUrl || undefined,
+      deviceInfo: 'Android 13 - Samsung Galaxy S10',
+      webUrl: emulatorUrl || undefined,
     };
 
   } catch (err) {
     console.error('Error getting emulator status:', err);
+    isEmulatorRunning = false;
     return { running: false };
   }
 }
@@ -289,27 +236,11 @@ export async function stopAndroidEmulator(): Promise<{
   try {
     console.log('🛑 Stopping Android emulator...');
 
-    // Kill scrcpy first
-    if (scrcpyProcess) {
-      scrcpyProcess.kill('SIGTERM');
-      scrcpyProcess = null;
-    }
-
-    // Kill emulator
-    if (emulatorProcess) {
-      emulatorProcess.kill('SIGTERM');
-      emulatorProcess = null;
-    }
-
-    // Also kill via adb
-    try {
-      await execAsync('adb emu kill');
-    } catch {
-      // Ignore errors
-    }
+    await cleanupDocker();
 
     isEmulatorRunning = false;
     emulatorStartTime = null;
+    emulatorUrl = null;
 
     console.log('✅ Android emulator stopped');
 
@@ -329,32 +260,25 @@ export async function stopAndroidEmulator(): Promise<{
 }
 
 /**
- * Installs an APK file on the running emulator.
+ * Cleanup Docker container and tunnel.
  */
-export async function installApk(apkPath: string): Promise<{
-  success: boolean;
-  message: string;
-}> {
-  if (!isEmulatorRunning) {
-    return {
-      success: false,
-      message: 'No Android emulator is running',
-    };
+async function cleanupDocker(): Promise<void> {
+  // Stop tunnel
+  if (tunnelProcess) {
+    tunnelProcess.kill('SIGTERM');
+    tunnelProcess = null;
   }
 
+  // Stop Docker container
   try {
-    console.log(`📦 Installing APK: ${apkPath}`);
-    await execAsync(`adb install -r "${apkPath}"`);
-    
-    return {
-      success: true,
-      message: 'APK installed successfully',
-    };
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err);
-    return {
-      success: false,
-      message: `Failed to install APK: ${errMsg}`,
-    };
+    await execAsync(`docker stop ${CONTAINER_NAME}`);
+  } catch {
+    // Container might already be stopped
+  }
+
+  // Kill docker process if still running
+  if (dockerProcess) {
+    dockerProcess.kill('SIGTERM');
+    dockerProcess = null;
   }
 }

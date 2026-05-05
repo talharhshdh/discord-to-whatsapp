@@ -939,12 +939,12 @@ class DiscordWhatsAppBridge {
               } else {
                 const androidMsg = 
                   `📱 *Android Emulator Started!*\n\n` +
-                  `🖥️ *Access via noVNC:*\n${result.vncUrl || 'Use .url command'}\n\n` +
-                  `📱 *Device:* Pixel 5\n` +
-                  `🤖 *Android:* 13 (API 33)\n\n` +
+                  `🌐 *Web Interface:*\n${result.webUrl}\n\n` +
+                  `📱 *Device:* Samsung Galaxy S10\n` +
+                  `🤖 *Android:* 13\n\n` +
                   `💡 *Tips:*\n` +
-                  `• Open the noVNC link in your browser\n` +
-                  `• The Android screen is mirrored via scrcpy\n` +
+                  `• Open the link in your browser\n` +
+                  `• Full touch and keyboard support\n` +
                   `• Use .android status to check status\n` +
                   `• Use .android stop to stop the emulator`;
 
@@ -977,8 +977,8 @@ class DiscordWhatsAppBridge {
                   `📱 *Android Emulator Status*\n\n` +
                   `✅ *Running*\n` +
                   `⏱️ *Uptime:* ${status.uptime || 'Unknown'}\n` +
-                  `📱 *Device:* ${status.deviceInfo || 'Pixel 5'}\n` +
-                  `🖥️ *noVNC:* ${status.vncUrl || 'Use .url command'}\n\n` +
+                  `📱 *Device:* ${status.deviceInfo || 'Samsung Galaxy S10'}\n` +
+                  `🌐 *Web UI:* ${status.webUrl || 'Use .url command'}\n\n` +
                   `Use .android stop to stop the emulator.`;
 
                 await sock.sendMessage(jid, { text: statusMsg }, { quoted: msg });
@@ -1018,10 +1018,11 @@ class DiscordWhatsAppBridge {
               '• `.android status` - Check emulator status\n' +
               '• `.android stop` - Stop emulator\n\n' +
               '*Features:*\n' +
-              '• Android 13 (API 33)\n' +
-              '• Pixel 5 device profile\n' +
-              '• Access via noVNC in browser\n' +
-              '• Full touch and keyboard support'
+              '• Android 13\n' +
+              '• Samsung Galaxy S10 profile\n' +
+              '• Web-based interface (no VNC needed)\n' +
+              '• Full touch and keyboard support\n' +
+              '• Lightweight Docker container'
           }, { quoted: msg });
           continue;
         }
