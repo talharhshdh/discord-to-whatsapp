@@ -48,8 +48,9 @@ jobs:
 
       - name: Load State from Cloudflare R2
         run: |
+          source .env
           echo "📥 Downloading latest state..."
-          aws s3 cp s3://${{ secrets.R2_BUCKET_NAME }}/state.tar.gz state.tar.gz --endpoint-url https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com || echo "No previous state found."
+          aws s3 cp s3://${{ secrets.R2_BUCKET_NAME }}/state.tar.gz state.tar.gz --endpoint-url https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com || echo "No previous state found."
           if [ -f "state.tar.gz" ]; then
             echo "📦 Extracting state..."
             tar -xzf state.tar.gz -C / --overwrite || echo "Failed to extract state"
@@ -143,11 +144,12 @@ jobs:
             /home/runner/chromium_data \
             $(pwd)/auth_info
           
+          source .env
           echo "📤 Deleting previous states from R2..."
-          aws s3 rm s3://${{ secrets.R2_BUCKET_NAME }}/ --recursive --endpoint-url https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          aws s3 rm s3://${{ secrets.R2_BUCKET_NAME }}/ --recursive --endpoint-url https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com
           
           echo "📤 Uploading new state to R2..."
-          aws s3 cp state.tar.gz s3://${{ secrets.R2_BUCKET_NAME }}/state.tar.gz --endpoint-url https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          aws s3 cp state.tar.gz s3://${{ secrets.R2_BUCKET_NAME }}/state.tar.gz --endpoint-url https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com
           echo "✅ State successfully synced to R2."
 
       - name: Trigger next workflow run immediately
