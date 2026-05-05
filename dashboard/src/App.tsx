@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useUrls, useCountdown, NavSection } from './hooks';
 import SessionsPanel from './components/SessionsPanel';
+import SessionsManagerPanel from './components/SessionsManagerPanel';
 import AIToolsPanel from './components/AIToolsPanel';
 import MediaPanel from './components/MediaPanel';
 import YoutubePanel from './components/YoutubePanel';
@@ -10,6 +11,7 @@ import AndroidPanel from './components/AndroidPanel';
 
 const NAV: { id: NavSection; label: string; icon: string }[] = [
   { id: 'sessions',  label: 'Dev Sessions',  icon: '🖥️' },
+  { id: 'manager',   label: 'Session Manager', icon: '📊' },
   { id: 'android',   label: 'Android',       icon: '📱' },
   { id: 'ai-tools',  label: 'AI Tools',      icon: '🧠' },
   { id: 'media',     label: 'Media DL',      icon: '📥' },
@@ -127,6 +129,7 @@ export default function App() {
               </div>
 
               {section === 'sessions' && <SessionsPanel />}
+              {section === 'manager' && <SessionsManagerPanel />}
               {section === 'android' && <AndroidPanel />}
               {section === 'ai-tools' && <AIToolsPanel />}
               {section === 'media' && <MediaPanel />}

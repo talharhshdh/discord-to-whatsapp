@@ -286,6 +286,17 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     return;
   }
 
+  // ── POST /api/sessions/ssh ─────────────────────────────────────────────────
+  if (method === 'POST' && url === '/api/sessions/ssh') {
+    try {
+      const { startSSHTerminal } = require('./ssh-terminal');
+      const result = await startSSHTerminal();
+      if (result.error) return err(res, result.error);
+      json(res, result);
+    } catch (e) { err(res, (e as Error).message); }
+    return;
+  }
+
   // ── POST /api/sessions/vscode ──────────────────────────────────────────────
   if (method === 'POST' && url === '/api/sessions/vscode') {
     try {
@@ -444,6 +455,70 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     try {
       const { stopAndroidEmulator } = require('./android-emulator');
       const result = await stopAndroidEmulator();
+      json(res, result);
+    } catch (e) { err(res, (e as Error).message); }
+    return;
+  }
+
+  // ── GET /api/sessions/all ──────────────────────────────────────────────
+  if (method === 'GET' && url === '/api/sessions/all') {
+    try {
+      const { sessionManager } = require('./session-manager');
+      const { getAllBrowsers } = require('./browser');
+      const { getAndroidEmulatorStatus } = require('./android-emulator');
+      
+      const sessions = sessionManager.getAllSessions();
+      const browsers = getAllBrowsers();
+      const androidStatus = await getAndroidEmulatorStatus();
+      
+      json(res, {
+        sessions,
+        browsers,
+        android: androidStatus.running ? androidStatus : null,
+      });
+    } catch (e) { err(res, (e as Error).message); }
+    return;
+  }
+
+  // ── POST /api/sessions/stop ────────────────────────────────────────────
+  if (method === 'POST' && url === '/api/sessions/stop') {
+    try {
+      const body = await parseJsonBody(req);
+      const sessionId = body['sessionId'] as string;
+      const sessionType = body['type'] as string;
+      
+      if (!sessionId) return err(res, 'sessionId is required', 400);
+      
+      const { sessionManager } = require('./session-manager');
+      const session = sessionManager.getSession(sessionId);
+      
+      if (!session) return err(res, 'Session not found', 404);
+      
+      // Stop based on type
+      if (session.type === 'custom-browser') {
+        const { stopBrowser } = require('./browser');
+        const result = await stopBrowser(sessionId);
+        json(res, result);
+      } else if (session.type === 'android') {
+        const { stopAndroidEmulator } = require('./android-emulator');
+        const result = await stopAndroidEmulator();
+        json(res, result);
+      } else {
+        json(res, { success: false, message: 'Cannot stop this session type yet' });
+      }
+    } catch (e) { err(res, (e as Error).message); }
+    return;
+  }
+
+  // ── POST /api/browser/custom ───────────────────────────────────────────
+  if (method === 'POST' && url === '/api/browser/custom') {
+    try {
+      const body = await parseJsonBody(req);
+      const targetUrl = body['url'] as string;
+      if (!targetUrl) return err(res, 'url is required', 400);
+      
+      const { startCustomBrowser } = require('./browser');
+      const result = await startCustomBrowser(targetUrl);
       json(res, result);
     } catch (e) { err(res, (e as Error).message); }
     return;

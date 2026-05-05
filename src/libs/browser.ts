@@ -1,35 +1,135 @@
-import { exec, spawn } from 'child_process';
+import { exec, spawn, ChildProcess } from 'child_process';
 import util from 'util';
 import crypto from 'crypto';
+import { sessionManager } from './session-manager';
 
 const execAsync = util.promisify(exec);
 
-let nextPort = 10080;
+// Track all browser instances
+const browserInstances = new Map<string, {
+  url: string;
+  username: string;
+  password: string;
+  port: number;
+  containerName: string;
+  tunnelProcess: ChildProcess;
+  targetUrl?: string;
+}>();
 
+/**
+ * Start a general-purpose browser (no specific URL)
+ */
 export async function startBrowser(): Promise<{ url?: string; username?: string; password?: string; error?: string }> {
+  // Check if general browser already exists
+  const existing = Array.from(browserInstances.values()).find(b => !b.targetUrl);
+  if (existing) {
+    console.log('♻️ General browser already running, returning existing credentials');
+    return {
+      url: existing.url,
+      username: existing.username,
+      password: existing.password,
+    };
+  }
+
+  return startBrowserInstance();
+}
+
+/**
+ * Start a browser with a specific URL pre-loaded
+ */
+export async function startCustomBrowser(targetUrl: string): Promise<{ 
+  sessionId?: string;
+  url?: string; 
+  username?: string; 
+  password?: string; 
+  error?: string 
+}> {
+  const sessionId = `browser-${crypto.randomBytes(4).toString('hex')}`;
+  
+  const result = await startBrowserInstance(targetUrl);
+  
+  if (result.url && !result.error) {
+    // Register in session manager
+    sessionManager.addSession({
+      id: sessionId,
+      type: 'custom-browser',
+      url: result.url,
+      username: result.username,
+      password: result.password,
+      startedAt: new Date(),
+      metadata: {
+        targetUrl,
+      },
+    });
+    
+    return { sessionId, ...result };
+  }
+  
+  return result;
+}
+
+/**
+ * Internal function to start a browser instance
+ */
+async function startBrowserInstance(targetUrl?: string): Promise<{ 
+  url?: string; 
+  username?: string; 
+  password?: string; 
+  error?: string 
+}> {
   try {
-    const port = nextPort++;
+    const port = 10080 + browserInstances.size;
     const username = `dev_${crypto.randomBytes(3).toString('hex')}`;
     const password = crypto.randomBytes(6).toString('hex');
     
-    console.log(`🚀 Setting up Cloud Browser Server on port ${port}...`);
+    console.log(`🚀 Setting up Browser on port ${port}${targetUrl ? ` for ${targetUrl}` : ''}...`);
 
     // Ensure Docker is available
     try {
       await execAsync('docker --version');
     } catch {
-      return { error: 'Docker is not installed or available. Required for virtual browser.' };
+      return { error: 'Docker is not installed or available.' };
     }
 
-    // Run linuxserver/chromium container
-    console.log(`🚀 Starting lscr.io/linuxserver/chromium on port ${port}...`);
-    
-    // We run it detached (-d). Map port 3000 to our local port and mount a host volume.
     const containerName = `cloud-browser-${port}`;
-    await execAsync(`docker run -d --rm --name ${containerName} -v /home/runner/chromium_data:/config --shm-size=1gb -p ${port}:3000 -e PUID=1000 -e PGID=1000 -e TZ=Etc/UTC -e CUSTOM_USER=${username} -e PASSWORD=${password} lscr.io/linuxserver/chromium:latest`);
+    
+    // Check if container already exists
+    try {
+      const { stdout } = await execAsync(`docker ps -a --filter name=${containerName} --format "{{.Names}}"`);
+      if (stdout.includes(containerName)) {
+        console.log('⚠️ Stopping existing browser container...');
+        await execAsync(`docker stop ${containerName}`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    } catch {
+      // No existing container
+    }
 
-    console.log(`🚀 Starting Cloudflare Tunnel for Browser on port ${port}...`);
-    // The linuxserver web UI runs on HTTP on port 3000 inside the container.
+    // Build docker command
+    const dockerCmd = [
+      'docker', 'run', '-d', '--rm',
+      '--name', containerName,
+      '-v', '/home/runner/chromium_data:/config',
+      '--shm-size=1gb',
+      '-p', `${port}:3000`,
+      '-e', 'PUID=1000',
+      '-e', 'PGID=1000',
+      '-e', 'TZ=Etc/UTC',
+      '-e', `CUSTOM_USER=${username}`,
+      '-e', `PASSWORD=${password}`,
+    ];
+
+    // Add custom URL if provided
+    if (targetUrl) {
+      dockerCmd.push('-e', `CUSTOM_URL=${targetUrl}`);
+    }
+
+    dockerCmd.push('lscr.io/linuxserver/chromium:latest');
+
+    console.log(`🚀 Starting browser container...`);
+    await execAsync(dockerCmd.join(' '));
+
+    console.log(`🚀 Starting Cloudflare Tunnel on port ${port}...`);
     const tunnelProcess = spawn('cloudflared', [
       'tunnel', 
       '--url', `http://localhost:${port}`
@@ -43,20 +143,32 @@ export async function startBrowser(): Promise<{ url?: string; username?: string;
         const match = output.match(/https:\/\/[-0-9a-z]*\.trycloudflare\.com/);
         if (match && !cloudflareUrl) {
           cloudflareUrl = match[0];
-          console.log(`✅ Browser Cloudflare Tunnel URL: ${cloudflareUrl} - Waiting 5 seconds...`);
+          console.log(`✅ Browser Tunnel URL: ${cloudflareUrl}`);
           setTimeout(() => {
+            // Store instance
+            const instanceId = targetUrl || 'general';
+            browserInstances.set(instanceId, {
+              url: cloudflareUrl,
+              username,
+              password,
+              port,
+              containerName,
+              tunnelProcess,
+              targetUrl,
+            });
             resolve({ url: cloudflareUrl, username, password });
           }, 5000);
         }
       });
 
       tunnelProcess.on('close', (code) => {
-        console.log(`⚠️ Browser Cloudflare Tunnel exited with code ${code}`);
+        console.log(`⚠️ Browser Tunnel exited with code ${code}`);
+        const instanceId = targetUrl || 'general';
+        browserInstances.delete(instanceId);
       });
 
       setTimeout(() => {
         if (!cloudflareUrl) {
-           // Try to stop the container if tunnel fails
            execAsync(`docker stop ${containerName}`).catch(() => {});
            resolve({ error: 'Timed out waiting for Cloudflare Tunnel URL.' });
         }
@@ -65,6 +177,59 @@ export async function startBrowser(): Promise<{ url?: string; username?: string;
 
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    return { error: `Failed to set up virtual browser: ${errMsg}` };
+    return { error: `Failed to set up browser: ${errMsg}` };
   }
+}
+
+/**
+ * Stop a browser instance
+ */
+export async function stopBrowser(sessionId?: string): Promise<{ success: boolean; message: string }> {
+  try {
+    if (sessionId) {
+      // Stop specific session
+      const session = sessionManager.getSession(sessionId);
+      if (!session || session.type !== 'custom-browser') {
+        return { success: false, message: 'Session not found' };
+      }
+
+      const instance = browserInstances.get(session.metadata?.targetUrl || '');
+      if (instance) {
+        instance.tunnelProcess.kill();
+        await execAsync(`docker stop ${instance.containerName}`);
+        browserInstances.delete(session.metadata?.targetUrl || '');
+      }
+      
+      sessionManager.removeSession(sessionId);
+      return { success: true, message: 'Browser session stopped' };
+    } else {
+      // Stop general browser
+      const general = Array.from(browserInstances.values()).find(b => !b.targetUrl);
+      if (!general) {
+        return { success: false, message: 'No general browser running' };
+      }
+
+      general.tunnelProcess.kill();
+      await execAsync(`docker stop ${general.containerName}`);
+      browserInstances.delete('general');
+      return { success: true, message: 'General browser stopped' };
+    }
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    return { success: false, message: errMsg };
+  }
+}
+
+/**
+ * Get all browser instances
+ */
+export function getAllBrowsers() {
+  return Array.from(browserInstances.entries()).map(([key, instance]) => ({
+    id: key,
+    url: instance.url,
+    username: instance.username,
+    password: instance.password,
+    targetUrl: instance.targetUrl,
+    port: instance.port,
+  }));
 }
