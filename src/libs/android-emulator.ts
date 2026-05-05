@@ -17,7 +17,7 @@ let isEmulatorRunning = false;
 let emulatorStartTime: Date | null = null;
 let emulatorUrl: string | null = null;
 
-const ANDROID_PORT = 6080; // Web UI port
+const ANDROID_PORT = 6081; // Web UI port (6080 is used by runner's noVNC)
 const CONTAINER_NAME = 'android-emulator';
 
 /**
@@ -80,16 +80,19 @@ export async function startAndroidEmulator(): Promise<{
     });
 
     // Wait for container to be ready
-    console.log('⏳ Waiting for Android to boot (30-60 seconds)...');
-    await new Promise(resolve => setTimeout(resolve, 10000)); // Initial wait
+    console.log('⏳ Waiting for Android to boot (60-90 seconds)...');
+    await new Promise(resolve => setTimeout(resolve, 15000)); // Initial wait
 
-    // Check if container is running
-    for (let i = 0; i < 12; i++) {
+    // Check if container is running and wait for Android to boot
+    for (let i = 0; i < 18; i++) {
       try {
         const { stdout } = await execAsync(`docker ps --filter name=${CONTAINER_NAME} --format "{{.Status}}"`);
         if (stdout.includes('Up')) {
-          console.log('✅ Container is running');
-          break;
+          console.log(`✅ Container is running (${i * 5}s elapsed)`);
+          // Wait a bit more for Android to fully boot
+          if (i >= 12) { // At least 60 seconds
+            break;
+          }
         }
       } catch (err) {
         // Continue waiting

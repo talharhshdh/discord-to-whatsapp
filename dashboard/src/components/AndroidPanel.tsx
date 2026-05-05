@@ -8,20 +8,20 @@ export default function AndroidPanel() {
     running: boolean;
     uptime?: string;
     deviceInfo?: string;
-    vncUrl?: string;
+    webUrl?: string;
   } | null>(null);
 
   const startEmulator = async () => {
     setLoading(true);
     setResult('');
     try {
-      // Note: This would require adding an API endpoint in dashboard-server.ts
-      // For now, show instructions to use WhatsApp command
-      setResult(
-        '📱 To start the Android emulator, send this command in WhatsApp:\n\n' +
-        '`.android start`\n\n' +
-        'The emulator will start in 2-3 minutes and will be accessible via the noVNC link.'
-      );
+      const res = await api.androidStart();
+      if (res.success) {
+        setResult(`✅ ${res.message}\n\n🌐 Web URL: ${res.webUrl || 'Starting...'}`);
+        setTimeout(checkStatus, 2000);
+      } else {
+        setResult(`❌ ${res.message}\n${res.error || ''}`);
+      }
     } catch (err: any) {
       setResult(`❌ Error: ${err.message || String(err)}`);
     } finally {
@@ -33,11 +33,19 @@ export default function AndroidPanel() {
     setLoading(true);
     setResult('');
     try {
-      // Note: This would require adding an API endpoint
-      setResult(
-        '📱 To check emulator status, send this command in WhatsApp:\n\n' +
-        '`.android status`'
-      );
+      const res = await api.androidStatus();
+      setStatus(res);
+      if (res.running) {
+        setResult(
+          `✅ Android Emulator Running\n\n` +
+          `⏱️ Uptime: ${res.uptime || 'Unknown'}\n` +
+          `📱 Device: ${res.deviceInfo || 'Android 13'}\n` +
+          `🌐 Web URL: ${res.webUrl || 'N/A'}`
+        );
+      } else {
+        setResult('❌ No emulator is currently running');
+        setStatus(null);
+      }
     } catch (err: any) {
       setResult(`❌ Error: ${err.message || String(err)}`);
     } finally {
@@ -49,10 +57,13 @@ export default function AndroidPanel() {
     setLoading(true);
     setResult('');
     try {
-      setResult(
-        '📱 To stop the Android emulator, send this command in WhatsApp:\n\n' +
-        '`.android stop`'
-      );
+      const res = await api.androidStop();
+      if (res.success) {
+        setResult(`✅ ${res.message}`);
+        setStatus(null);
+      } else {
+        setResult(`⚠️ ${res.message}`);
+      }
     } catch (err: any) {
       setResult(`❌ Error: ${err.message || String(err)}`);
     } finally {

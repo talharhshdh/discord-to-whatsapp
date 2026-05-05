@@ -417,6 +417,38 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     return;
   }
 
+  // ── POST /api/android/start ────────────────────────────────────────────
+  if (method === 'POST' && url === '/api/android/start') {
+    try {
+      const { startAndroidEmulator } = require('./android-emulator');
+      const result = await startAndroidEmulator();
+      if (!result.success) return err(res, result.error || result.message);
+      if (result.webUrl) registerUrl('android', '📱 Android Emulator', result.webUrl);
+      json(res, result);
+    } catch (e) { err(res, (e as Error).message); }
+    return;
+  }
+
+  // ── POST /api/android/status ───────────────────────────────────────────
+  if (method === 'POST' && url === '/api/android/status') {
+    try {
+      const { getAndroidEmulatorStatus } = require('./android-emulator');
+      const result = await getAndroidEmulatorStatus();
+      json(res, result);
+    } catch (e) { err(res, (e as Error).message); }
+    return;
+  }
+
+  // ── POST /api/android/stop ─────────────────────────────────────────────
+  if (method === 'POST' && url === '/api/android/stop') {
+    try {
+      const { stopAndroidEmulator } = require('./android-emulator');
+      const result = await stopAndroidEmulator();
+      json(res, result);
+    } catch (e) { err(res, (e as Error).message); }
+    return;
+  }
+
   // ── POST /api/movies/search ────────────────────────────────────────────────
   if (method === 'POST' && url === '/api/movies/search') {
     try {
