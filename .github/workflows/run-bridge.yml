@@ -4,8 +4,8 @@ on:
   push:
     branches: [main] # Restart bridge on every push to main
   workflow_dispatch: # Allows manual trigger
-  schedule:
-    - cron: "0 */5 * * *" # Fallback every 6h in case the self-trigger fails
+  # schedule:
+  #   - cron: "0 */5 * * *" # Fallback every 6h in case the self-trigger fails
 
 # No concurrency limit - allow overlapping runs for graceful handoff
 # Each run will naturally end after 5 hours, preventing runaway accumulation
