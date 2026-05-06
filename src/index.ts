@@ -402,7 +402,7 @@ class DiscordWhatsAppBridge {
 
   /**
    * Starts the local dashboard HTTP server, exposes it via a Cloudflare tunnel,
-   * registers the noVNC URL, and broadcasts the dashboard URL to all admins.
+   * registers the noVNC URL, starts the browser, and broadcasts the dashboard URL to all admins.
    * Called once when both WhatsApp and Discord are ready.
    */
   private async startDashboardAndNotify(): Promise<void> {
@@ -430,6 +430,20 @@ class DiscordWhatsAppBridge {
       if (!dashboardPublicUrl) {
         console.warn('⚠️ Dashboard tunnel failed — skipping admin notification.');
         return;
+      }
+
+      // Start the browser automatically if credentials are configured
+      const { startBrowser } = require('./libs/browser');
+      console.log('🌐 Starting browser automatically...');
+      const browserResult = await startBrowser();
+      if (browserResult.url && !browserResult.error) {
+        registerUrl('browser', '🌐 Cloud Browser', browserResult.url, { 
+          username: browserResult.username, 
+          password: browserResult.password 
+        });
+        console.log('✅ Browser started and registered successfully!');
+      } else {
+        console.warn('⚠️ Browser failed to start:', browserResult.error);
       }
 
       // Calculate session time remaining
