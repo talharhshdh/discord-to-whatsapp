@@ -111,7 +111,7 @@ async function startBrowserInstance(targetUrl?: string): Promise<{
       '--name', containerName,
       '-v', '/home/runner/chromium_data:/config',
       '--shm-size=1gb',
-      '-p', `${port}:3000`,
+      '-p', `${port}:3001`,
       '-e', `PUID=${require('os').userInfo().uid}`,
       '-e', `PGID=${require('os').userInfo().gid}`,
       '-e', 'TZ=Etc/UTC',
