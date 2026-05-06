@@ -124,6 +124,7 @@ async function startBrowserInstance(targetUrl?: string): Promise<{
       '--name', containerName,
       '--shm-size=1gb',
       '-p', `${port}:3000`,
+      '-v', `${process.cwd()}/browser_data:/config`,
       '-e', 'TZ=Etc/UTC',
       '-e', `CUSTOM_USER=${username}`,
       '-e', `PASSWORD=${password}`,

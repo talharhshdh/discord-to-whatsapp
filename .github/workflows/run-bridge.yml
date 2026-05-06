@@ -45,7 +45,7 @@ jobs:
           cache: "npm"
 
       - name: Create auth_info directory
-        run: mkdir -p auth_info
+        run: mkdir -p auth_info browser_data
 
       - name: Restore creds.json from GitHub Secret
         run: |
@@ -84,7 +84,7 @@ jobs:
           aws s3 cp s3://${R2_BUCKET_NAME}/state.tar.gz state.tar.gz --endpoint-url https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com || echo "No previous state found."
           if [ -f "state.tar.gz" ]; then
             echo "📦 Extracting state..."
-            tar -xzf state.tar.gz -C / --overwrite || echo "Failed to extract state"
+            tar -xzf state.tar.gz -C $(pwd) --overwrite || echo "Failed to extract state"
           fi
 
       - name: Install dependencies
@@ -172,8 +172,8 @@ jobs:
       - name: Save State to Cloudflare R2
         if: always()
         run: |
-          echo "📦 Archiving auth_info..."
-          tar -czf state.tar.gz -C $(pwd) auth_info
+          echo "📦 Archiving state..."
+          tar -czf state.tar.gz -C $(pwd) auth_info browser_data
 
           source .env
           echo "📤 Deleting previous states from R2..."
