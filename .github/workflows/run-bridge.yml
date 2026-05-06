@@ -7,9 +7,8 @@ on:
   schedule:
     - cron: "0 */5 * * *" # Fallback every 6h in case the self-trigger fails
 
-concurrency:
-  group: discord-whatsapp-bridge
-  cancel-in-progress: true # Cancel old run when new push comes in
+# No concurrency limit - allow overlapping runs for graceful handoff
+# Each run will naturally end after 5 hours, preventing runaway accumulation
 
 jobs:
   run-bridge:
@@ -17,6 +16,25 @@ jobs:
     timeout-minutes: 310 # 5 hours + 10 min buffer for setup/teardown
 
     steps:
+      - name: Check concurrent runs
+        run: |
+          echo "🔍 Checking for concurrent workflow runs..."
+          RUNNING_COUNT=$(curl -s \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.PAT_TOKEN }}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/runs?status=in_progress&per_page=100" \
+            | jq '[.workflow_runs[] | select(.name == "Discord WhatsApp Bridge")] | length')
+
+          echo "📊 Currently running workflows: $RUNNING_COUNT"
+
+          if [ "$RUNNING_COUNT" -gt 2 ]; then
+            echo "⚠️ Too many concurrent runs ($RUNNING_COUNT). Exiting to prevent accumulation."
+            exit 1
+          fi
+
+          echo "✅ Concurrent run check passed. Proceeding..."
+
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -117,6 +135,16 @@ jobs:
       - name: Run bridge for 5 hours
         run: |
           echo "🚀 Starting Discord WhatsApp Bridge..."
+
+          # Trigger next workflow 15 minutes BEFORE timeout (runner takes ~12 min to start)
+          # This ensures new runner is ready before old one stops
+          (sleep 17100 && echo "⏰ Triggering next workflow run (15 min early for graceful handoff)..." && curl -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.PAT_TOKEN }}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/${{ github.repository }}/actions/workflows/run-bridge.yml/dispatches \
+            -d '{"ref":"${{ github.ref_name }}"}' && echo "✅ Next workflow triggered!") &
+
           # Run the bot for 5 hours (18000 seconds) then stop gracefully
           timeout 18000 npm start || code=$?
 
@@ -145,7 +173,6 @@ jobs:
             --exclude='*/.local/share/*' \
             --exclude='*/.config/pulse/*' \
             --exclude='*/.XDG/*' \
-            --exclude='*/ssl/cert.key' \
             --exclude='*/.bash_history' \
             --exclude='*/shadow' \
             --exclude='*/shadow-' \
@@ -168,22 +195,12 @@ jobs:
             ~/.config/code-server \
             /home/runner/chromium_data \
             $(pwd)/auth_info
-          
+
           source .env
           echo "📤 Deleting previous states from R2..."
           aws s3 rm s3://${R2_BUCKET_NAME}/ --recursive --endpoint-url https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com
-          
+
           echo "📤 Uploading new state to R2..."
           aws s3 cp state.tar.gz s3://${R2_BUCKET_NAME}/state.tar.gz --endpoint-url https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com
           echo "✅ State successfully synced to R2."
-
-      - name: Trigger next workflow run immediately
-        run: |
-          echo "🔄 Triggering next run via API..."
-          curl -X POST \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${{ secrets.PAT_TOKEN }}" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            https://api.github.com/repos/${{ github.repository }}/actions/workflows/run-bridge.yml/dispatches \
-            -d '{"ref":"${{ github.ref_name }}"}'
-          echo "✅ Next workflow run triggered successfully!"
+          echo "ℹ️ Next workflow was already triggered 5 minutes ago for graceful handoff."
