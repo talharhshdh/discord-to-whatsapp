@@ -19,7 +19,7 @@ import { IncomingMessage } from 'http';
 // Constants
 // ---------------------------------------------------------------------------
 
-const TMDB_API_KEY = process.env.TMDB_API_KEY ?? '90b2cae8d7161e8ba0f3836240d7d352';
+// TMDB_API_KEY will be read dynamically inside the functions.
 const TMDB_BASE_URL = 'https://api.themoviedb.org';
 const EMBED_BASE_URL = 'https://screenfetch2.xyz';
 const FILMPIRE_ORIGIN = encodeURIComponent('https://filmpire.sc');
@@ -166,16 +166,16 @@ function mapResult(raw: TmdbRawResult): MovieSearchResult | null {
     : '';
 
   return {
-    tmdbId:      raw.id,
+    tmdbId: raw.id,
     title,
-    overview:    raw.overview,
-    posterPath:  raw.poster_path,
+    overview: raw.overview,
+    posterPath: raw.poster_path,
     mediaType,
     releaseDate,
     voteAverage: raw.vote_average,
-    voteCount:   raw.vote_count,
+    voteCount: raw.vote_count,
     posterUrl,
-    watchUrl:    buildWatchUrl(raw.id, mediaType),
+    watchUrl: buildWatchUrl(raw.id, mediaType),
   };
 }
 
@@ -195,6 +195,7 @@ export async function searchMovies(
   limit = 5,
   page = 1,
 ): Promise<MovieSearchResult[]> {
+  const TMDB_API_KEY = process.env.TMDB_API_KEY ?? '90b2cae8d7161e8ba0f3836240d7d352';
   const encoded = encodeURIComponent(query.trim());
   const url = `${TMDB_BASE_URL}/3/search/multi?api_key=${TMDB_API_KEY}&query=${encoded}&page=${page}`;
 
