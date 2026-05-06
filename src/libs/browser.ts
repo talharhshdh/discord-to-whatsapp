@@ -109,11 +109,8 @@ async function startBrowserInstance(targetUrl?: string): Promise<{
     const dockerCmd = [
       'docker', 'run', '-d', '--rm',
       '--name', containerName,
-      '-v', '/home/runner/chromium_data:/config',
       '--shm-size=1gb',
-      '-p', `${port}:3001`,
-      '-e', `PUID=${require('os').userInfo().uid}`,
-      '-e', `PGID=${require('os').userInfo().gid}`,
+      '-p', `${port}:3000`,
       '-e', 'TZ=Etc/UTC',
       '-e', `CUSTOM_USER=${username}`,
       '-e', `PASSWORD=${password}`,
@@ -131,7 +128,7 @@ async function startBrowserInstance(targetUrl?: string): Promise<{
 
     console.log(`🚀 Starting Cloudflare Tunnel on port ${port}...`);
     const tunnelProcess = spawn('cloudflared', [
-      'tunnel', 
+      'tunnel',
       '--url', `http://localhost:${port}`
     ]);
     
