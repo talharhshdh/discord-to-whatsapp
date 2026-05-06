@@ -5,6 +5,13 @@ import { sessionManager } from './session-manager';
 
 const execAsync = util.promisify(exec);
 
+// Custom domain configuration for browser (from environment)
+const BROWSER_TUNNEL_TOKEN = process.env.BROWSER_TUNNEL_TOKEN || '';
+const BROWSER_DOMAIN = process.env.BROWSER_DOMAIN || '';
+const BROWSER_USERNAME = process.env.BROWSER_USERNAME || '';
+const BROWSER_PASSWORD = process.env.BROWSER_PASSWORD || '';
+const BROWSER_PORT = parseInt(process.env.BROWSER_PORT || '10080', 10);
+
 // Track all browser instances
 const browserInstances = new Map<string, {
   url: string;
@@ -78,11 +85,15 @@ async function startBrowserInstance(targetUrl?: string): Promise<{
   error?: string 
 }> {
   try {
-    const port = 10080 + browserInstances.size;
-    const username = `dev_${crypto.randomBytes(3).toString('hex')}`;
-    const password = crypto.randomBytes(6).toString('hex');
+    // Use hardcoded credentials if available, otherwise generate random ones
+    const port = BROWSER_PORT || (10080 + browserInstances.size);
+    const username = BROWSER_USERNAME || `dev_${crypto.randomBytes(3).toString('hex')}`;
+    const password = BROWSER_PASSWORD || crypto.randomBytes(6).toString('hex');
     
     console.log(`🚀 Setting up Browser on port ${port}${targetUrl ? ` for ${targetUrl}` : ''}...`);
+    if (BROWSER_USERNAME && BROWSER_PASSWORD) {
+      console.log(`🔐 Using hardcoded credentials from environment`);
+    }
 
     // Ensure Docker is available
     try {
@@ -126,6 +137,64 @@ async function startBrowserInstance(targetUrl?: string): Promise<{
     console.log(`🚀 Starting browser container...`);
     await execAsync(dockerCmd.join(' '));
 
+    // ── Mode 1: Named tunnel with fixed custom domain ──────────────────────────
+    if (BROWSER_TUNNEL_TOKEN && BROWSER_DOMAIN) {
+      return new Promise((resolve) => {
+        console.log(`🌐 Starting named Cloudflare tunnel for Browser → https://${BROWSER_DOMAIN}`);
+        
+        const tunnelProcess = spawn('cloudflared', [
+          'tunnel', '--no-autoupdate', 'run', '--token', BROWSER_TUNNEL_TOKEN,
+        ]);
+        
+        tunnelProcess.stderr?.on('data', (data: Buffer) => {
+          console.log('[cloudflared-browser]', data.toString().trim());
+        });
+        
+        tunnelProcess.on('error', (e) => {
+          console.error('❌ Named browser tunnel error:', e);
+          execAsync(`docker stop ${containerName}`).catch(() => {});
+          resolve({ error: `Named tunnel error: ${e.message}` });
+        });
+        
+        tunnelProcess.on('close', (code) => {
+          console.log(`⚠️ Named browser tunnel exited with code ${code}`);
+          const instanceId = targetUrl || 'general';
+          browserInstances.delete(instanceId);
+        });
+        
+        // With named tunnels the URL is known immediately — no need to parse output.
+        // Give cloudflared 5s to initialise before resolving.
+        setTimeout(() => {
+          const cloudflareUrl = `https://${BROWSER_DOMAIN}`;
+          console.log(`✅ Browser at fixed domain: ${cloudflareUrl}`);
+          
+          // Store instance
+          const instanceId = targetUrl || 'general';
+          browserInstances.set(instanceId, {
+            url: cloudflareUrl,
+            username,
+            password,
+            port,
+            containerName,
+            tunnelProcess,
+            targetUrl,
+          });
+          
+          // Update session with cloudflared URL if this is a custom browser
+          if (targetUrl) {
+            const sessions = sessionManager.getSessionsByType('custom-browser');
+            const session = sessions.find(s => s.metadata?.targetUrl === targetUrl);
+            if (session) {
+              sessionManager.updateSessionMetadata(session.id, { cloudflaredUrl: cloudflareUrl });
+            }
+          }
+          
+          resolve({ url: cloudflareUrl, username, password });
+        }, 5000);
+      });
+    }
+
+    // ── Mode 2: Quick tunnel (trycloudflare.com) ───────────────────────────────
     console.log(`🚀 Starting Cloudflare Tunnel on port ${port}...`);
     const tunnelProcess = spawn('cloudflared', [
       'tunnel',

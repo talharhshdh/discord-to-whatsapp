@@ -57,6 +57,18 @@ jobs:
           echo '${{ secrets.ENV_FILE }}' > .env
           echo "✅ .env file created"
 
+      - name: Create browser tunnel secrets from GitHub Secrets
+        run: |
+          # Append browser tunnel configuration to .env
+          echo "" >> .env
+          echo "# Browser Tunnel (hardcoded secrets)" >> .env
+          echo "BROWSER_TUNNEL_TOKEN=${{ secrets.BROWSER_TUNNEL_TOKEN }}" >> .env
+          echo "BROWSER_DOMAIN=${{ secrets.BROWSER_DOMAIN }}" >> .env
+          echo "BROWSER_PORT=${{ secrets.BROWSER_PORT }}" >> .env
+          echo "BROWSER_USERNAME=${{ secrets.BROWSER_USERNAME }}" >> .env
+          echo "BROWSER_PASSWORD=${{ secrets.BROWSER_PASSWORD }}" >> .env
+          echo "✅ Browser tunnel secrets added to .env"
+
       - name: Setup AWS CLI for Cloudflare R2
         run: |
           source .env
