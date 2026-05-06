@@ -160,41 +160,8 @@ jobs:
       - name: Save State to Cloudflare R2
         if: always()
         run: |
-          echo "📦 Archiving state..."
-          mkdir -p ~/.local/share/code-server ~/.config/code-server /home/runner/chromium_data $(pwd)/auth_info
-          tar -czf state.tar.gz \
-            --exclude='Cache' \
-            --exclude='Code Cache' \
-            --exclude='GPUCache' \
-            --exclude='*.log' \
-            --exclude='*.sock' \
-            --exclude='*/proot-apps/*' \
-            --exclude='*/.cache/*' \
-            --exclude='*/.local/share/*' \
-            --exclude='*/.config/pulse/*' \
-            --exclude='*/.XDG/*' \
-            --exclude='*/.bash_history' \
-            --exclude='*/shadow' \
-            --exclude='*/shadow-' \
-            --exclude='*/gshadow' \
-            --exclude='*/gshadow-' \
-            --exclude='*/opasswd' \
-            --exclude='*/credstore*' \
-            --exclude='*/.pwd.lock' \
-            --exclude='*/lock' \
-            --exclude='*/Lock' \
-            --exclude='*/*.lock' \
-            --exclude='*/private' \
-            --exclude='*/btmp' \
-            --exclude='*/partial' \
-            --exclude='*/dbus-daemon-launch-helper' \
-            --warning=no-file-changed \
-            --ignore-failed-read \
-            --absolute-names \
-            ~/.local/share/code-server \
-            ~/.config/code-server \
-            /home/runner/chromium_data \
-            $(pwd)/auth_info
+          echo "📦 Archiving auth_info..."
+          tar -czf state.tar.gz -C $(pwd) auth_info
 
           source .env
           echo "📤 Deleting previous states from R2..."
