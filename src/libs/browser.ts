@@ -1,4 +1,4 @@
-import { exec, spawn, ChildProcess } from 'child_process';
+import { exec, execFile, spawn, ChildProcess } from 'child_process';
 import * as util from 'util';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
@@ -7,6 +7,7 @@ import puppeteer, { type Cookie } from 'puppeteer-core';
 import { sessionManager } from './session-manager';
 
 const execAsync = util.promisify(exec);
+const execFileAsync = util.promisify(execFile);
 
 // Environment variables will be read dynamically inside the functions.
 
@@ -148,7 +149,9 @@ async function startBrowserInstance(targetUrl?: string): Promise<{
 
     dockerCmd.push('lscr.io/linuxserver/chromium:latest');
 
-    await execAsync(dockerCmd.join(' '));
+    // Use execFile so args are passed directly to the OS — no shell splitting
+    // on spaces inside env values like CHROMIUM_FLAGS.
+    await execFileAsync(dockerCmd[0], dockerCmd.slice(1));
 
     // ── Mode 1: Named tunnel with fixed custom domain ──────────────────────────
     if (BROWSER_TUNNEL_TOKEN && BROWSER_DOMAIN) {
