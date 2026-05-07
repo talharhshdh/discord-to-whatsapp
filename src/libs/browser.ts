@@ -313,9 +313,10 @@ export async function exportYouTubeCookies(
     'print(f"exported {len(rows)} cookies")',
   ];
 
-  // Escape single quotes in each line for the bash heredoc, then write + run the file
-  const escapedLines = scriptLines.map(l => l.replace(/'/g, "'\\''")).join('\\n');
-  const execCmd = `docker exec ${containerName} bash -c $'printf "${escapedLines}\\n" > /tmp/_cookie_export.py && python3 /tmp/_cookie_export.py'`;
+  const script = scriptLines.join('\n');
+
+  // Pipe the script via stdin — avoids all quoting/escaping issues with docker exec -c
+  const execCmd = `echo ${JSON.stringify(script)} | docker exec -i ${containerName} python3 -`;
 
   try {
     const { stdout, stderr } = await execAsync(execCmd);
