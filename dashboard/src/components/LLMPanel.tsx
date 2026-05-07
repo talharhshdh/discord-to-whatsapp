@@ -57,7 +57,7 @@ function ModelCard({
   onUnload: () => void;
   downloading: Set<string>;
 }) {
-  const isDownloading = downloading.has(model.id) || model.download_status === 'downloading';
+  const isDownloading = !model.downloaded && (downloading.has(model.id) || model.download_status === 'downloading');
 
   const tagColor = (tag: string): 'green' | 'blue' | 'purple' | 'orange' | 'default' => {
     if (['reasoning', 'code'].includes(tag)) return 'purple';
@@ -341,6 +341,13 @@ export default function LLMPanel() {
       const [st, ml] = await Promise.all([api.llmStatus(), api.llmModels().catch(() => ({ models: [], current_model: null, models_dir: '' }))]);
       setStatus(st);
       setModels(ml.models);
+      // Clear local downloading flags for any model the server now reports as ready
+      setDownloading(prev => {
+        if (prev.size === 0) return prev;
+        const stillPending = new Set(prev);
+        ml.models.forEach(m => { if (m.downloaded) stillPending.delete(m.id); });
+        return stillPending.size === prev.size ? prev : stillPending;
+      });
       setError(null);
     } catch (e) {
       setError((e as Error).message);
