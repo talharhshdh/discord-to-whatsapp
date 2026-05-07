@@ -796,7 +796,6 @@ export async function detectAndDownload(
   if (!detection) return null;
 
   const { platform, url } = detection;
-  console.log(`📥 Detected ${platform} link: ${url}`);
 
   const downloader = DOWNLOADERS[platform];
   return downloader(url, onProgress);

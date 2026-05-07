@@ -42,7 +42,6 @@ export async function startSSHTerminal(): Promise<{
     const password = crypto.randomBytes(8).toString('hex');
     const containerName = `ssh-terminal-${port}`;
 
-    console.log(`🔐 Starting SSH terminal on port ${port}...`);
 
     // Ensure Docker is available
     try {
@@ -55,7 +54,6 @@ export async function startSSHTerminal(): Promise<{
     try {
       const { stdout } = await execAsync(`docker ps -a --filter name=${containerName} --format "{{.Names}}"`);
       if (stdout.includes(containerName)) {
-        console.log('⚠️ Stopping existing SSH container...');
         await execAsync(`docker stop ${containerName}`);
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
@@ -64,7 +62,6 @@ export async function startSSHTerminal(): Promise<{
     }
 
     // Start SSH container (using linuxserver/openssh-server)
-    console.log(`🚀 Starting SSH container...`);
     await execAsync(
       `docker run -d --rm ` +
       `--name ${containerName} ` +
@@ -83,7 +80,6 @@ export async function startSSHTerminal(): Promise<{
     await new Promise(resolve => setTimeout(resolve, 5000));
 
     // Start Cloudflare tunnel for SSH
-    console.log(`🌐 Starting Cloudflare tunnel for SSH...`);
     const tunnelProcess = spawn('cloudflared', [
       'tunnel',
       '--url', `tcp://localhost:${port}`
@@ -97,7 +93,6 @@ export async function startSSHTerminal(): Promise<{
       const match = output.match(/https:\/\/[-0-9a-z]*\.trycloudflare\.com/);
       if (match && !cloudflaredUrl) {
         cloudflaredUrl = match[0];
-        console.log(`✅ SSH Cloudflare Tunnel URL: ${cloudflaredUrl}`);
         
         // Update session with cloudflared URL
         sessionManager.updateSessionMetadata(sessionId, { cloudflaredUrl });
@@ -137,7 +132,6 @@ export async function startSSHTerminal(): Promise<{
 
     const sshCommand = `ssh -p ${port} ${username}@localhost`;
 
-    console.log(`✅ SSH terminal ready: ${sshCommand}`);
 
     return {
       sessionId,
@@ -168,7 +162,6 @@ export async function stopSSHTerminal(sessionId: string): Promise<{
       return { success: false, message: 'SSH session not found' };
     }
 
-    console.log(`🛑 Stopping SSH terminal ${sessionId}...`);
 
     // Stop container
     await execAsync(`docker stop ${instance.containerName}`);
@@ -177,7 +170,6 @@ export async function stopSSHTerminal(sessionId: string): Promise<{
     sshInstances.delete(sessionId);
     sessionManager.removeSession(sessionId);
 
-    console.log(`✅ SSH terminal stopped: ${sessionId}`);
 
     return {
       success: true,

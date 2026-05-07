@@ -34,7 +34,6 @@ let failed = 0;
 async function test(name: string, fn: () => Promise<void> | void): Promise<void> {
   try {
     await fn();
-    console.log(`  ✅ PASS: ${name}`);
     passed++;
   } catch (err) {
     console.error(`  ❌ FAIL: ${name}`);
@@ -47,7 +46,6 @@ async function test(name: string, fn: () => Promise<void> | void): Promise<void>
 // Unit tests (no network)
 // ---------------------------------------------------------------------------
 
-console.log('\n📦 Unit tests (buildWatchUrl, formatters)');
 
 test('buildWatchUrl – movie', () => {
   const url = buildWatchUrl(634649, 'movie');
@@ -122,7 +120,6 @@ test('formatMovieSearchMessage – contains header and reply instruction', () =>
 // Integration tests (live TMDB calls)
 // ---------------------------------------------------------------------------
 
-console.log('\n🌐 Integration tests (live TMDB API calls – may take a few seconds)');
 
 async function runIntegrationTests() {
   await test('searchMovies("spiderman") – returns results', async () => {
@@ -164,8 +161,6 @@ async function runIntegrationTests() {
 (async () => {
   await runIntegrationTests();
 
-  console.log(`\n${'─'.repeat(40)}`);
-  console.log(`Results: ${passed} passed, ${failed} failed`);
 
   if (failed > 0) {
     process.exit(1);

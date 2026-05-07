@@ -39,7 +39,7 @@ dotenv.config();
 // ---------------------------------------------------------------------------
 // YouTube interactive session state
 // ---------------------------------------------------------------------------
-
+const lol = (...db: any) => { }
 /** Stages of the YouTube interactive flow */
 type YtSessionStage =
   | 'search_results'   // user was shown search results; waiting for them to pick one
@@ -173,13 +173,13 @@ class DiscordWhatsAppBridge {
 
   private async setupWhatsApp(): Promise<void> {
     if (this.isConnecting) {
-      console.log('⚠️ Already connecting to WhatsApp, skipping duplicate connection attempt');
+      lol('⚠️ Already connecting to WhatsApp, skipping duplicate connection attempt');
       return;
     }
 
     try {
       this.isConnecting = true;
-      console.log('🔧 Initializing WhatsApp connection...');
+      lol('🔧 Initializing WhatsApp connection...');
 
       // Parse authorized admins from comma-separated env var.
       // We store the normalized JID (strips multi-device ":N" suffix) so that
@@ -193,12 +193,12 @@ class DiscordWhatsAppBridge {
           this.authorizedJids.add(jid);
         }
       }
-      console.log(`👥 Authorized senders (${this.authorizedJids.size}): ${[...this.authorizedJids].join(', ')}`);
+      lol(`👥 Authorized senders (${this.authorizedJids.size}): ${[...this.authorizedJids].join(', ')}`);
 
       const { state, saveCreds } = await useMultiFileAuthState('auth_info');
       const { version, isLatest } = await fetchLatestBaileysVersion();
 
-      console.log(`Using WA version ${version.join('.')}, isLatest: ${isLatest}`);
+      lol(`Using WA version ${version.join('.')}, isLatest: ${isLatest}`);
 
       const sock = makeWASocket({
         version,
@@ -240,14 +240,14 @@ class DiscordWhatsAppBridge {
             const code = await sock.requestPairingCode(pairingPhone);
             // Format as XXXX-XXXX for readability
             const formatted = code.length === 8 ? `${code.slice(0, 4)}-${code.slice(4)}` : code;
-            console.log('\n🔑 ========================================');
-            console.log(`🔑  WhatsApp Pairing Code: ${formatted}`);
-            console.log('🔑 ========================================');
-            console.log('📱 Open WhatsApp → Settings → Linked Devices → Link a Device');
-            console.log('📱 Tap "Link with Phone Number" and enter the code above.\n');
+            lol('\n🔑 ========================================');
+            lol(`🔑  WhatsApp Pairing Code: ${formatted}`);
+            lol('🔑 ========================================');
+            lol('📱 Open WhatsApp → Settings → Linked Devices → Link a Device');
+            lol('📱 Tap "Link with Phone Number" and enter the code above.\n');
           } catch (err) {
             console.error('❌ Failed to request pairing code:', err);
-            console.log('💡 Falling back to QR code — restart without WHATSAPP_PHONE set.');
+            lol('💡 Falling back to QR code — restart without WHATSAPP_PHONE set.');
           }
         }, 3000);
       }
@@ -258,12 +258,12 @@ class DiscordWhatsAppBridge {
         if (qr) {
           if (pairingPhone) {
             // Pairing-code flow requested — skip QR rendering
-            console.log('⏳ QR received but pairing-code mode is active — waiting for code request...');
+            lol('⏳ QR received but pairing-code mode is active — waiting for code request...');
           } else {
-            console.log('\n📱 WhatsApp QR Code Generated:');
+            lol('\n📱 WhatsApp QR Code Generated:');
             qrcode.generate(qr, { small: true });
-            console.log('\n✨ Scan the QR code above with your WhatsApp mobile app');
-            console.log('📱 Open WhatsApp → Settings → Linked Devices → Link a Device\n');
+            lol('\n✨ Scan the QR code above with your WhatsApp mobile app');
+            lol('📱 Open WhatsApp → Settings → Linked Devices → Link a Device\n');
           }
         }
 
@@ -271,41 +271,41 @@ class DiscordWhatsAppBridge {
           const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
           const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
-          console.log('\n⚠️ WhatsApp connection closed.');
-          console.log('Status code:', statusCode);
-          console.log('Reason:', lastDisconnect?.error?.message || 'Unknown');
+          lol('\n⚠️ WhatsApp connection closed.');
+          lol('Status code:', statusCode);
+          lol('Reason:', lastDisconnect?.error?.message || 'Unknown');
 
           if (statusCode === 405) {
-            console.log('\n💡 Error 405 usually means:');
-            console.log('   - Network/firewall blocking WhatsApp servers');
-            console.log('   - VPN/proxy interference');
-            console.log('   - Try disabling antivirus/firewall temporarily');
-            console.log('   - Check your internet connection\n');
+            lol('\n💡 Error 405 usually means:');
+            lol('   - Network/firewall blocking WhatsApp servers');
+            lol('   - VPN/proxy interference');
+            lol('   - Try disabling antivirus/firewall temporarily');
+            lol('   - Check your internet connection\n');
           }
 
           if (statusCode === 440) {
-            console.log('\n💡 Error 440 (conflict) usually means:');
-            console.log('   - Another instance of this bot is already running');
-            console.log('   - WhatsApp Web is open in another browser/device');
-            console.log('   - Close all other WhatsApp sessions and restart\n');
+            lol('\n💡 Error 440 (conflict) usually means:');
+            lol('   - Another instance of this bot is already running');
+            lol('   - WhatsApp Web is open in another browser/device');
+            lol('   - Close all other WhatsApp sessions and restart\n');
           }
 
-          console.log('Reconnecting:', shouldReconnect);
+          lol('Reconnecting:', shouldReconnect);
 
           this.whatsappReady = false;
           this.isConnecting = false;
 
           if (shouldReconnect) {
-            console.log('Waiting 5 seconds before reconnecting...');
+            lol('Waiting 5 seconds before reconnecting...');
             setTimeout(() => this.setupWhatsApp(), 5000);
           }
         } else if (connection === 'open') {
-          console.log('✅ WhatsApp connected successfully!');
+          lol('✅ WhatsApp connected successfully!');
           this.whatsappReady = true;
           this.isConnecting = false;
           this.checkBothReady();
         } else if (connection === 'connecting') {
-          console.log('🔄 Connecting to WhatsApp...');
+          lol('🔄 Connecting to WhatsApp...');
         }
       });
 
@@ -331,43 +331,43 @@ class DiscordWhatsAppBridge {
       // WhatsApp sometimes delivers fresh messages as 'append' after a reconnect.
       // Age-based filtering inside handleWhatsAppMessage drops genuine history syncs.
       sock.ev.on('messages.upsert', async ({ messages, type }) => {
-        console.log(`📬 messages.upsert type="${type}" [${messages.length} msg(s)]`);
+        lol(`📬 messages.upsert type="${type}" [${messages.length} msg(s)]`);
         for (const m of messages) {
           const norm = normalizeJid(m.key.remoteJid ?? '');
           const resolvedPhoneJid = this.lidToJid.get(norm) ?? norm;
-          console.log(`   └─ from: ${norm}${resolvedPhoneJid !== norm ? ` (→ ${resolvedPhoneJid})` : ''} | fromMe: ${m.key.fromMe} | participant: ${m.key.participant ?? 'n/a'}`);
+          lol(`   └─ from: ${norm}${resolvedPhoneJid !== norm ? ` (→ ${resolvedPhoneJid})` : ''} | fromMe: ${m.key.fromMe} | participant: ${m.key.participant ?? 'n/a'}`);
         }
         await this.handleWhatsAppMessage(messages, type);
       });
     } catch (error) {
       console.error('❌ Error setting up WhatsApp:', error);
       this.isConnecting = false;
-      console.log('Retrying in 10 seconds...');
+      lol('Retrying in 10 seconds...');
       setTimeout(() => this.setupWhatsApp(), 10000);
     }
   }
 
   private setupDiscord(): void {
     this.discordClient.on('ready', () => {
-      console.log(`✅ Discord bot logged in as ${this.discordClient.user?.tag}`);
-      console.log(`📊 Bot is in ${this.discordClient.guilds.cache.size} server(s)`);
+      lol(`✅ Discord bot logged in as ${this.discordClient.user?.tag}`);
+      lol(`📊 Bot is in ${this.discordClient.guilds.cache.size} server(s)`);
 
       // List all servers the bot is in
       this.discordClient.guilds.cache.forEach(guild => {
-        console.log(`   - ${guild.name} (ID: ${guild.id})`);
+        lol(`   - ${guild.name} (ID: ${guild.id})`);
       });
 
       const serverId = process.env.DISCORD_SERVER_ID;
       if (serverId) {
         const targetGuild = this.discordClient.guilds.cache.get(serverId);
         if (targetGuild) {
-          console.log(`✅ Monitoring server: ${targetGuild.name}`);
+          lol(`✅ Monitoring server: ${targetGuild.name}`);
         } else {
-          console.log(`⚠️ WARNING: Bot is not in the configured server (ID: ${serverId})`);
-          console.log(`   Make sure the bot is invited to the correct server!`);
+          lol(`⚠️ WARNING: Bot is not in the configured server (ID: ${serverId})`);
+          lol(`   Make sure the bot is invited to the correct server!`);
         }
       } else {
-        console.log(`⚠️ WARNING: DISCORD_SERVER_ID not set in .env file`);
+        lol(`⚠️ WARNING: DISCORD_SERVER_ID not set in .env file`);
       }
 
       this.discordReady = true;
@@ -375,11 +375,11 @@ class DiscordWhatsAppBridge {
     });
 
     this.discordClient.on('clientReady', () => {
-      console.log(`✅ Discord client ready`);
+      lol(`✅ Discord client ready`);
     });
 
     this.discordClient.on('messageCreate', async (message: Message) => {
-      console.log(`📨 Message received: "${message.content}" from ${message.author.username} in ${message.guild?.name || 'DM'} #${message.channel instanceof Object && 'name' in message.channel ? message.channel.name : 'unknown'}`);
+      lol(`📨 Message received: "${message.content}" from ${message.author.username} in ${message.guild?.name || 'DM'} #${message.channel instanceof Object && 'name' in message.channel ? message.channel.name : 'unknown'}`);
       await this.handleDiscordMessage(message);
     });
 
@@ -394,7 +394,7 @@ class DiscordWhatsAppBridge {
 
   private async checkBothReady(): Promise<void> {
     if (this.whatsappReady && this.discordReady && !this.testMessageSent) {
-      console.log('🚀 Bridge is fully operational!');
+      lol('🚀 Bridge is fully operational!');
       this.testMessageSent = true;
       await this.startDashboardAndNotify();
     }
@@ -407,7 +407,7 @@ class DiscordWhatsAppBridge {
    */
   private async startDashboardAndNotify(): Promise<void> {
     try {
-      console.log('📊 Starting dashboard server...');
+      lol('📊 Starting dashboard server...');
 
       // Also register the noVNC VNC viewer that is started in the workflow
       // (websockify runs on port 6080 → Cloudflare tunnel on port 6080).
@@ -434,23 +434,23 @@ class DiscordWhatsAppBridge {
 
       // Start the browser automatically if credentials are configured
       const { startBrowser } = require('./libs/browser');
-      console.log('🌐 Starting browser automatically...');
+      lol('🌐 Starting browser automatically...');
       const browserResult = await startBrowser();
       if (browserResult.url && !browserResult.error) {
         registerUrl('browser', '🌐 Cloud Browser', browserResult.url, {
           username: browserResult.username,
           password: browserResult.password
         });
-        console.log('✅ Browser started and registered successfully!');
+        lol('✅ Browser started and registered successfully!');
 
         // Auto-export YouTube cookies after browser has had time to init.
         // We wait 15 s so Chromium can create its profile and cookie DB.
         setTimeout(async () => {
           try {
             const { exportYouTubeCookies } = require('./libs/browser');
-            console.log('🍪 Auto-exporting YouTube cookies...');
+            lol('🍪 Auto-exporting YouTube cookies...');
             const cookieResult = await exportYouTubeCookies();
-            console.log(`🍪 Cookie export: ${cookieResult.message}`);
+            lol(`🍪 Cookie export: ${cookieResult.message}`);
           } catch (e) {
             console.warn('⚠️ Auto cookie export failed:', e);
           }
@@ -482,7 +482,7 @@ class DiscordWhatsAppBridge {
         for (const jid of this.authorizedJids) {
           await this.whatsappSocket.sendMessage(jid, { text: notifyMsg });
         }
-        console.log('📤 Dashboard URL sent to all admins.');
+        lol('📤 Dashboard URL sent to all admins.');
       }
     } catch (err) {
       console.error('❌ Failed to start dashboard or notify admins:', err);
@@ -492,7 +492,7 @@ class DiscordWhatsAppBridge {
   private async sendTestMessage(): Promise<void> {
     try {
       if (this.authorizedJids.size === 0 || !this.whatsappSocket) {
-        console.log('⚠️ Cannot send test message: no recipients or socket not available');
+        lol('⚠️ Cannot send test message: no recipients or socket not available');
         return;
       }
 
@@ -505,7 +505,7 @@ class DiscordWhatsAppBridge {
         await this.whatsappSocket.sendMessage(jid, { text: testMessage });
       }
 
-      console.log('📤 Test message sent to WhatsApp successfully!');
+      lol('📤 Test message sent to WhatsApp successfully!');
     } catch (error) {
       console.error('❌ Error sending test message:', error);
     }
@@ -540,8 +540,8 @@ class DiscordWhatsAppBridge {
     ) || msg.key.fromMe
 
     if (!allowed) {
-      console.log(`🚫 Unauthorized sender — raw: ${rawJid} | resolved: ${senderJid} | lidMap size: ${this.lidToJid.size}`);
-      console.log(`   Authorized list: ${[...this.authorizedJids].join(', ')}`);
+      lol(`🚫 Unauthorized sender — raw: ${rawJid} | resolved: ${senderJid} | lidMap size: ${this.lidToJid.size}`);
+      lol(`   Authorized list: ${[...this.authorizedJids].join(', ')}`);
     }
 
     return allowed;
@@ -553,7 +553,7 @@ class DiscordWhatsAppBridge {
    */
   private async removeBackground(inputBuffer: Buffer): Promise<Buffer> {
     try {
-      console.log('🤖 Sending image to Python API for background removal...');
+      lol('🤖 Sending image to Python API for background removal...');
       const formData = new FormData();
       const blob = new Blob([new Uint8Array(inputBuffer)], { type: 'image/png' });
       formData.append('file', blob, 'image.png');
@@ -568,7 +568,7 @@ class DiscordWhatsAppBridge {
       }
 
       const arrayBuffer = await response.arrayBuffer();
-      console.log('✅ Background removed successfully!');
+      lol('✅ Background removed successfully!');
       return Buffer.from(arrayBuffer);
     } catch (err) {
       console.error('❌ Failed to remove background:', err);
@@ -581,7 +581,7 @@ class DiscordWhatsAppBridge {
    */
   private async ocrImage(inputBuffer: Buffer): Promise<string> {
     try {
-      console.log('🤖 Sending image to Python API for OCR...');
+      lol('🤖 Sending image to Python API for OCR...');
       const formData = new FormData();
       const blob = new Blob([new Uint8Array(inputBuffer)], { type: 'image/png' });
       formData.append('file', blob, 'image.png');
@@ -608,7 +608,7 @@ class DiscordWhatsAppBridge {
    */
   private async transcribeAudio(inputBuffer: Buffer): Promise<string> {
     try {
-      console.log('🤖 Sending audio to Python API for transcription...');
+      lol('🤖 Sending audio to Python API for transcription...');
       const formData = new FormData();
       const blob = new Blob([new Uint8Array(inputBuffer)], { type: 'audio/ogg' });
       formData.append('file', blob, 'audio.ogg');
@@ -635,7 +635,7 @@ class DiscordWhatsAppBridge {
    */
   private async takeScreenshot(url: string, fullPage: boolean = false, format: string = 'png'): Promise<Buffer> {
     try {
-      console.log(`🤖 Sending URL to Python API for screenshot: ${url}`);
+      lol(`🤖 Sending URL to Python API for screenshot: ${url}`);
       const response = await fetch('http://127.0.0.1:8000/screenshot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -647,7 +647,7 @@ class DiscordWhatsAppBridge {
       }
 
       const arrayBuffer = await response.arrayBuffer();
-      console.log('✅ Screenshot captured successfully!');
+      lol('✅ Screenshot captured successfully!');
       return Buffer.from(arrayBuffer);
     } catch (err) {
       console.error('❌ Screenshot failed:', err);
@@ -669,7 +669,7 @@ class DiscordWhatsAppBridge {
   ): Promise<void> {
     for (const msg of messages) {
       try {
-        console.log("msg", msg)
+        lol("msg", msg)
         if (!msg.message || msg.key.remoteJid === 'status@broadcast') continue;
 
         // ── Skip bot's own echoed messages (loop prevention) ─────────────────
@@ -678,7 +678,7 @@ class DiscordWhatsAppBridge {
         // to reply to its own replies, creating an infinite message loop.
         // We track messages sent by the bot and ignore them.
         if (msg.key.fromMe && msg.key.id && this.botSentMessageIds.has(msg.key.id)) {
-          console.log(`⏭️ Skipping bot's own echoed message`);
+          lol(`⏭️ Skipping bot's own echoed message`);
           continue;
         }
 
@@ -694,7 +694,7 @@ class DiscordWhatsAppBridge {
               : 0;
         const ageSeconds = Math.floor(Date.now() / 1000) - tsSeconds;
         if (tsSeconds > 0 && ageSeconds > 60) {
-          console.log(`⏭️ Skipping old message (${ageSeconds}s ago) from ${msg.key.remoteJid}`);
+          lol(`⏭️ Skipping old message (${ageSeconds}s ago) from ${msg.key.remoteJid}`);
           continue;
         }
 
@@ -702,7 +702,7 @@ class DiscordWhatsAppBridge {
 
         const msgUniqueId = `${msg.key.remoteJid}:${msg.key.id}`;
         if (this.processedMessageIds.has(msgUniqueId)) {
-          console.log(`⏭️ Skipping already-processed message (${msgUniqueId})`);
+          lol(`⏭️ Skipping already-processed message (${msgUniqueId})`);
           continue;
         }
         if (this.processedMessageIds.size >= 500) {
@@ -731,7 +731,7 @@ class DiscordWhatsAppBridge {
 
         // ── .url command ─────────────────────────────────────────────────────
         if (messageText.toLowerCase() === '.url') {
-          console.log('📊 Detected .url command...');
+          lol('📊 Detected .url command...');
           const urls = getAllUrls();
           const keys = Object.keys(urls);
 
@@ -794,7 +794,7 @@ class DiscordWhatsAppBridge {
 
         // ── .pp command ──────────────────────────────────────────────────────
         if (messageText.toLowerCase() === '.pp') {
-          console.log('👤 Detected .pp command...');
+          lol('👤 Detected .pp command...');
 
           let targetJid = jid;
           const participant = msg.message.extendedTextMessage?.contextInfo?.participant;
@@ -828,7 +828,7 @@ class DiscordWhatsAppBridge {
           const voMsg = quotedMessage?.viewOnceMessageV2?.message || quotedMessage?.viewOnceMessage?.message || quotedMessage;
 
           if (voMsg?.imageMessage || voMsg?.videoMessage) {
-            console.log('👀 Detected .reveal command on view-once media...');
+            lol('👀 Detected .reveal command on view-once media...');
             const statusMsg = await sock.sendMessage(jid, { text: '⏳ *Revealing view-once media...*' }, { quoted: msg });
 
             try {
@@ -857,7 +857,7 @@ class DiscordWhatsAppBridge {
 
         // ── .terminal command ────────────────────────────────────────────────
         if (messageText.toLowerCase() === '.terminal') {
-          console.log('💻 Detected .terminal command...');
+          lol('💻 Detected .terminal command...');
           const statusMsg = await sock.sendMessage(jid, { text: '⏳ *Starting Web Terminal...*' }, { quoted: msg });
 
           try {
@@ -898,7 +898,7 @@ class DiscordWhatsAppBridge {
 
         // ── .vscode command ──────────────────────────────────────────────────
         if (messageText.toLowerCase() === '.vscode') {
-          console.log('💻 Detected .vscode command...');
+          lol('💻 Detected .vscode command...');
           const statusMsg = await sock.sendMessage(jid, { text: '⏳ *Starting VSCode Server...*' }, { quoted: msg });
 
           try {
@@ -938,7 +938,7 @@ class DiscordWhatsAppBridge {
 
         // ── .browser command ──────────────────────────────────────────────────
         if (messageText.toLowerCase() === '.browser') {
-          console.log('🌐 Detected .browser command...');
+          lol('🌐 Detected .browser command...');
           const statusMsg = await sock.sendMessage(jid, { text: '⏳ *Starting Cloud Browser... (This may take a minute)*' }, { quoted: msg });
 
           try {
@@ -984,7 +984,7 @@ class DiscordWhatsAppBridge {
 
           // .android start [hours]
           if (subcommand === 'start') {
-            console.log('📱 Detected .android start command...');
+            lol('📱 Detected .android start command...');
             const statusMsg = await sock.sendMessage(jid, { text: '⏳ *Starting Android Emulator...*\n_This may take 2-3 minutes_' }, { quoted: msg });
 
             try {
@@ -1024,7 +1024,7 @@ class DiscordWhatsAppBridge {
 
           // .android status
           if (subcommand === 'status') {
-            console.log('📱 Detected .android status command...');
+            lol('📱 Detected .android status command...');
             try {
               const { getAndroidEmulatorStatus } = require('./libs/android-emulator');
               const status = await getAndroidEmulatorStatus();
@@ -1051,7 +1051,7 @@ class DiscordWhatsAppBridge {
 
           // .android stop
           if (subcommand === 'stop') {
-            console.log('📱 Detected .android stop command...');
+            lol('📱 Detected .android stop command...');
             try {
               const { stopAndroidEmulator } = require('./libs/android-emulator');
               const result = await stopAndroidEmulator();
@@ -1088,7 +1088,7 @@ class DiscordWhatsAppBridge {
 
         // ── .rbg command ─────────────────────────────────────────────────────
         if (quotedMessage?.imageMessage && messageText.toLowerCase() === '.rbg') {
-          console.log('🖼️ Detected .rbg command on image reply...');
+          lol('🖼️ Detected .rbg command on image reply...');
           const statusMsg = await sock.sendMessage(jid, { text: '⏳ *Removing background...*' }, { quoted: msg });
 
           try {
@@ -1185,7 +1185,7 @@ class DiscordWhatsAppBridge {
 
         if (quotedMessage?.imageMessage && (isStickerCmd || isSbgCmd)) {
           const wantBgRemoval = isSbgCmd || messageText.toLowerCase().includes('bg');
-          console.log(`🖼️ Detected sticker command (bg removal: ${wantBgRemoval}) on image reply...`);
+          lol(`🖼️ Detected sticker command (bg removal: ${wantBgRemoval}) on image reply...`);
 
           const quotedMsg: proto.IWebMessageInfo = {
             key: msg.key,
@@ -1208,13 +1208,13 @@ class DiscordWhatsAppBridge {
             .toBuffer();
 
           await sock.sendMessage(jid, { sticker: stickerBuffer });
-          console.log('✅ Image converted to sticker and sent!');
+          lol('✅ Image converted to sticker and sent!');
           continue;
         }
 
         // ── .ocr command ───────────────────────────────────────────────────
         if (quotedMessage?.imageMessage && messageText.toLowerCase() === '.ocr') {
-          console.log('🖼️ Detected .ocr command on image reply...');
+          lol('🖼️ Detected .ocr command on image reply...');
           const quotedMsg: proto.IWebMessageInfo = {
             key: msg.key,
             message: { imageMessage: quotedMessage.imageMessage },
@@ -1231,7 +1231,7 @@ class DiscordWhatsAppBridge {
         // ── .whisper command ────────────────────────────────────────────────
         const audioMsg = quotedMessage?.audioMessage || msg.message.audioMessage;
         if (audioMsg && messageText.toLowerCase() === '.whisper') {
-          console.log('🎙️ Detected .whisper command, transcribing...');
+          lol('🎙️ Detected .whisper command, transcribing...');
           const statusMsg = await sock.sendMessage(jid, { text: '⏳ *Transcribing audio...*' }, { quoted: msg });
 
           const quotedMsg: proto.IWebMessageInfo = {
@@ -1351,7 +1351,7 @@ class DiscordWhatsAppBridge {
                 statusKey: movieStatusKey,
               });
 
-              console.log(`[Movie] Links shown for "${chosen.title}", awaiting download confirm`);
+              lol(`[Movie] Links shown for "${chosen.title}", awaiting download confirm`);
               continue;
             }
 
@@ -1412,7 +1412,7 @@ class DiscordWhatsAppBridge {
                 if (movieStatusKey) await sock.sendMessage(jid, { delete: movieStatusKey });
                 try { require('fs').unlinkSync(dlResult.filePath); } catch { /* ignore */ }
 
-                console.log(`✅ Movie downloaded and sent: "${chosen.title}"`);
+                lol(`✅ Movie downloaded and sent: "${chosen.title}"`);
               } catch (err) {
                 const errMsg = err instanceof Error ? err.message : String(err);
                 const updateStatus2 = this.makeStatusUpdater(jid, movieStatusKey);
@@ -1496,7 +1496,7 @@ class DiscordWhatsAppBridge {
               const result = await downloadYouTubeVideo(info.url, quality, updateStatus);
 
               await updateStatus('📤 *Uploading to WhatsApp...*');
-              console.log(`📤 Sending YouTube ${quality.key} (${(result.buffer.length / 1024 / 1024).toFixed(1)} MB) to ${jid}`);
+              lol(`📤 Sending YouTube ${quality.key} (${(result.buffer.length / 1024 / 1024).toFixed(1)} MB) to ${jid}`);
 
               if (result.mediaType === 'video') {
                 await sock.sendMessage(jid, {
@@ -1510,7 +1510,7 @@ class DiscordWhatsAppBridge {
               }
 
               if (statusKey) await sock.sendMessage(jid, { delete: statusKey });
-              console.log(`✅ YouTube ${quality.key} sent!`);
+              lol(`✅ YouTube ${quality.key} sent!`);
             } catch (err) {
               const errMsg = err instanceof Error ? err.message : String(err);
               await updateStatus(`❌ *Download failed*\n${errMsg}`);
@@ -1567,7 +1567,7 @@ class DiscordWhatsAppBridge {
                   mimetype: fallbackResult.mimetype,
                 });
                 if (statusKey) await sock.sendMessage(jid, { delete: statusKey });
-                console.log('✅ YouTube fallback download sent!');
+                lol('✅ YouTube fallback download sent!');
               } catch (fallbackErr) {
                 const fallbackErrMsg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
                 await updateStatus(`❌ *All download methods failed*\n${fallbackErrMsg}`);
@@ -1596,7 +1596,7 @@ class DiscordWhatsAppBridge {
                 await sock.sendMessage(jid, { document: mediaBuffer, mimetype, fileName: filename, caption });
               }
               if (statusKey) await sock.sendMessage(jid, { delete: statusKey });
-              console.log(`✅ ${caption.split('\n')[0]} media sent!`);
+              lol(`✅ ${caption.split('\n')[0]} media sent!`);
             } else {
               if (statusKey) await sock.sendMessage(jid, { delete: statusKey });
             }
@@ -1689,7 +1689,7 @@ class DiscordWhatsAppBridge {
   private async handleDiscordMessage(message: Message): Promise<void> {
     // Ignore bot messages
     if (message.author.bot) {
-      console.log(`   ⏭️ Skipping bot message`);
+      lol(`   ⏭️ Skipping bot message`);
       return;
     }
 
@@ -1702,14 +1702,14 @@ class DiscordWhatsAppBridge {
 
     // Only process messages from the specified server
     if (message.guildId !== serverId) {
-      console.log(`   ⏭️ Skipping message from different server (${message.guildId} != ${serverId})`);
+      lol(`   ⏭️ Skipping message from different server (${message.guildId} != ${serverId})`);
       return;
     }
 
-    console.log(`   ✅ Message matches server ID, processing...`);
+    lol(`   ✅ Message matches server ID, processing...`);
 
     if (!this.whatsappReady || !this.whatsappSocket) {
-      console.log('   ⚠️ WhatsApp not ready, skipping message');
+      lol('   ⚠️ WhatsApp not ready, skipping message');
       return;
     }
 
@@ -1736,14 +1736,14 @@ class DiscordWhatsAppBridge {
         await this.whatsappSocket.sendMessage(jid, { text: formattedMessage });
       }
 
-      console.log(`   ✉️ Forwarded message from ${message.author.username} (#${channelName}) to ${this.authorizedJids.size} recipient(s)`);
+      lol(`   ✉️ Forwarded message from ${message.author.username} (#${channelName}) to ${this.authorizedJids.size} recipient(s)`);
     } catch (error) {
       console.error('❌ Error sending message to WhatsApp:', error);
     }
   }
 
   public async stop(): Promise<void> {
-    console.log('🛑 Shutting down bridge...');
+    lol('🛑 Shutting down bridge...');
     // Don't logout from WhatsApp, just close the socket to preserve session
     if (this.whatsappSocket) {
       this.whatsappSocket.end(undefined);

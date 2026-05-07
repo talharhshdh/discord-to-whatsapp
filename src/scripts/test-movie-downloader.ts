@@ -24,7 +24,6 @@ async function main() {
   //   process.exit(1);
   // }
 
-  console.log(`\n🎬 Testing movie-downloader for TMDB ID: ${tmdbId} (${mediaType})\n`);
 
   const urls = await getMovieStreamUrls(tmdbId, "movie");
 
@@ -33,12 +32,9 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`\n✅ Resolved ${urls.length} m3u8 URL(s):\n`);
   urls.forEach((url, i) => {
-    console.log(`  [${i}] ${url}`);
   });
 
-  console.log('\n✨ Done.');
 }
 
 main().catch((err) => {

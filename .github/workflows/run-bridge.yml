@@ -127,7 +127,7 @@ jobs:
             fi
             sleep 2
           done
-          cat bypasser.log
+          # bypasser.log intentionally not printed (avoid leaking startup info)
 
       # - name: Run Auto-Download (Spider-Man)
       #   run: node dist/scripts/auto-download.js

@@ -226,7 +226,6 @@ function buildYtdlpBaseFlags(): Record<string, unknown> {
   const cookiesPath = getYouTubeCookiesPath();
   if (cookiesPath) {
     flags['cookies'] = cookiesPath;
-    console.log(`[youtube-dl] Using cookies from: ${cookiesPath}`);
   }
   return flags;
 }
@@ -432,7 +431,6 @@ export async function downloadYouTubeVideoFallback(
     title = (data['title'] as string) ?? title;
     if (typeof data['mp4'] === 'string' && data['mp4']) {
       mediaUrl = data['mp4'] as string;
-      console.log('[youtube-dl] btch-downloader succeeded, url:', mediaUrl);
     }
   } catch (btchErr) {
     console.warn('[youtube-dl] btch-downloader also failed:', btchErr);
@@ -446,7 +444,6 @@ export async function downloadYouTubeVideoFallback(
       title = (data['title'] as string) ?? title;
       if (typeof data['mp4'] === 'string' && data['mp4']) {
         mediaUrl = data['mp4'] as string;
-        console.log('[youtube-dl] ab-downloader succeeded, url:', mediaUrl);
       }
     } catch (abErr) {
       console.warn('[youtube-dl] ab-downloader also failed:', abErr);

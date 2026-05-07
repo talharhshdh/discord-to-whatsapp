@@ -14,7 +14,6 @@ export async function startTerminal(): Promise<{ url?: string; username?: string
     const username = `dev_${crypto.randomBytes(3).toString('hex')}`;
     const password = crypto.randomBytes(6).toString('hex');
 
-    console.log(`🚀 Setting up Terminal User ${username} on port ${port}...`);
 
     // Create the random user
     await execAsync(`sudo useradd -m -s /bin/bash ${username}`);
@@ -28,14 +27,12 @@ export async function startTerminal(): Promise<{ url?: string; username?: string
       await execAsync('sudo apt-get update && sudo apt-get install -y ttyd');
     }
 
-    console.log(`🚀 Starting ttyd for ${username} on port ${port}...`);
     const terminalProcess = spawn('sudo', ['ttyd', '-W', '-p', port.toString(), 'login']);
 
     terminalProcess.on('error', (err) => {
       console.error(`❌ ttyd spawn error for ${username}:`, err);
     });
 
-    console.log(`🚀 Starting Cloudflare Tunnel for port ${port}...`);
     const tunnelProcess = spawn('cloudflared', ['tunnel', '--url', `http://localhost:${port}`]);
 
     return new Promise((resolve) => {
@@ -46,7 +43,6 @@ export async function startTerminal(): Promise<{ url?: string; username?: string
         const match = output.match(/https:\/\/[-0-9a-z]*\.trycloudflare\.com/);
         if (match && !cloudflareUrl) {
           cloudflareUrl = match[0];
-          console.log(`✅ Terminal Cloudflare Tunnel URL for ${username}: ${cloudflareUrl} - Waiting 5 seconds...`);
 
           // Register session with cloudflared URL
           sessionManager.addSession({
@@ -69,7 +65,6 @@ export async function startTerminal(): Promise<{ url?: string; username?: string
       });
 
       tunnelProcess.on('close', (code) => {
-        console.log(`⚠️ Terminal Cloudflare Tunnel for ${username} exited with code ${code}`);
         sessionManager.removeSession(sessionId);
       });
 

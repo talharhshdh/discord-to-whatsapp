@@ -12,9 +12,7 @@ import * as path from 'path';
 
 const result = dotenv.config();
 if (result.error) {
-  console.log('⚠️ Warning: Could not load .env file. Using system environment variables.');
 } else {
-  console.log('✅ .env file loaded successfully.');
 }
 
 function normalizeJid(jid: string): string {
@@ -22,7 +20,6 @@ function normalizeJid(jid: string): string {
 }
 
 async function runAutoDownload() {
-  console.log('🎬 Starting auto-download script...');
 
   const query = 'spiderman';
   const recipients = (process.env.WHATSAPP_RECIPIENT ?? '').split(',').map(r => r.trim()).filter(Boolean);
@@ -33,7 +30,6 @@ async function runAutoDownload() {
   }
 
   const targetJid = `${recipients[0]}@s.whatsapp.net`;
-  console.log(`🎯 Target recipient: ${targetJid}`);
 
   const { state, saveCreds } = await useMultiFileAuthState('auth_info');
   const { version } = await fetchLatestBaileysVersion();
@@ -53,14 +49,11 @@ async function runAutoDownload() {
       const { connection, lastDisconnect } = update;
 
       if (connection === 'open') {
-        console.log('✅ WhatsApp connected!');
 
         try {
-          console.log(`🔍 Searching for "${query}"...`);
           const results = await searchMovies(query, 1);
 
           if (results.length === 0) {
-            console.log('❌ No results found for spiderman.');
             await sock.sendMessage(targetJid, { text: '❌ *Auto-Download Failed*: No results found for "spiderman".' });
             resolve();
             return;
@@ -68,13 +61,11 @@ async function runAutoDownload() {
 
           const movie = results[0];
           const year = movie.releaseDate ? ` (${movie.releaseDate.slice(0, 4)})` : '';
-          console.log(`🎬 Found: ${movie.title}${year}`);
 
           const statusMsg = await sock.sendMessage(targetJid, { text: `🎬 *Auto-Downloading:* ${movie.title}${year}...` });
           const statusKey = statusMsg?.key;
 
           const updateStatus = async (msg: string) => {
-            console.log(`[Status] ${msg}`);
             if (statusKey) {
               await sock.sendMessage(targetJid, { text: msg, edit: statusKey });
             }
@@ -105,7 +96,6 @@ async function runAutoDownload() {
               text: `⚠️ *Cloudflare Blocked the Downloader*\n\nI couldn't automatically bypass Cloudflare to get the video link for *${movie.title}*.\n\nCould you please open this link in your browser, grab the \`.m3u8\` link from the network tab, and reply to this message with it?\n\n🔗 ${embedUrl}\n\n_Waiting 10 minutes for your reply..._` 
             });
 
-            console.log('⏳ Waiting up to 10 minutes for the user to reply with the .m3u8 link...');
             
             const m3u8Link = await new Promise<string>((resolve, reject) => {
               const timeout = setTimeout(() => reject(new Error('Timeout waiting for m3u8 link')), 10 * 60 * 1000);
@@ -127,7 +117,6 @@ async function runAutoDownload() {
               sock.ev.on('messages.upsert', listener);
             });
 
-            console.log(`✅ Received m3u8 link from user: ${m3u8Link}`);
             await updateStatus('📥 *Received manual link, downloading...*');
 
             // Import the helper function we just exported
@@ -142,7 +131,6 @@ async function runAutoDownload() {
             };
           }
 
-          console.log('📤 Uploading to WhatsApp...');
           await updateStatus('📤 *Uploading to WhatsApp...*');
 
           const videoBuffer = fs.readFileSync(dlResult.filePath);
@@ -156,14 +144,12 @@ async function runAutoDownload() {
           if (statusKey) await sock.sendMessage(targetJid, { delete: statusKey });
           fs.unlinkSync(dlResult.filePath);
 
-          console.log('✅ Done!');
           resolve();
         } catch (err) {
           console.error('❌ Global error during download process:', err);
           await sock.sendMessage(targetJid, { text: `❌ *Auto-Download Error:*\n${err instanceof Error ? err.message : String(err)}` });
           
           if (fs.existsSync('cf_screenshot.png')) {
-            console.log('📸 Sending Cloudflare screenshot to recipient...');
             const screenshot = fs.readFileSync('cf_screenshot.png');
             await sock.sendMessage(targetJid, { 
               image: screenshot, 
@@ -180,7 +166,6 @@ async function runAutoDownload() {
           }, 5000);
         }
       } else if (connection === 'close') {
-        console.log('⚠️ Connection closed.');
         // If it's a logout or something else, we might need to handle it,
         // but for a one-off script, we just wait for 'open'.
       }

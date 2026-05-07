@@ -7,7 +7,6 @@ export async function getCloudflareTunnelUrl(port = 6080): Promise<string> {
   if (cloudflareUrl) return cloudflareUrl;
   
   return new Promise((resolve) => {
-    console.log('🚀 Starting Cloudflare Tunnel via code...');
     try {
       tunnelProcess = spawn('cloudflared', ['tunnel', '--url', `http://localhost:${port}`]);
       
@@ -16,7 +15,6 @@ export async function getCloudflareTunnelUrl(port = 6080): Promise<string> {
         const match = output.match(/https:\/\/[-0-9a-z]*\.trycloudflare\.com/);
         if (match && !cloudflareUrl) {
           cloudflareUrl = match[0];
-          console.log(`✅ Cloudflare Tunnel generated URL: ${cloudflareUrl}`);
           resolve(cloudflareUrl);
         }
       });
@@ -27,14 +25,12 @@ export async function getCloudflareTunnelUrl(port = 6080): Promise<string> {
       });
 
       tunnelProcess.on('close', (code) => {
-        console.log(`⚠️ Cloudflare Tunnel exited with code ${code}`);
         cloudflareUrl = '';
       });
       
       // Safety timeout in case Cloudflare doesn't output the URL within 15 seconds
       setTimeout(() => {
         if (!cloudflareUrl) {
-          console.log('⚠️ Timed out waiting for Cloudflare Tunnel URL.');
           resolve('');
         }
       }, 15000);

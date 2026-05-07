@@ -27,7 +27,6 @@ export async function startBrowser(): Promise<{ url?: string; username?: string;
   // Check if general browser already exists
   const existing = Array.from(browserInstances.values()).find(b => !b.targetUrl);
   if (existing) {
-    console.log('♻️ General browser already running, returning existing credentials');
     return {
       url: existing.url,
       username: existing.username,
@@ -94,9 +93,7 @@ async function startBrowserInstance(targetUrl?: string): Promise<{
     const username = BROWSER_USERNAME || `dev_${crypto.randomBytes(3).toString('hex')}`;
     const password = BROWSER_PASSWORD || crypto.randomBytes(6).toString('hex');
 
-    console.log(`🚀 Setting up Browser on port ${port}${targetUrl ? ` for ${targetUrl}` : ''}...`);
     if (BROWSER_USERNAME && BROWSER_PASSWORD) {
-      console.log(`🔐 Using hardcoded credentials from environment`);
     }
 
     // Ensure Docker is available
@@ -112,7 +109,6 @@ async function startBrowserInstance(targetUrl?: string): Promise<{
     try {
       const { stdout } = await execAsync(`docker ps -a --filter name=${containerName} --format "{{.Names}}"`);
       if (stdout.includes(containerName)) {
-        console.log('⚠️ Stopping existing browser container...');
         await execAsync(`docker stop ${containerName}`);
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
@@ -141,20 +137,17 @@ async function startBrowserInstance(targetUrl?: string): Promise<{
 
     dockerCmd.push('lscr.io/linuxserver/chromium:latest');
 
-    console.log(`🚀 Starting browser container...`);
     await execAsync(dockerCmd.join(' '));
 
     // ── Mode 1: Named tunnel with fixed custom domain ──────────────────────────
     if (BROWSER_TUNNEL_TOKEN && BROWSER_DOMAIN) {
       return new Promise((resolve) => {
-        console.log(`🌐 Starting named Cloudflare tunnel for Browser → https://${BROWSER_DOMAIN}`);
 
         const tunnelProcess = spawn('cloudflared', [
           'tunnel', '--no-autoupdate', 'run', '--token', BROWSER_TUNNEL_TOKEN,
         ]);
 
         tunnelProcess.stderr?.on('data', (data: Buffer) => {
-          console.log('[cloudflared-browser]', data.toString().trim());
         });
 
         tunnelProcess.on('error', (e) => {
@@ -164,7 +157,6 @@ async function startBrowserInstance(targetUrl?: string): Promise<{
         });
 
         tunnelProcess.on('close', (code) => {
-          console.log(`⚠️ Named browser tunnel exited with code ${code}`);
           const instanceId = targetUrl || 'general';
           browserInstances.delete(instanceId);
         });
@@ -173,7 +165,6 @@ async function startBrowserInstance(targetUrl?: string): Promise<{
         // Give cloudflared 5s to initialise before resolving.
         setTimeout(() => {
           const cloudflareUrl = `https://${BROWSER_DOMAIN}`;
-          console.log(`✅ Browser at fixed domain: ${cloudflareUrl}`);
 
           // Store instance
           const instanceId = targetUrl || 'general';
@@ -202,7 +193,6 @@ async function startBrowserInstance(targetUrl?: string): Promise<{
     }
 
     // ── Mode 2: Quick tunnel (trycloudflare.com) ───────────────────────────────
-    console.log(`🚀 Starting Cloudflare Tunnel on port ${port}...`);
     const tunnelProcess = spawn('cloudflared', [
       'tunnel',
       '--url', `http://localhost:${port}`
@@ -216,7 +206,6 @@ async function startBrowserInstance(targetUrl?: string): Promise<{
         const match = output.match(/https:\/\/[-0-9a-z]*\.trycloudflare\.com/);
         if (match && !cloudflareUrl) {
           cloudflareUrl = match[0];
-          console.log(`✅ Browser Tunnel URL: ${cloudflareUrl}`);
           setTimeout(() => {
             // Store instance
             const instanceId = targetUrl || 'general';
@@ -245,7 +234,6 @@ async function startBrowserInstance(targetUrl?: string): Promise<{
       });
 
       tunnelProcess.on('close', (code) => {
-        console.log(`⚠️ Browser Tunnel exited with code ${code}`);
         const instanceId = targetUrl || 'general';
         browserInstances.delete(instanceId);
       });
@@ -296,33 +284,41 @@ export async function exportYouTubeCookies(
   const containerName = instance.containerName;
   const cookiesPath = path.join(process.cwd(), 'browser_data', 'youtube-cookies.txt');
 
-  // Python script that reads Chromium's SQLite cookie DB and writes Netscape format.
-  // Chromium stores cookies unencrypted on Linux (no OS keyring inside Docker).
-  const pythonScript = [
+  // Write the script to a temp file inside the container, then execute it.
+  // Using -c with semicolons breaks Python's indented block syntax (for loops etc.).
+  const scriptLines = [
     'import sqlite3, os, sys',
+    `domain_filter = "${domain}"`,
     'db = "/config/chromium/Default/Cookies"',
     'out = "/config/youtube-cookies.txt"',
-    'if not os.path.exists(db): sys.exit("no-db")',
+    'if not os.path.exists(db):',
+    '    sys.exit("no-db")',
     'con = sqlite3.connect(db)',
     'cur = con.cursor()',
-    `domain_filter = "${domain}"`,
-    'cur.execute("SELECT host_key, httponly, path, is_secure, expires_utc, name, value FROM cookies WHERE host_key LIKE ? OR host_key LIKE ?", (domain_filter + \"%%\", domain_filter.lstrip(\".\") + \"%%\"))',
+    'cur.execute(',
+    '    "SELECT host_key, httponly, path, is_secure, expires_utc, name, value"',
+    '    " FROM cookies WHERE host_key LIKE ? OR host_key LIKE ?",',
+    '    (domain_filter + "%", domain_filter.lstrip(".") + "%")',
+    ')',
     'rows = cur.fetchall()',
     'con.close()',
     'lines = ["# Netscape HTTP Cookie File"]',
     'for r in rows:',
     '    host, httponly, p, secure, exp, name, value = r',
-    '    # Convert Chrome epoch (microseconds since 1601) to Unix timestamp',
     '    unix_exp = max(0, (exp - 11644473600000000) // 1000000) if exp else 0',
-    '    lines.append("\\t".join([host, "TRUE" if host.startswith(".") else "FALSE", p, "TRUE" if secure else "FALSE", str(unix_exp), name, value]))',
+    '    flag_host = "TRUE" if host.startswith(".") else "FALSE"',
+    '    flag_secure = "TRUE" if secure else "FALSE"',
+    '    lines.append("\\t".join([host, flag_host, p, flag_secure, str(unix_exp), name, value]))',
     'open(out, "w").write("\\n".join(lines))',
     'print(f"exported {len(rows)} cookies")',
-  ].join('; ');
+  ];
+
+  // Escape single quotes in each line for the bash heredoc, then write + run the file
+  const escapedLines = scriptLines.map(l => l.replace(/'/g, "'\\''")).join('\\n');
+  const execCmd = `docker exec ${containerName} bash -c $'printf "${escapedLines}\\n" > /tmp/_cookie_export.py && python3 /tmp/_cookie_export.py'`;
 
   try {
-    const { stdout, stderr } = await execAsync(
-      `docker exec ${containerName} python3 -c '${pythonScript}'`,
-    );
+    const { stdout, stderr } = await execAsync(execCmd);
 
     if (stderr && stderr.includes('no-db')) {
       return {
@@ -338,7 +334,6 @@ export async function exportYouTubeCookies(
 
     const lineCount = fs.readFileSync(cookiesPath, 'utf-8').split('\n').filter(l => !l.startsWith('#') && l.trim()).length;
     const summary = stdout.trim() || `${lineCount} cookies`;
-    console.log(`🍪 YouTube cookies exported → ${cookiesPath} (${summary})`);
 
     return { success: true, message: `Exported ${lineCount} YouTube cookies to ${cookiesPath}`, cookiesPath };
   } catch (err) {
@@ -361,7 +356,6 @@ export async function exportYouTubeCookies(
       }
 
       const lineCount = fs.readFileSync(cookiesPath, 'utf-8').split('\n').filter(l => !l.startsWith('#') && l.trim()).length;
-      console.log(`🍪 YouTube cookies exported (bash fallback) → ${cookiesPath}`);
       return { success: true, message: `Exported ${lineCount} YouTube cookies`, cookiesPath };
     } catch (fallbackErr) {
       return { success: false, message: `Cookie export failed: ${errMsg}` };

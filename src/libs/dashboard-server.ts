@@ -56,7 +56,6 @@ export function registerUrl(
   meta: { username?: string; password?: string } = {}
 ): void {
   urlRegistry[key] = { label, url, username: meta.username, password: meta.password, registeredAt: new Date().toISOString() };
-  console.log(`📊 Dashboard registered: ${label} → ${url}`);
 }
 
 export function getAllUrls(): Record<string, ToolUrlEntry> {
@@ -557,7 +556,6 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 export function startLocalServer(port = 4000): Promise<string> {
   return new Promise((resolve, reject) => {
     const distDir = join(__dirname, '..', '..', 'dashboard', 'dist');
-    console.log(`📂 Dashboard dist → ${distDir} (exists: ${existsSync(distDir)})`);
     const server = createServer((req, res) => {
       handleRequest(req, res).catch((e) => {
         console.error('Dashboard handler error:', e);
@@ -566,7 +564,6 @@ export function startLocalServer(port = 4000): Promise<string> {
     });
     server.on('error', reject);
     server.listen(port, '127.0.0.1', () => {
-      console.log(`📊 Dashboard server → http://localhost:${port}`);
       resolve(`http://localhost:${port}`);
     });
   });
@@ -591,21 +588,19 @@ export function exposeDashboard(localPort = 4000): Promise<string> {
   // ── Mode 1: Named tunnel with fixed custom domain ──────────────────────────
   if (tunnelToken && customDomain) {
     return new Promise((resolve) => {
-      console.log(`🌐 Starting named Cloudflare tunnel → https://${customDomain}`);
       const proc: ChildProcess = spawn('cloudflared', [
         'tunnel', '--no-autoupdate', 'run', '--token', tunnelToken,
       ]);
-      proc.stderr?.on('data', (d: Buffer) => console.log('[cloudflared]', d.toString().trim()));
+      proc.stderr?.on('data', (_d: Buffer) => { /* suppress tunnel output */ });
       proc.on('error', (e) => {
         console.error('❌ Named tunnel error:', e);
         resolve('');
       });
-      proc.on('close', (code) => console.log(`⚠️ Named tunnel exited ${code}`));
+      proc.on('close', () => { /* named tunnel closed */ });
       // With named tunnels the URL is known immediately — no need to parse output.
       // Give cloudflared 5 s to initialise before resolving.
       setTimeout(() => {
         const url = `https://${customDomain}`;
-        console.log(`✅ Dashboard at fixed domain: ${url}`);
         resolve(url);
       }, 5000);
     });
@@ -613,15 +608,14 @@ export function exposeDashboard(localPort = 4000): Promise<string> {
 
   // ── Mode 2: Quick tunnel (trycloudflare.com) ───────────────────────────────
   return new Promise((resolve) => {
-    console.log('🚇 Starting Cloudflare quick tunnel for Dashboard...');
     let publicUrl = '';
     const proc: ChildProcess = spawn('cloudflared', ['tunnel', '--url', `http://localhost:${localPort}`]);
     proc.stderr?.on('data', (d: Buffer) => {
       const m = d.toString().match(/https:\/\/[-0-9a-z]*\.trycloudflare\.com/);
-      if (m && !publicUrl) { publicUrl = m[0]; console.log(`✅ Dashboard URL: ${publicUrl}`); resolve(publicUrl); }
+      if (m && !publicUrl) { publicUrl = m[0]; resolve(publicUrl); }
     });
     proc.on('error', (e) => { console.error('Dashboard tunnel error:', e); resolve(''); });
-    proc.on('close', (code) => console.log(`⚠️ Dashboard tunnel exited ${code}`));
+    proc.on('close', () => { /* quick tunnel closed */ });
     setTimeout(() => { if (!publicUrl) { console.warn('⚠️ Dashboard tunnel timed out.'); resolve(''); } }, 20000);
   });
 }

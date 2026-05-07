@@ -18,9 +18,7 @@ const TESTS: Array<{ name: string; fn: Function; url: string }> = [
 (async () => {
   for (const { name, fn, url } of TESTS) {
     try {
-      console.log(`\n===== ${name} =====`);
       const result = await fn(url);
-      console.log(JSON.stringify(result, null, 2));
     } catch (err: unknown) {
       console.error(`❌ ${name} error:`, err instanceof Error ? err.message : err);
     }

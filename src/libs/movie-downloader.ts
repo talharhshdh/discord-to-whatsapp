@@ -246,7 +246,6 @@ async function fetchHtmlViaBrowser(
   url: string,
   referer?: string,
 ): Promise<string> {
-  console.log(`[MovieDL] 🌐 Cloudflare detected — using local Python SeleniumBase API for: ${url}`);
 
   try {
     const response = await fetch('http://127.0.0.1:8000/get_html', {
@@ -265,7 +264,6 @@ async function fetchHtmlViaBrowser(
     const data = (await response.json()) as { html: string };
     return data.html;
   } catch (err) {
-    console.log(`[MovieDL] ❌ Python API error: ${err}`);
     throw err;
   }
 }
@@ -275,7 +273,6 @@ async function fetchHtmlViaBrowser(
  * The python server bypasses Cloudflare and extracts the URL.
  */
 async function browserGetProRcpUrl(rcpUrl: string): Promise<string> {
-  console.log(`[MovieDL] 🌐 Using local Python SeleniumBase API to get /prorcp/ from: ${rcpUrl}`);
 
   try {
     const response = await fetch('http://127.0.0.1:8000/get_prorcp', {
@@ -292,10 +289,8 @@ async function browserGetProRcpUrl(rcpUrl: string): Promise<string> {
     }
 
     const data = (await response.json()) as { url: string };
-    console.log(`[MovieDL] ✅ Found /prorcp/ from Python API: ${data.url}`);
     return data.url;
   } catch (err) {
-    console.log(`[MovieDL] ❌ Python API error: ${err}`);
     throw err;
   }
 }
@@ -317,7 +312,6 @@ async function fetchHtmlWithFallback(
 
     // Cloudflare can return 200 with a challenge page instead of 403
     if (isCloudflareBlock(null, html)) {
-      console.log(`[MovieDL] Cloudflare challenge page detected (200 body), switching to browser.`);
       return fetchHtmlViaBrowser(url, referer ?? extraHeaders['Referer']);
     }
 
@@ -380,7 +374,6 @@ async function getRcpUrl(tmdbId: number, mediaType: MovieMediaType): Promise<str
   const type = mediaType === 'tv' ? 'tv' : 'movie';
   const embedUrl = `https://${EMBED_HOST}/embed/${type}?tmdb=${tmdbId}&o=${encodeURIComponent(FILMPIRE_ORIGIN)}`;
 
-  console.log(`[MovieDL] Step1: Fetching embed page: ${embedUrl}`);
   const html = await fetchHtmlWithFallback(
     embedUrl,
     {
@@ -410,7 +403,6 @@ async function getRcpUrl(tmdbId: number, mediaType: MovieMediaType): Promise<str
  * from the loadIframe() JS call.
  */
 async function getProRcpUrl(rcpUrl: string): Promise<string> {
-  console.log(`[MovieDL] Step2: Fetching rcp page: ${rcpUrl}`);
 
   // Try raw HTTP + regex first (works on clean IPs)
   try {
@@ -449,7 +441,6 @@ async function getProRcpUrl(rcpUrl: string): Promise<string> {
  * Then resolves {v1},{v2},… placeholders using test_doms domain suffixes.
  */
 async function extractM3u8Urls(proRcpUrl: string): Promise<M3u8Info> {
-  console.log(`[MovieDL] Step3: Fetching prorcp page: ${proRcpUrl}`);
   const html = await fetchHtmlWithFallback(
     proRcpUrl,
     {
@@ -483,10 +474,8 @@ async function extractM3u8Urls(proRcpUrl: string): Promise<M3u8Info> {
       'https://tmstr1.orchidpixelgardens.com',
       'https://tmstr1.cloudnestra.com',
     ];
-    console.log('[MovieDL] test_doms not found in page, using fallback list');
   }
 
-  console.log(`[MovieDL] test_doms: ${testDoms.join(', ')}`);
 
   // ── Extract the Playerjs file: string ─────────────────────────────────
   // Pattern: new Playerjs({…, file: "https://tmstr1.{v1}/pl/H4sI…", …})
@@ -497,7 +486,6 @@ async function extractM3u8Urls(proRcpUrl: string): Promise<M3u8Info> {
   }
 
   const rawFileStr = fileMatch[1];
-  console.log(`[MovieDL] Raw file string (first 200): ${rawFileStr.slice(0, 200)}`);
 
   // Split by " or " to get individual stream URLs (best quality first)
   const rawUrls = rawFileStr
@@ -505,7 +493,6 @@ async function extractM3u8Urls(proRcpUrl: string): Promise<M3u8Info> {
     .map((u) => u.trim())
     .filter(Boolean);
 
-  console.log(`[MovieDL] Found ${rawUrls.length} stream URL(s) in file string`);
 
   // ── Resolve {v1},{v2},… placeholders ──────────────────────────────────
   // Each URL looks like:
@@ -570,7 +557,6 @@ async function extractM3u8Urls(proRcpUrl: string): Promise<M3u8Info> {
     }
   }
 
-  console.log(`[MovieDL] Resolved ${resolvedUrls.length} m3u8 URL(s):`);
   resolvedUrls.forEach((u, i) => console.log(`  [${i}] ${u}`));
 
   return { urls: resolvedUrls, filenamehint };
@@ -585,16 +571,12 @@ async function extractM3u8Urls(proRcpUrl: string): Promise<M3u8Info> {
  * one that responds successfully. Falls back to the first URL if none pass.
  */
 async function pickWorkingUrl(urls: string[]): Promise<string> {
-  console.log('[MovieDL] Step4: Probing m3u8 URLs...');
 
   for (const url of urls) {
-    console.log(`[MovieDL]   Checking: ${url}`);
     const ok = await headCheck(url);
     if (ok) {
-      console.log(`[MovieDL]   ✅ Reachable: ${url}`);
       return url;
     }
-    console.log(`[MovieDL]   ❌ Not reachable`);
   }
 
   // Fallback: just use the first URL and hope for the best
@@ -622,7 +604,6 @@ export async function downloadM3u8(
   const tmpDir = outputDir ?? os.tmpdir();
   const outputPath = path.join(tmpDir, `${safeTitle}.%(ext)s`);
 
-  console.log(`[MovieDL] Step5: Downloading via yt-dlp: ${m3u8Url}`);
   await onProgress('📥 *Downloading movie stream...*');
 
   await youtubeDlExec(m3u8Url, {
@@ -648,7 +629,6 @@ export async function downloadM3u8(
   for (const ext of ['mp4', 'mkv', 'ts', 'webm']) {
     const candidate = `${titleBase}.${ext}`;
     if (fs.existsSync(candidate)) {
-      console.log(`[MovieDL] Downloaded to: ${candidate}`);
       return candidate;
     }
   }

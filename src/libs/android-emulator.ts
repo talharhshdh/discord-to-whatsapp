@@ -38,14 +38,11 @@ export async function startAndroidEmulator(): Promise<{
   }
 
   try {
-    console.log('🚀 Starting Docker Android emulator...');
 
     // Pull the image if not exists
-    console.log('📦 Pulling Docker image (if needed)...');
     await execAsync('docker pull budtmo/docker-android:emulator_13.0', { timeout: 120000 });
 
     // Start the container
-    console.log('� Starting Android container...');
     dockerProcess = spawn('docker', [
       'run',
       '--rm',
@@ -60,11 +57,9 @@ export async function startAndroidEmulator(): Promise<{
     });
 
     dockerProcess.stdout?.on('data', (data) => {
-      console.log('[android-docker]', data.toString().trim());
     });
 
     dockerProcess.stderr?.on('data', (data) => {
-      console.log('[android-docker]', data.toString().trim());
     });
 
     dockerProcess.on('error', (err) => {
@@ -73,14 +68,12 @@ export async function startAndroidEmulator(): Promise<{
     });
 
     dockerProcess.on('exit', (code) => {
-      console.log(`⚠️ Android container exited with code ${code}`);
       isEmulatorRunning = false;
       dockerProcess = null;
       emulatorUrl = null;
     });
 
     // Wait for container to be ready
-    console.log('⏳ Waiting for Android to boot (60-90 seconds)...');
     await new Promise(resolve => setTimeout(resolve, 15000)); // Initial wait
 
     // Check if container is running and wait for Android to boot
@@ -88,7 +81,6 @@ export async function startAndroidEmulator(): Promise<{
       try {
         const { stdout } = await execAsync(`docker ps --filter name=${CONTAINER_NAME} --format "{{.Status}}"`);
         if (stdout.includes('Up')) {
-          console.log(`✅ Container is running (${i * 5}s elapsed)`);
           // Wait a bit more for Android to fully boot
           if (i >= 12) { // At least 60 seconds
             break;
@@ -101,7 +93,6 @@ export async function startAndroidEmulator(): Promise<{
     }
 
     // Start Cloudflare tunnel for the web UI
-    console.log('🌐 Starting Cloudflare tunnel for Android web UI...');
     emulatorUrl = await startTunnel(ANDROID_PORT);
 
     if (!emulatorUrl) {
@@ -118,7 +109,6 @@ export async function startAndroidEmulator(): Promise<{
     const { registerUrl } = require('./dashboard-server');
     registerUrl('android', '📱 Android Emulator', emulatorUrl);
 
-    console.log(`✅ Android emulator ready at: ${emulatorUrl}`);
 
     return {
       success: true,
@@ -148,21 +138,17 @@ async function startTunnel(port: number): Promise<string> {
   return new Promise((resolve, reject) => {
     let url = '';
     
-    console.log(`🌐 Starting Cloudflare tunnel for port ${port}...`);
     tunnelProcess = spawn('cloudflared', ['tunnel', '--url', `http://localhost:${port}`]);
     
     tunnelProcess.stdout?.on('data', (data) => {
-      console.log('[cloudflared-android]', data.toString().trim());
     });
     
     tunnelProcess.stderr?.on('data', (data) => {
       const output = data.toString();
-      console.log('[cloudflared-android]', output.trim());
       
       const match = output.match(/https:\/\/[-0-9a-z]*\.trycloudflare\.com/);
       if (match && !url) {
         url = match[0];
-        console.log(`✅ Cloudflare tunnel URL: ${url}`);
         resolve(url);
       }
     });
@@ -173,7 +159,6 @@ async function startTunnel(port: number): Promise<string> {
     });
 
     tunnelProcess.on('close', (code) => {
-      console.log(`⚠️ Cloudflare tunnel exited with code ${code}`);
       emulatorUrl = null;
     });
     
@@ -248,7 +233,6 @@ export async function stopAndroidEmulator(): Promise<{
   }
 
   try {
-    console.log('🛑 Stopping Android emulator...');
 
     await cleanupDocker();
 
@@ -256,7 +240,6 @@ export async function stopAndroidEmulator(): Promise<{
     emulatorStartTime = null;
     emulatorUrl = null;
 
-    console.log('✅ Android emulator stopped');
 
     return {
       success: true,

@@ -56,7 +56,6 @@ class SessionManager {
           this.sessions.set(session.id, restoredSession);
         }
 
-        console.log(`📊 Restored ${savedSessions.length} session(s) from disk`);
       }
     } catch (error) {
       console.error('❌ Failed to load sessions from disk:', error);
@@ -85,7 +84,6 @@ class SessionManager {
       });
 
       fs.writeFileSync(SESSIONS_FILE, JSON.stringify(serializableSessions, null, 2), 'utf-8');
-      console.log(`💾 Saved ${serializableSessions.length} session(s) to disk`);
     } catch (error) {
       console.error('❌ Failed to save sessions to disk:', error);
     }
@@ -96,7 +94,6 @@ class SessionManager {
    */
   addSession(session: Session): void {
     this.sessions.set(session.id, session);
-    console.log(`📊 Session added: ${session.type} (${session.id})`);
     this.saveSessions(); // Persist to disk
   }
 
@@ -127,7 +124,6 @@ class SessionManager {
   removeSession(id: string): boolean {
     const removed = this.sessions.delete(id);
     if (removed) {
-      console.log(`📊 Session removed: ${id}`);
       this.saveSessions(); // Persist to disk
     }
     return removed;
@@ -174,7 +170,6 @@ class SessionManager {
    */
   clearAll(): void {
     this.sessions.clear();
-    console.log('📊 All sessions cleared');
   }
 }
 
