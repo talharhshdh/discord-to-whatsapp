@@ -29,6 +29,7 @@ import { spawn, ChildProcess } from 'child_process';
 import { startTerminal } from './terminal';
 import { startVSCode } from './vscode';
 import { startBrowser } from './browser';
+import { exportYouTubeCookies } from './browser';
 import { detectAndDownload } from './downloader';
 import { searchYouTube, getYouTubeInfo, downloadYouTubeVideo, downloadYouTubeVideoFallback } from './youtube-dl';
 import { searchMovies } from './movie-search';
@@ -520,6 +521,15 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       const { startCustomBrowser } = require('./browser');
       const result = await startCustomBrowser(targetUrl);
       json(res, result);
+    } catch (e) { err(res, (e as Error).message); }
+    return;
+  }
+
+  // ── POST /api/browser/export-cookies ──────────────────────────────────
+  if (method === 'POST' && url === '/api/browser/export-cookies') {
+    try {
+      const result = await exportYouTubeCookies();
+      json(res, result, result.success ? 200 : 500);
     } catch (e) { err(res, (e as Error).message); }
     return;
   }

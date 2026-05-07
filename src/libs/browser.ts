@@ -1,6 +1,8 @@
 import { exec, spawn, ChildProcess } from 'child_process';
 import * as util from 'util';
 import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
 import { sessionManager } from './session-manager';
 
 const execAsync = util.promisify(exec);
@@ -260,6 +262,119 @@ async function startBrowserInstance(targetUrl?: string): Promise<{
     const errMsg = error instanceof Error ? error.message : String(error);
     return { error: `Failed to set up browser: ${errMsg}` };
   }
+}
+
+// ---------------------------------------------------------------------------
+// Cookie export
+// ---------------------------------------------------------------------------
+
+/**
+ * Exports YouTube cookies from the running Chromium container to a
+ * Netscape-format cookies.txt file that yt-dlp can consume via --cookies.
+ *
+ * The Chromium container mounts browser_data → /config.  The cookies SQLite
+ * DB lives at /config/chromium/Default/Cookies inside the container.
+ *
+ * Strategy: run a Python one-liner via `docker exec` to query the DB and
+ * write the Netscape file directly into /config (which is bind-mounted to
+ * browser_data/ on the host).
+ *
+ * @param domain  Domain to filter (default: ".youtube.com")
+ * @returns  Path to the written cookies file, or null on failure
+ */
+export async function exportYouTubeCookies(
+  domain = '.youtube.com',
+): Promise<{ success: boolean; message: string; cookiesPath?: string }> {
+  // Find the running browser container
+  const instance = Array.from(browserInstances.values()).find(b => !b.targetUrl)
+    ?? Array.from(browserInstances.values())[0];
+
+  if (!instance) {
+    return { success: false, message: 'No browser container is running. Start the browser first.' };
+  }
+
+  const containerName = instance.containerName;
+  const cookiesPath = path.join(process.cwd(), 'browser_data', 'youtube-cookies.txt');
+
+  // Python script that reads Chromium's SQLite cookie DB and writes Netscape format.
+  // Chromium stores cookies unencrypted on Linux (no OS keyring inside Docker).
+  const pythonScript = [
+    'import sqlite3, os, sys',
+    'db = "/config/chromium/Default/Cookies"',
+    'out = "/config/youtube-cookies.txt"',
+    'if not os.path.exists(db): sys.exit("no-db")',
+    'con = sqlite3.connect(db)',
+    'cur = con.cursor()',
+    `domain_filter = "${domain}"`,
+    'cur.execute("SELECT host_key, httponly, path, is_secure, expires_utc, name, value FROM cookies WHERE host_key LIKE ? OR host_key LIKE ?", (domain_filter + \"%%\", domain_filter.lstrip(\".\") + \"%%\"))',
+    'rows = cur.fetchall()',
+    'con.close()',
+    'lines = ["# Netscape HTTP Cookie File"]',
+    'for r in rows:',
+    '    host, httponly, p, secure, exp, name, value = r',
+    '    # Convert Chrome epoch (microseconds since 1601) to Unix timestamp',
+    '    unix_exp = max(0, (exp - 11644473600000000) // 1000000) if exp else 0',
+    '    lines.append("\\t".join([host, "TRUE" if host.startswith(".") else "FALSE", p, "TRUE" if secure else "FALSE", str(unix_exp), name, value]))',
+    'open(out, "w").write("\\n".join(lines))',
+    'print(f"exported {len(rows)} cookies")',
+  ].join('; ');
+
+  try {
+    const { stdout, stderr } = await execAsync(
+      `docker exec ${containerName} python3 -c '${pythonScript}'`,
+    );
+
+    if (stderr && stderr.includes('no-db')) {
+      return {
+        success: false,
+        message: 'Cookie DB not found. Open YouTube in the browser first, then try again.',
+      };
+    }
+
+    // Verify file was written to host mount
+    if (!fs.existsSync(cookiesPath)) {
+      return { success: false, message: 'Cookies file was not created. Check browser_data mount.' };
+    }
+
+    const lineCount = fs.readFileSync(cookiesPath, 'utf-8').split('\n').filter(l => !l.startsWith('#') && l.trim()).length;
+    const summary = stdout.trim() || `${lineCount} cookies`;
+    console.log(`🍪 YouTube cookies exported → ${cookiesPath} (${summary})`);
+
+    return { success: true, message: `Exported ${lineCount} YouTube cookies to ${cookiesPath}`, cookiesPath };
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    // If python3 is not available, try a bash fallback using sqlite3 CLI
+    try {
+      const bashScript = [
+        `DB=/config/chromium/Default/Cookies`,
+        `OUT=/config/youtube-cookies.txt`,
+        `[ -f "$DB" ] || exit 1`,
+        `echo '# Netscape HTTP Cookie File' > "$OUT"`,
+        `sqlite3 "$DB" "SELECT host_key||'\t'||(CASE WHEN host_key LIKE '.%' THEN 'TRUE' ELSE 'FALSE' END)||'\t'||path||'\t'||(CASE WHEN is_secure THEN 'TRUE' ELSE 'FALSE' END)||'\t'||MAX(0,(expires_utc-11644473600000000)/1000000)||'\t'||name||'\t'||value FROM cookies WHERE host_key LIKE '%youtube%'" >> "$OUT"`,
+        `wc -l "$OUT"`,
+      ].join(' && ');
+
+      await execAsync(`docker exec ${containerName} bash -c '${bashScript}'`);
+
+      if (!fs.existsSync(cookiesPath)) {
+        return { success: false, message: `Failed to export cookies: ${errMsg}` };
+      }
+
+      const lineCount = fs.readFileSync(cookiesPath, 'utf-8').split('\n').filter(l => !l.startsWith('#') && l.trim()).length;
+      console.log(`🍪 YouTube cookies exported (bash fallback) → ${cookiesPath}`);
+      return { success: true, message: `Exported ${lineCount} YouTube cookies`, cookiesPath };
+    } catch (fallbackErr) {
+      return { success: false, message: `Cookie export failed: ${errMsg}` };
+    }
+  }
+}
+
+/**
+ * Returns the path to the YouTube cookies file if it exists, otherwise undefined.
+ */
+export function getYouTubeCookiesPath(): string | undefined {
+  const p = path.join(process.cwd(), 'browser_data', 'youtube-cookies.txt');
+  return fs.existsSync(p) ? p : undefined;
 }
 
 /**

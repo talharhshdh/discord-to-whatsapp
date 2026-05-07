@@ -442,6 +442,19 @@ class DiscordWhatsAppBridge {
           password: browserResult.password
         });
         console.log('✅ Browser started and registered successfully!');
+
+        // Auto-export YouTube cookies after browser has had time to init.
+        // We wait 15 s so Chromium can create its profile and cookie DB.
+        setTimeout(async () => {
+          try {
+            const { exportYouTubeCookies } = require('./libs/browser');
+            console.log('🍪 Auto-exporting YouTube cookies...');
+            const cookieResult = await exportYouTubeCookies();
+            console.log(`🍪 Cookie export: ${cookieResult.message}`);
+          } catch (e) {
+            console.warn('⚠️ Auto cookie export failed:', e);
+          }
+        }, 15000);
       } else {
         console.warn('⚠️ Browser failed to start:', browserResult.error);
       }

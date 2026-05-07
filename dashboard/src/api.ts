@@ -114,4 +114,7 @@ export const api = {
   androidStart: () => post<{ success: boolean; message: string; webUrl?: string; error?: string }>('/api/android/start', {}),
   androidStatus: () => post<{ running: boolean; uptime?: string; deviceInfo?: string; webUrl?: string }>('/api/android/status', {}),
   androidStop: () => post<{ success: boolean; message: string }>('/api/android/stop', {}),
+
+  exportYtCookies: () =>
+    post<{ success: boolean; message: string; cookiesPath?: string }>('/api/browser/export-cookies', {}),
 };

@@ -35,6 +35,7 @@ const { youtube: abYoutube } = require('ab-downloader') as {
 import * as https from 'https';
 import * as http from 'http';
 import { IncomingMessage } from 'http';
+import { getYouTubeCookiesPath } from './browser';
 
 // ---------------------------------------------------------------------------
 // yt-search types
@@ -216,11 +217,19 @@ export async function searchYouTube(
 // ---------------------------------------------------------------------------
 
 /** Common yt-dlp flags used for all requests */
-const YTDLP_BASE_FLAGS = {
-  noCheckCertificates: true,
-  noWarnings: true,
-  addHeader: ['referer:youtube.com', 'user-agent:googlebot'],
-} as const;
+function buildYtdlpBaseFlags(): Record<string, unknown> {
+  const flags: Record<string, unknown> = {
+    noCheckCertificates: true,
+    noWarnings: true,
+    addHeader: ['referer:youtube.com', 'user-agent:googlebot'],
+  };
+  const cookiesPath = getYouTubeCookiesPath();
+  if (cookiesPath) {
+    flags['cookies'] = cookiesPath;
+    console.log(`[youtube-dl] Using cookies from: ${cookiesPath}`);
+  }
+  return flags;
+}
 
 /**
  * Fetches video metadata and builds a list of quality options from yt-dlp.
@@ -234,7 +243,7 @@ const YTDLP_BASE_FLAGS = {
  */
 export async function getYouTubeInfo(url: string): Promise<YouTubeVideoInfo> {
   const info = await youtubedl(url, {
-    ...YTDLP_BASE_FLAGS,
+    ...buildYtdlpBaseFlags(),
     dumpSingleJson: true,
     preferFreeFormats: false,
   });
@@ -358,7 +367,7 @@ export async function downloadYouTubeVideo(
 
     // Get fresh direct URL(s) for the selected format
     const info = await youtubedl(url, {
-      ...YTDLP_BASE_FLAGS,
+      ...buildYtdlpBaseFlags(),
       dumpSingleJson: true,
       format: formatStr,
     });

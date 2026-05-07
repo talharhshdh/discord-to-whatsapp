@@ -17,6 +17,23 @@ export default function YoutubePanel() {
   const [error, setError] = useState<string | null>(null);
   const [directUrl, setDirectUrl] = useState('');
 
+  // Cookie export state
+  const [cookieExporting, setCookieExporting] = useState(false);
+  const [cookieResult, setCookieResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const exportCookies = async () => {
+    setCookieExporting(true);
+    setCookieResult(null);
+    try {
+      const result = await api.exportYtCookies();
+      setCookieResult(result);
+    } catch (e) {
+      setCookieResult({ success: false, message: (e as Error).message });
+    } finally {
+      setCookieExporting(false);
+    }
+  };
+
   const search = async () => {
     if (!query) return;
     setSearching(true); setError(null); setResults([]); setInfo(null);
@@ -48,6 +65,37 @@ export default function YoutubePanel() {
 
   return (
     <div className="space-y-5">
+      {/* Cookie Export */}
+      <div className="glass rounded-2xl p-5 space-y-3">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h3 className="font-semibold text-white text-sm">🍪 YouTube Cookie Export</h3>
+            <p className="text-xs text-white/40 mt-0.5">
+              Export cookies from the cloud browser so yt-dlp can download age-restricted or members-only videos.
+            </p>
+          </div>
+          <button
+            onClick={exportCookies}
+            disabled={cookieExporting}
+            className="px-4 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-300 text-sm font-semibold transition-all disabled:opacity-50 whitespace-nowrap"
+          >
+            {cookieExporting ? '⏳ Exporting…' : '🍪 Export Cookies'}
+          </button>
+        </div>
+        {cookieResult && (
+          <div className={`text-xs px-3 py-2 rounded-lg border ${
+            cookieResult.success
+              ? 'bg-green-500/10 border-green-500/20 text-green-400'
+              : 'bg-red-500/10 border-red-500/20 text-red-400'
+          }`}>
+            {cookieResult.success ? '✅' : '❌'} {cookieResult.message}
+          </div>
+        )}
+        <p className="text-[11px] text-white/25 leading-relaxed">
+          💡 Open YouTube in the cloud browser and sign in first for best results. Auto-exports 15 s after startup.
+        </p>
+      </div>
+
       {/* Search */}
       <div className="glass rounded-2xl p-5 space-y-3">
         <h3 className="font-semibold text-white text-sm">🔍 YouTube Search</h3>
