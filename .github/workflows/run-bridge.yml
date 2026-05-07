@@ -4,8 +4,8 @@ on:
   push:
     branches: [main] # Restart bridge on every push to main
   workflow_dispatch: # Allows manual trigger
-  # schedule:
-  #   - cron: "0 */5 * * *" # Fallback every 6h in case the self-trigger fails
+# schedule:
+#   - cron: "0 */5 * * *" # Fallback every 6h in case the self-trigger fails
 
 # No concurrency limit - allow overlapping runs for graceful handoff
 # Each run will naturally end after 5 hours, preventing runaway accumulation
@@ -56,18 +56,6 @@ jobs:
         run: |
           echo '${{ secrets.ENV_FILE }}' > .env
           echo "✅ .env file created"
-
-      - name: Create browser tunnel secrets from GitHub Secrets
-        run: |
-          # Append browser tunnel configuration to .env
-          echo "" >> .env
-          echo "# Browser Tunnel (hardcoded secrets)" >> .env
-          echo "BROWSER_TUNNEL_TOKEN=${{ secrets.BROWSER_TUNNEL_TOKEN }}" >> .env
-          echo "BROWSER_DOMAIN=${{ secrets.BROWSER_DOMAIN }}" >> .env
-          echo "BROWSER_PORT=${{ secrets.BROWSER_PORT }}" >> .env
-          echo "BROWSER_USERNAME=${{ secrets.BROWSER_USERNAME }}" >> .env
-          echo "BROWSER_PASSWORD=${{ secrets.BROWSER_PASSWORD }}" >> .env
-          echo "✅ Browser tunnel secrets added to .env"
 
       - name: Setup AWS CLI for Cloudflare R2
         run: |
@@ -173,7 +161,8 @@ jobs:
         if: always()
         run: |
           echo "📦 Archiving state..."
-          tar -czf state.tar.gz -C $(pwd) auth_info browser_data
+          sudo tar -czf state.tar.gz -C $(pwd) auth_info browser_data || echo "Tar completed with warnings"
+          sudo chmod 666 state.tar.gz
 
           source .env
           echo "📤 Deleting previous states from R2..."
