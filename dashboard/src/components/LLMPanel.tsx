@@ -155,56 +155,134 @@ function ModelCard({
 interface ChatEntry {
   role: 'user' | 'assistant';
   content: string;
-  tokens?: number;
+  streaming?: boolean;  // true while tokens are still arriving
 }
 
 function ChatPanel({ modelLabel }: { modelLabel: string }) {
   const [history, setHistory] = useState<ChatEntry[]>([]);
   const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [maxTokens, setMaxTokens] = useState(512);
   const [temperature, setTemperature] = useState(0.7);
   const [systemPrompt, setSystemPrompt] = useState('You are a helpful AI assistant.');
   const bottomRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
+  // Auto-scroll on every history change
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [history, loading]);
+  }, [history]);
 
   const send = async () => {
     const text = input.trim();
-    if (!text || loading) return;
+    if (!text || streaming) return;
     setInput('');
     setError(null);
 
     const userMsg: ChatEntry = { role: 'user', content: text };
     const newHistory = [...history, userMsg];
-    setHistory(newHistory);
-    setLoading(true);
+    // Append placeholder assistant bubble (streaming flag = true, content empty)
+    const withPlaceholder: ChatEntry[] = [...newHistory, { role: 'assistant', content: '', streaming: true }];
+    setHistory(withPlaceholder);
+    setStreaming(true);
 
-    const messages: LLMChatMessage[] = [
-      { role: 'system', content: systemPrompt },
-      ...newHistory.map(h => ({ role: h.role, content: h.content })),
+    const messages = [
+      { role: 'system' as const, content: systemPrompt },
+      ...newHistory.map(h => ({ role: h.role as 'user' | 'assistant', content: h.content })),
     ];
 
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+
     try {
-      const resp = await api.llmChat(messages, maxTokens, temperature);
-      setHistory(prev => [
-        ...prev,
-        { role: 'assistant', content: resp.content, tokens: resp.usage?.completion_tokens },
-      ]);
-    } catch (e) {
-      setError((e as Error).message);
-      setHistory(prev => prev.slice(0, -1)); // remove the user message on failure
+      const resp = await fetch('/api/llm/chat/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages, max_tokens: maxTokens, temperature }),
+        signal: ctrl.signal,
+      });
+
+      if (!resp.ok) {
+        const e = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` })) as { error: string };
+        throw new Error(e.error || `HTTP ${resp.status}`);
+      }
+
+      if (!resp.body) throw new Error('No response body from server');
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buf += decoder.decode(value, { stream: true });
+
+        // Process complete SSE lines from buffer
+        const lines = buf.split('\n');
+        buf = lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const data = line.slice(6).trim();
+          if (data === '[DONE]') { reader.cancel(); break; }
+          try {
+            const parsed = JSON.parse(data) as { text?: string };
+            if (parsed.text) {
+              setHistory(prev => {
+                const next = [...prev];
+                const last = next[next.length - 1];
+                if (last?.role === 'assistant') {
+                  next[next.length - 1] = { ...last, content: last.content + parsed.text };
+                }
+                return next;
+              });
+            }
+          } catch { /* skip malformed chunk */ }
+        }
+      }
+
+      // Mark streaming done — remove the streaming flag
+      setHistory(prev => {
+        const next = [...prev];
+        const last = next[next.length - 1];
+        if (last?.role === 'assistant') next[next.length - 1] = { ...last, streaming: false };
+        return next;
+      });
+    } catch (e: unknown) {
+      if ((e as Error).name === 'AbortError') {
+        // User aborted — seal the partial message
+        setHistory(prev => {
+          const next = [...prev];
+          const last = next[next.length - 1];
+          if (last?.role === 'assistant') next[next.length - 1] = { ...last, streaming: false };
+          return next;
+        });
+      } else {
+        setError((e as Error).message);
+        // Remove the empty placeholder if nothing arrived
+        setHistory(prev => {
+          const last = prev[prev.length - 1];
+          return last?.role === 'assistant' && !last.content ? prev.slice(0, -1) : prev;
+        });
+      }
     } finally {
-      setLoading(false);
+      setStreaming(false);
+      abortRef.current = null;
     }
   };
+
+  const stop = () => { abortRef.current?.abort(); };
 
   const handleKey = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
   };
+
+  // Determine whether the last assistant message is the streaming one
+  const lastMsg = history[history.length - 1];
+  const isWaitingForFirstToken = streaming && lastMsg?.role === 'assistant' && !lastMsg.content;
 
   return (
     <div className="flex flex-col gap-4">
@@ -232,7 +310,8 @@ function ChatPanel({ modelLabel }: { modelLabel: string }) {
         </div>
         <button
           onClick={() => setHistory([])}
-          className="ml-auto text-xs px-2.5 py-1 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 text-white/40 transition-all"
+          disabled={streaming}
+          className="ml-auto text-xs px-2.5 py-1 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 text-white/40 transition-all disabled:opacity-30"
         >
           🗑 Clear
         </button>
@@ -268,9 +347,21 @@ function ChatPanel({ modelLabel }: { modelLabel: string }) {
                 ? 'bg-[#6c63ff]/25 border border-[#6c63ff]/30 text-white rounded-br-sm'
                 : 'bg-white/[0.05] border border-white/[0.08] text-white/85 rounded-bl-sm'
             }`}>
-              <pre className="whitespace-pre-wrap font-sans">{msg.content}</pre>
-              {msg.tokens != null && (
-                <p className="text-[10px] text-white/25 mt-1.5">{msg.tokens} tokens</p>
+              {/* Show dots only while waiting for first token */}
+              {msg.role === 'assistant' && msg.streaming && !msg.content ? (
+                <span className="flex gap-1 py-0.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: '300ms' }} />
+                </span>
+              ) : (
+                <>
+                  <pre className="whitespace-pre-wrap font-sans">{msg.content}</pre>
+                  {/* Blinking cursor while tokens are arriving */}
+                  {msg.streaming && (
+                    <span className="inline-block w-0.5 h-4 bg-white/60 animate-pulse ml-0.5 align-text-bottom" />
+                  )}
+                </>
               )}
             </div>
             {msg.role === 'user' && (
@@ -280,20 +371,6 @@ function ChatPanel({ modelLabel }: { modelLabel: string }) {
             )}
           </div>
         ))}
-        {loading && (
-          <div className="flex gap-3">
-            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#6c63ff] to-[#00d4aa] flex items-center justify-center text-xs flex-shrink-0">
-              🤖
-            </div>
-            <div className="bg-white/[0.05] border border-white/[0.08] rounded-2xl rounded-bl-sm px-4 py-2.5">
-              <span className="flex gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: '0ms' }} />
-                <span className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: '150ms' }} />
-                <span className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: '300ms' }} />
-              </span>
-            </div>
-          </div>
-        )}
         {error && (
           <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">❌ {error}</p>
         )}
@@ -307,20 +384,32 @@ function ChatPanel({ modelLabel }: { modelLabel: string }) {
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKey}
           rows={2}
-          placeholder="Type a message… (Enter to send, Shift+Enter for newline)"
-          className="flex-1 bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-white/20 outline-none focus:border-white/25 resize-none transition-colors"
+          disabled={streaming}
+          placeholder={streaming ? 'Generating…' : 'Type a message… (Enter to send, Shift+Enter for newline)'}
+          className="flex-1 bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-white/30 outline-none focus:border-white/25 resize-none transition-colors disabled:opacity-50"
         />
-        <button
-          onClick={send}
-          disabled={loading || !input.trim()}
-          className="px-4 rounded-xl bg-gradient-to-br from-[#6c63ff] to-[#5a54e0] hover:opacity-90 disabled:opacity-40 text-white text-sm font-medium transition-all shadow-lg shadow-[#6c63ff]/20"
-        >
-          ▶
-        </button>
+        {streaming ? (
+          <button
+            onClick={stop}
+            className="px-4 rounded-xl bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 text-red-400 text-sm font-medium transition-all"
+            title="Stop generation"
+          >
+            ⏹
+          </button>
+        ) : (
+          <button
+            onClick={send}
+            disabled={!input.trim()}
+            className="px-4 rounded-xl bg-gradient-to-br from-[#6c63ff] to-[#5a54e0] hover:opacity-90 disabled:opacity-40 text-white text-sm font-medium transition-all shadow-lg shadow-[#6c63ff]/20"
+          >
+            ▶
+          </button>
+        )}
       </div>
     </div>
   );
 }
+
 
 // ── Main panel ─────────────────────────────────────────────────────────────────
 

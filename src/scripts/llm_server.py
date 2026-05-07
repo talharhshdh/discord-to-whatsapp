@@ -13,6 +13,7 @@ import threading
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
+# pyrefly: ignore [missing-import]
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -356,22 +357,38 @@ async def chat(req: ChatRequest):
     chat_format = info.get("chat_format", "chatml")
 
     if req.stream:
-        def generate():
-            with _lock:
-                for chunk in _llm.create_chat_completion(  # type: ignore[union-attr]
-                    messages=messages,
-                    max_tokens=req.max_tokens,
-                    temperature=req.temperature,
-                    stream=True,
-                ):
-                    delta = chunk["choices"][0]["delta"]
-                    text = delta.get("content", "")
-                    if text:
-                        import json as _json
-                        yield f"data: {_json.dumps({'text': text})}\n\n"
+        import json as _json
+
+        async def stream_generate():
+            # Run the blocking llama-cpp call in a thread so the event loop
+            # stays free to serve /llm/status and /llm/models concurrently.
+            loop = asyncio.get_event_loop()
+
+            def _make_stream():
+                with _lock:
+                    return list(_llm.create_chat_completion(  # type: ignore[union-attr]
+                        messages=messages,
+                        max_tokens=req.max_tokens,
+                        temperature=req.temperature,
+                        stream=True,
+                    ))
+
+            # Note: llama-cpp streaming generator is lazy — materialising it
+            # in a thread is the only safe way to avoid blocking the event loop.
+            # For very large max_tokens this buffers in the thread; for typical
+            # chat sizes (≤2048 tokens) this is fine and keeps concurrency intact.
+            chunks = await loop.run_in_executor(None, _make_stream)
+            for chunk in chunks:
+                delta = chunk["choices"][0]["delta"]
+                text = delta.get("content", "")
+                if text:
+                    yield f"data: {_json.dumps({'text': text})}\n\n"
+                    # Yield control back to the event loop between tokens
+                    await asyncio.sleep(0)
             yield "data: [DONE]\n\n"
 
-        return StreamingResponse(generate(), media_type="text/event-stream")
+        return StreamingResponse(stream_generate(), media_type="text/event-stream")
+
 
     with _lock:
         result = _llm.create_chat_completion(  # type: ignore[union-attr]

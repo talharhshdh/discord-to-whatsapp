@@ -624,6 +624,60 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     return;
   }
 
+  // ── POST /api/llm/chat/stream ──────────────────────────────────────────────
+  if (method === 'POST' && url === '/api/llm/chat/stream') {
+    try {
+      const body = await parseJsonBody(req);
+      const messages = body['messages'] as Array<{ role: string; content: string }>;
+      if (!messages?.length) return err(res, 'messages is required', 400);
+      const max_tokens = (body['max_tokens'] as number) || 512;
+      const temperature = (body['temperature'] as number) ?? 0.7;
+
+      const pythonResp = await fetch(`http://127.0.0.1:8001/llm/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages, max_tokens, temperature, stream: true }),
+      });
+
+      if (!pythonResp.ok) {
+        let msg = `LLM server HTTP ${pythonResp.status}`;
+        try { const j = await pythonResp.json() as { detail?: string }; msg = j.detail ?? msg; } catch { /* ignore */ }
+        return err(res, msg);
+      }
+
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+      });
+
+      if (!pythonResp.body) { res.end('data: [DONE]\n\n'); return; }
+
+      // Node 18+ fetch body is a Web ReadableStream — get a reader and pipe it
+      type StreamReader = { read(): Promise<{ done: boolean; value?: Uint8Array }>; cancel(): void };
+      const body_ = pythonResp.body as unknown as { getReader(): StreamReader };
+      const r = body_.getReader();
+      const dec = new TextDecoder();
+
+      req.on('close', () => { try { r.cancel(); } catch { /* ignore */ } });
+
+      while (true) {
+        const { done, value } = await r.read();
+        if (done) break;
+        if (!res.writableEnded) res.write(dec.decode(value, { stream: true }));
+      }
+      if (!res.writableEnded) res.end();
+    } catch (e) {
+      if (!res.headersSent) err(res, (e as Error).message);
+      else if (!res.writableEnded) res.end();
+    }
+    return;
+  }
+
+
+
+
   // ── DELETE /api/llm/models/:id ─────────────────────────────────────────────
   if (method === 'DELETE' && url.startsWith('/api/llm/models/')) {
     try {
