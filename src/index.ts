@@ -758,7 +758,8 @@ class DiscordWhatsAppBridge {
             '🖼️ *Stickers*\n' +
             '• `.sticker` - Image to sticker (reply to image)\n' +
             '• `.sbg` - Remove background + sticker (reply to image)\n' +
-            '• `.rbg` - Just remove background (reply to image)\n\n' +
+            '• `.rbg` - Just remove background (reply to image)\n' +
+            '• `.pp` - Get profile picture (reply to msg or chat)\n\n' +
             '🧠 *AI Tools*\n' +
             '• `.ocr` - Extract text from image (reply to image)\n' +
             '• `.whisper` - Transcribe voice note (reply to audio)\n' +
@@ -775,6 +776,37 @@ class DiscordWhatsAppBridge {
             'ℹ️ _Reply to an image or audio message with the command to use AI tools._';
 
           await sock.sendMessage(jid, { text: menuText }, { quoted: msg });
+          continue;
+        }
+
+        // ── .pp command ──────────────────────────────────────────────────────
+        if (messageText.toLowerCase() === '.pp') {
+          console.log('👤 Detected .pp command...');
+          
+          let targetJid = jid;
+          const participant = msg.message.extendedTextMessage?.contextInfo?.participant;
+          if (participant) {
+            targetJid = participant;
+          }
+          
+          try {
+            const statusMsg = await sock.sendMessage(jid, { text: '⏳ *Fetching profile picture...*' }, { quoted: msg });
+            const ppUrl = await sock.profilePictureUrl(targetJid, 'image').catch(() => null);
+            
+            if (!ppUrl) {
+              if (statusMsg?.key) {
+                await sock.sendMessage(jid, { edit: statusMsg.key, text: '❌ Profile picture is private or not set.' });
+              } else {
+                await sock.sendMessage(jid, { text: '❌ Profile picture is private or not set.' }, { quoted: msg });
+              }
+            } else {
+              await sock.sendMessage(jid, { image: { url: ppUrl }, caption: '👤 *Profile Picture*' }, { quoted: msg });
+              if (statusMsg?.key) await sock.sendMessage(jid, { delete: statusMsg.key });
+            }
+          } catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            await sock.sendMessage(jid, { text: `❌ *Failed to fetch profile picture*\n${errMsg}` }, { quoted: msg });
+          }
           continue;
         }
 
