@@ -74,6 +74,46 @@ export interface MovieResult {
   mediaType: string; releaseDate: string; voteAverage: number; watchUrl: string;
 }
 
+// ── LLM Types ───────────────────────────────────────────────────────────────
+
+export interface LLMModelInfo {
+  id: string;
+  label: string;
+  description: string;
+  size_gb: number;
+  tags: string[];
+  ctx: number;
+  downloaded: boolean;
+  loaded: boolean;
+  download_status: 'not_downloaded' | 'downloading' | 'ready' | 'error';
+  download_error?: string;
+}
+
+export interface LLMModelsResponse {
+  models: LLMModelInfo[];
+  current_model: string | null;
+  models_dir: string;
+}
+
+export interface LLMStatus {
+  loaded: boolean;
+  model_id: string | null;
+  label: string | null;
+  ctx: number | null;
+  server_running: boolean;
+}
+
+export interface LLMChatMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+}
+
+export interface LLMChatResponse {
+  content: string;
+  model_id: string;
+  usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+}
+
 // ── API ─────────────────────────────────────────────────────────────────────
 
 export const api = {
@@ -117,4 +157,26 @@ export const api = {
 
   exportYtCookies: () =>
     post<{ success: boolean; message: string; cookiesPath?: string }>('/api/browser/export-cookies', {}),
+
+  // ── LLM ───────────────────────────────────────────────────────────────────
+  llmModels: () => fetch('/api/llm/models').then(r => {
+    if (!r.ok) return r.json().then((e: { error: string }) => { throw new Error(e.error); });
+    return r.json() as Promise<LLMModelsResponse>;
+  }),
+  llmStatus: () => fetch('/api/llm/status').then(r => r.json()) as Promise<LLMStatus>,
+  llmDownload: (model_id: string) =>
+    post<{ message: string; status: string }>('/api/llm/download', { model_id }),
+  llmDownloadStatus: (model_id: string) =>
+    fetch(`/api/llm/download/status/${model_id}`).then(r => r.json()) as Promise<{ status: string; downloaded: boolean; error?: string }>,
+  llmLoad: (model_id: string) =>
+    post<{ loaded: boolean; model_id: string; label: string }>('/api/llm/load', { model_id }),
+  llmUnload: () =>
+    post<{ unloaded: boolean; was: string | null }>('/api/llm/unload', {}),
+  llmChat: (messages: LLMChatMessage[], max_tokens = 512, temperature = 0.7) =>
+    post<LLMChatResponse>('/api/llm/chat', { messages, max_tokens, temperature }),
+  llmDelete: (model_id: string) =>
+    fetch(`/api/llm/models/${model_id}`, { method: 'DELETE' }).then(r => {
+      if (!r.ok) return r.json().then((e: { detail: string }) => { throw new Error(e.detail); });
+      return r.json() as Promise<{ deleted: boolean }>;
+    }),
 };

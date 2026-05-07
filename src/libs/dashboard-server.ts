@@ -27,6 +27,11 @@ import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { spawn, ChildProcess } from 'child_process';
 import { startTerminal } from './terminal';
+import {
+  llmListModels, llmDownloadModel, llmDownloadStatus,
+  llmLoadModel, llmUnloadModel, llmStatus, llmChat, llmDeleteModel,
+  isLLMServerRunning,
+} from './llm-manager';
 import { startVSCode } from './vscode';
 import { startBrowser } from './browser';
 import { exportYouTubeCookies } from './browser';
@@ -231,7 +236,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 
   // CORS preflight
   if (method === 'OPTIONS') {
-    res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' });
+    res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'GET,POST,DELETE,OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' });
     res.end();
     return;
   }
@@ -542,6 +547,88 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       const limit = Number(body['limit']) || 6;
       const results = await searchMovies(query, limit);
       json(res, { results });
+    } catch (e) { err(res, (e as Error).message); }
+    return;
+  }
+
+  // ── GET /api/llm/models ────────────────────────────────────────────────────
+  if (method === 'GET' && url === '/api/llm/models') {
+    try {
+      const running = await isLLMServerRunning();
+      if (!running) return err(res, 'LLM server is not running. Check GitHub Actions logs.', 503);
+      json(res, await llmListModels());
+    } catch (e) { err(res, (e as Error).message); }
+    return;
+  }
+
+  // ── GET /api/llm/status ─────────────────────────────────────────────────────
+  if (method === 'GET' && url === '/api/llm/status') {
+    try {
+      const running = await isLLMServerRunning();
+      if (!running) return json(res, { loaded: false, model_id: null, label: null, ctx: null, server_running: false });
+      const status = await llmStatus();
+      json(res, { ...status, server_running: true });
+    } catch (e) { err(res, (e as Error).message); }
+    return;
+  }
+
+  // ── GET /api/llm/download/status/:id ───────────────────────────────────────
+  if (method === 'GET' && url.startsWith('/api/llm/download/status/')) {
+    try {
+      const model_id = url.replace('/api/llm/download/status/', '');
+      json(res, await llmDownloadStatus(model_id));
+    } catch (e) { err(res, (e as Error).message); }
+    return;
+  }
+
+  // ── POST /api/llm/download ─────────────────────────────────────────────────
+  if (method === 'POST' && url === '/api/llm/download') {
+    try {
+      const body = await parseJsonBody(req);
+      const model_id = body['model_id'] as string;
+      if (!model_id) return err(res, 'model_id is required', 400);
+      json(res, await llmDownloadModel(model_id));
+    } catch (e) { err(res, (e as Error).message); }
+    return;
+  }
+
+  // ── POST /api/llm/load ─────────────────────────────────────────────────────
+  if (method === 'POST' && url === '/api/llm/load') {
+    try {
+      const body = await parseJsonBody(req);
+      const model_id = body['model_id'] as string;
+      const n_ctx = body['n_ctx'] as number | undefined;
+      if (!model_id) return err(res, 'model_id is required', 400);
+      json(res, await llmLoadModel(model_id, n_ctx));
+    } catch (e) { err(res, (e as Error).message); }
+    return;
+  }
+
+  // ── POST /api/llm/unload ───────────────────────────────────────────────────
+  if (method === 'POST' && url === '/api/llm/unload') {
+    try { json(res, await llmUnloadModel()); }
+    catch (e) { err(res, (e as Error).message); }
+    return;
+  }
+
+  // ── POST /api/llm/chat ─────────────────────────────────────────────────────
+  if (method === 'POST' && url === '/api/llm/chat') {
+    try {
+      const body = await parseJsonBody(req);
+      const messages = body['messages'] as Array<{ role: string; content: string }>;
+      if (!messages?.length) return err(res, 'messages is required', 400);
+      const max_tokens = (body['max_tokens'] as number) || 512;
+      const temperature = (body['temperature'] as number) ?? 0.7;
+      json(res, await llmChat({ messages: messages as any, max_tokens, temperature }));
+    } catch (e) { err(res, (e as Error).message); }
+    return;
+  }
+
+  // ── DELETE /api/llm/models/:id ─────────────────────────────────────────────
+  if (method === 'DELETE' && url.startsWith('/api/llm/models/')) {
+    try {
+      const model_id = url.replace('/api/llm/models/', '');
+      json(res, await llmDeleteModel(model_id));
     } catch (e) { err(res, (e as Error).message); }
     return;
   }

@@ -8,6 +8,7 @@ import YoutubePanel from './components/YoutubePanel';
 import MoviesPanel from './components/MoviesPanel';
 import URLsPanel from './components/URLsPanel';
 import AndroidPanel from './components/AndroidPanel';
+import LLMPanel from './components/LLMPanel';
 
 const NAV: { id: NavSection; label: string; icon: string }[] = [
   { id: 'sessions',  label: 'Dev Sessions',  icon: '🖥️' },
@@ -18,6 +19,7 @@ const NAV: { id: NavSection; label: string; icon: string }[] = [
   { id: 'youtube',   label: 'YouTube',        icon: '▶️' },
   { id: 'movies',    label: 'Movies',         icon: '🎬' },
   { id: 'urls',      label: 'Live URLs',      icon: '🔗' },
+  { id: 'llm',       label: 'Local LLM',      icon: '🧠' },
 ];
 
 export default function App() {
@@ -136,6 +138,7 @@ export default function App() {
               {section === 'youtube' && <YoutubePanel />}
               {section === 'movies' && <MoviesPanel />}
               {section === 'urls' && <URLsPanel tools={data?.tools ?? {}} />}
+              {section === 'llm' && <LLMPanel />}
             </div>
           </main>
         </div>

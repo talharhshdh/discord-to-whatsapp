@@ -3,7 +3,7 @@ import * as util from 'util';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import puppeteer, { type Cookie } from 'puppeteer-core';
+
 import { sessionManager } from './session-manager';
 
 const execAsync = util.promisify(exec);
@@ -11,8 +11,6 @@ const execFileAsync = util.promisify(execFile);
 
 // Environment variables will be read dynamically inside the functions.
 
-// CDP debug port allocated per instance (host port → container 9222)
-const CDP_BASE_PORT = 19222;
 
 // Track all browser instances
 const browserInstances = new Map<string, {
@@ -20,7 +18,6 @@ const browserInstances = new Map<string, {
   username: string;
   password: string;
   port: number;
-  cdpPort: number;
   containerName: string;
   tunnelProcess: ChildProcess;
   targetUrl?: string;
@@ -110,8 +107,6 @@ async function startBrowserInstance(targetUrl?: string): Promise<{
     }
 
     const containerName = `cloud-browser-${port}`;
-    // Allocate a unique host-side CDP port per instance
-    const cdpPort = CDP_BASE_PORT + browserInstances.size;
 
     // Check if container already exists
     try {
@@ -124,22 +119,21 @@ async function startBrowserInstance(targetUrl?: string): Promise<{
       // No existing container
     }
 
-    // Build docker command
-    // Port 9222 (CDP) is exposed so puppeteer-core can connect directly — no Python/SQLite needed.
+    // Build docker command.
+    // CHROMIUM_FLAGS enables the CDP debug port on loopback inside the container.
+    // We do NOT map port 9222 externally — we reach it via docker exec instead.
     const dockerCmd = [
       'docker', 'run', '-d', '--rm',
       '--name', containerName,
       '--shm-size=1gb',
       '-p', `${port}:3000`,
-      '-p', `${cdpPort}:9222`,
       '-v', `${process.cwd()}/browser_data:/config`,
       '-e', 'TZ=Etc/UTC',
       '-e', `CUSTOM_USER=${username}`,
       '-e', `PASSWORD=${password}`,
       '-e', `PUID=${process.getuid ? process.getuid() : 1000}`,
       '-e', `PGID=${process.getgid ? process.getgid() : 1000}`,
-      // Enable CDP remote debugging inside the container
-      '-e', 'CHROMIUM_FLAGS=--remote-debugging-port=9222 --remote-debugging-address=0.0.0.0 --no-sandbox --disable-dev-shm-usage',
+      '-e', 'CHROMIUM_FLAGS=--remote-debugging-port=9222 --no-sandbox --disable-dev-shm-usage',
     ];
 
     // Add custom URL if provided
@@ -187,7 +181,6 @@ async function startBrowserInstance(targetUrl?: string): Promise<{
             username,
             password,
             port,
-            cdpPort,
             containerName,
             tunnelProcess,
             targetUrl,
@@ -229,7 +222,6 @@ async function startBrowserInstance(targetUrl?: string): Promise<{
               username,
               password,
               port,
-              cdpPort,
               containerName,
               tunnelProcess,
               targetUrl,
@@ -269,21 +261,19 @@ async function startBrowserInstance(targetUrl?: string): Promise<{
 }
 
 // ---------------------------------------------------------------------------
-// Cookie export — puppeteer-core via CDP
+// Cookie export — CDP via docker exec (pure Python stdlib, no host port needed)
 // ---------------------------------------------------------------------------
 
 /**
- * Exports YouTube cookies from the running Chromium container using puppeteer-core.
+ * Exports YouTube cookies from the running Chromium container.
  *
- * The container is started with --remote-debugging-port=9222 and that port is
- * mapped to a host-side port (cdpPort).  puppeteer.connect() talks to that
- * endpoint, fetches all cookies for the target domains, and writes a
- * Netscape-format cookies.txt that yt-dlp can consume via --cookies.
+ * Chrome binds CDP to 127.0.0.1:9222 inside the container (loopback only).
+ * We reach it by running a self-contained Python script via `docker exec`.
+ * The script speaks the CDP WebSocket protocol using only stdlib (socket +
+ * urllib) so there are zero extra package requirements inside the container.
  *
- * This works identically on a local machine and on GitHub Actions because
- * both the Node process and the Docker container share the same host network.
- *
- * @param domain  Domain filter prefix (default: ".youtube.com")
+ * Output is a Netscape-format cookies.txt written to browser_data/ (the
+ * bind-mounted /config volume) that yt-dlp can consume via --cookies.
  */
 export async function exportYouTubeCookies(
   domain = '.youtube.com',
@@ -296,53 +286,127 @@ export async function exportYouTubeCookies(
     return { success: false, message: 'No browser container is running. Start the browser first.' };
   }
 
-  const { cdpPort } = instance;
+  const { containerName } = instance;
   const cookiesPath = path.join(process.cwd(), 'browser_data', 'youtube-cookies.txt');
 
-  // Wait up to 15 s for the CDP endpoint to become reachable (Chromium takes a
-  // few seconds after container start before --remote-debugging-port is ready).
-  const cdpUrl = `http://localhost:${cdpPort}`;
-  await waitForCdp(cdpUrl, 15_000);
+  // Inline Python script executed inside the container.
+  // Connects to Chrome CDP on 127.0.0.1:9222 (loopback — always reachable from inside).
+  // Uses only stdlib: socket for raw WebSocket frames, urllib for the HTTP JSON endpoint.
+  const pyScript = [
+    'import socket, json, os, sys, time, urllib.request, base64',
+    '',
+    'def ws_connect(host, port, path):',
+    '    s = socket.create_connection((host, port), timeout=10)',
+    '    key = base64.b64encode(os.urandom(16)).decode()',
+    '    req = (f"GET {path} HTTP/1.1\r\nHost: {host}:{port}\r\n"',
+    '           "Upgrade: websocket\r\nConnection: Upgrade\r\n"',
+    '           f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n")',
+    '    s.sendall(req.encode())',
+    '    buf = b""',
+    '    while b"\r\n\r\n" not in buf:',
+    '        buf += s.recv(4096)',
+    '    return s',
+    '',
+    'def ws_send(s, msg):',
+    '    data = msg.encode()',
+    '    mask = os.urandom(4)',
+    '    masked = bytes(b ^ mask[i % 4] for i, b in enumerate(data))',
+    '    length = len(data)',
+    '    header = bytes([0x81])',
+    '    if length < 126:',
+    '        header += bytes([0x80 | length])',
+    '    elif length < 65536:',
+    '        header += bytes([0xFE]) + length.to_bytes(2, "big")',
+    '    else:',
+    '        header += bytes([0xFF]) + length.to_bytes(8, "big")',
+    '    s.sendall(header + mask + masked)',
+    '',
+    'def ws_recv(s):',
+    '    def recv_exact(n):',
+    '        buf = b""',
+    '        while len(buf) < n:',
+    '            buf += s.recv(n - len(buf))',
+    '        return buf',
+    '    h = recv_exact(2)',
+    '    length = h[1] & 0x7F',
+    '    if length == 126: length = int.from_bytes(recv_exact(2), "big")',
+    '    elif length == 127: length = int.from_bytes(recv_exact(8), "big")',
+    '    return recv_exact(length).decode()',
+    '',
+    '# Wait for Chrome CDP to be ready (up to 30s)',
+    'for i in range(60):',
+    '    try:',
+    '        targets = json.loads(urllib.request.urlopen("http://127.0.0.1:9222/json", timeout=2).read())',
+    '        break',
+    '    except Exception:',
+    '        time.sleep(0.5)',
+    'else:',
+    '    sys.exit("cdp-not-ready")',
+    '',
+    '# Pick first page target (or browser target as fallback)',
+    'target = next((t for t in targets if t.get("type") == "page"), targets[0] if targets else None)',
+    'if not target: sys.exit("no-target")',
+    '',
+    'ws_url = target["webSocketDebuggerUrl"]',
+    '# ws://127.0.0.1:9222/devtools/page/xxx',
+    'rest = ws_url[len("ws://"):]',
+    'host_port, ws_path = rest.split("/", 1)',
+    'host, port = host_port.split(":")',
+    '',
+    's = ws_connect(host, int(port), "/" + ws_path)',
+    'ws_send(s, json.dumps({"id": 1, "method": "Network.getAllCookies"}))',
+    '# Read frames until we get our response (id=1)',
+    'cookies = []',
+    'for _ in range(20):',
+    '    try:',
+    '        msg = json.loads(ws_recv(s))',
+    '        if msg.get("id") == 1:',
+    '            cookies = msg.get("result", {}).get("cookies", [])',
+    '            break',
+    '    except Exception:',
+    '        break',
+    's.close()',
+    '',
+    `DOMAINS = ("${domain}", "${domain.replace(/^\./, '')}", ".google.com", "accounts.google.com")`,
+    'lines = ["# Netscape HTTP Cookie File"]',
+    'for c in cookies:',
+    '    host = c.get("domain", "")',
+    '    if not any(host == d or host.endswith(d) for d in DOMAINS): continue',
+    '    val = c.get("value", "").replace("\t", "").replace("\n", "").replace("\r", "")',
+    '    if not val: continue',
+    '    exp = int(c.get("expires", 0))',
+    '    if exp < 0: exp = 0',
+    '    hf = "TRUE" if host.startswith(".") else "FALSE"',
+    '    sf = "TRUE" if c.get("secure") else "FALSE"',
+    '    lines.append("\t".join([host, hf, c.get("path","/"), sf, str(exp), c.get("name",""), val]))',
+    '',
+    'out = "/config/youtube-cookies.txt"',
+    'open(out, "w").write("\n".join(lines))',
+    'os.chmod(out, 0o666)',
+    'print(f"{len(lines)-1}")',
+  ].join('\n');
 
-  let browser: Awaited<ReturnType<typeof puppeteer.connect>> | null = null;
+  // Write script to the bind-mounted volume so docker exec can read it
+  const scriptPath = path.join(process.cwd(), 'browser_data', '_cdp_cookies.py');
+  fs.writeFileSync(scriptPath, pyScript, 'utf-8');
+
   try {
-    browser = await puppeteer.connect({ browserURL: cdpUrl, defaultViewport: null });
+    const { stdout, stderr } = await execAsync(
+      `docker exec ${containerName} python3 /config/_cdp_cookies.py`,
+    );
 
-    // Collect cookies for YouTube + Google account domains
-    const targetDomains = [domain, domain.replace(/^\./, ''), '.google.com', 'accounts.google.com'];
-    const allCookies: Cookie[] = [];
-
-    for (const page of await browser.pages()) {
-      const cookies = await page.cookies(...targetDomains);
-      for (const c of cookies) {
-        if (!allCookies.some(existing => existing.name === c.name && existing.domain === c.domain)) {
-          allCookies.push(c);
-        }
-      }
+    if (stderr?.includes('cdp-not-ready')) {
+      return { success: false, message: 'Chrome CDP not ready. Make sure the browser has started and try again.' };
+    }
+    if (stderr?.includes('no-target')) {
+      return { success: false, message: 'No browser page found. Open YouTube in the browser first.' };
     }
 
-    if (allCookies.length === 0) {
-      return {
-        success: false,
-        message: 'No cookies found. Open YouTube in the browser and log in first, then try again.',
-      };
+    if (!fs.existsSync(cookiesPath)) {
+      return { success: false, message: 'Cookies file was not created.' };
     }
 
-    // Convert to Netscape cookies.txt format
-    const lines = ['# Netscape HTTP Cookie File'];
-    for (const c of allCookies) {
-      const hostFlag = c.domain.startsWith('.') ? 'TRUE' : 'FALSE';
-      const secureFlag = c.secure ? 'TRUE' : 'FALSE';
-      const expires = c.expires > 0 ? Math.floor(c.expires) : 0;
-      // Skip cookies with control characters in value
-      const value = c.value.replace(/[\t\n\r]/g, '');
-      if (!value) continue;
-      lines.push([c.domain, hostFlag, c.path, secureFlag, expires, c.name, value].join('\t'));
-    }
-
-    fs.writeFileSync(cookiesPath, lines.join('\n'), 'utf-8');
-
-    const cookieCount = lines.length - 1; // subtract header
+    const cookieCount = parseInt(stdout.trim(), 10) || 0;
     return {
       success: true,
       message: `Exported ${cookieCount} YouTube cookies to ${cookiesPath}`,
@@ -351,27 +415,7 @@ export async function exportYouTubeCookies(
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
     return { success: false, message: `Cookie export failed: ${errMsg}` };
-  } finally {
-    // Disconnect without closing the browser (user may still be browsing)
-    browser?.disconnect();
   }
-}
-
-/**
- * Polls the CDP /json/version endpoint until it responds or the timeout elapses.
- */
-async function waitForCdp(baseUrl: string, timeoutMs: number): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(`${baseUrl}/json/version`);
-      if (res.ok) return;
-    } catch {
-      // not yet ready
-    }
-    await new Promise(r => setTimeout(r, 500));
-  }
-  throw new Error(`CDP endpoint at ${baseUrl} did not become ready within ${timeoutMs}ms`);
 }
 
 /**
