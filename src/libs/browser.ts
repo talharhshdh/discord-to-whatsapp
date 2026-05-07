@@ -1,6 +1,6 @@
 import { exec, spawn, ChildProcess } from 'child_process';
-import util from 'util';
-import crypto from 'crypto';
+import * as util from 'util';
+import * as crypto from 'crypto';
 import { sessionManager } from './session-manager';
 
 const execAsync = util.promisify(exec);
@@ -128,6 +128,8 @@ async function startBrowserInstance(targetUrl?: string): Promise<{
       '-e', 'TZ=Etc/UTC',
       '-e', `CUSTOM_USER=${username}`,
       '-e', `PASSWORD=${password}`,
+      '-e', `PUID=${process.getuid ? process.getuid() : 1000}`,
+      '-e', `PGID=${process.getgid ? process.getgid() : 1000}`,
     ];
 
     // Add custom URL if provided

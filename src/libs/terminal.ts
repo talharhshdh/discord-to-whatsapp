@@ -30,14 +30,14 @@ export async function startTerminal(): Promise<{ url?: string; username?: string
 
     console.log(`🚀 Starting ttyd for ${username} on port ${port}...`);
     const terminalProcess = spawn('sudo', ['ttyd', '-W', '-p', port.toString(), 'login']);
-    
+
     terminalProcess.on('error', (err) => {
       console.error(`❌ ttyd spawn error for ${username}:`, err);
     });
 
     console.log(`🚀 Starting Cloudflare Tunnel for port ${port}...`);
     const tunnelProcess = spawn('cloudflared', ['tunnel', '--url', `http://localhost:${port}`]);
-    
+
     return new Promise((resolve) => {
       let cloudflareUrl = '';
 
@@ -47,7 +47,7 @@ export async function startTerminal(): Promise<{ url?: string; username?: string
         if (match && !cloudflareUrl) {
           cloudflareUrl = match[0];
           console.log(`✅ Terminal Cloudflare Tunnel URL for ${username}: ${cloudflareUrl} - Waiting 5 seconds...`);
-          
+
           // Register session with cloudflared URL
           sessionManager.addSession({
             id: sessionId,
@@ -61,7 +61,7 @@ export async function startTerminal(): Promise<{ url?: string; username?: string
               cloudflaredUrl: cloudflareUrl,
             },
           });
-          
+
           setTimeout(() => {
             resolve({ url: cloudflareUrl, username, password });
           }, 5000);

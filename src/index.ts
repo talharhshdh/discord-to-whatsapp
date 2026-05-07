@@ -437,9 +437,9 @@ class DiscordWhatsAppBridge {
       console.log('🌐 Starting browser automatically...');
       const browserResult = await startBrowser();
       if (browserResult.url && !browserResult.error) {
-        registerUrl('browser', '🌐 Cloud Browser', browserResult.url, { 
-          username: browserResult.username, 
-          password: browserResult.password 
+        registerUrl('browser', '🌐 Cloud Browser', browserResult.url, {
+          username: browserResult.username,
+          password: browserResult.password
         });
         console.log('✅ Browser started and registered successfully!');
       } else {
@@ -706,8 +706,8 @@ class DiscordWhatsAppBridge {
 
         // Support button responses
         const buttonId = msg.message?.buttonsResponseMessage?.selectedButtonId ||
-                         msg.message?.templateButtonReplyMessage?.selectedId ||
-                         msg.message?.listResponseMessage?.singleSelectReply?.selectedRowId;
+          msg.message?.templateButtonReplyMessage?.selectedId ||
+          msg.message?.listResponseMessage?.singleSelectReply?.selectedRowId;
         if (buttonId) {
           messageText = buttonId;
         }
@@ -782,17 +782,17 @@ class DiscordWhatsAppBridge {
         // ── .pp command ──────────────────────────────────────────────────────
         if (messageText.toLowerCase() === '.pp') {
           console.log('👤 Detected .pp command...');
-          
+
           let targetJid = jid;
           const participant = msg.message.extendedTextMessage?.contextInfo?.participant;
           if (participant) {
             targetJid = participant;
           }
-          
+
           try {
             const statusMsg = await sock.sendMessage(jid, { text: '⏳ *Fetching profile picture...*' }, { quoted: msg });
             const ppUrl = await sock.profilePictureUrl(targetJid, 'image').catch(() => null);
-            
+
             if (!ppUrl) {
               if (statusMsg?.key) {
                 await sock.sendMessage(jid, { edit: statusMsg.key, text: '❌ Profile picture is private or not set.' });
@@ -846,11 +846,11 @@ class DiscordWhatsAppBridge {
         if (messageText.toLowerCase() === '.terminal') {
           console.log('💻 Detected .terminal command...');
           const statusMsg = await sock.sendMessage(jid, { text: '⏳ *Starting Web Terminal...*' }, { quoted: msg });
-          
+
           try {
             const { startTerminal } = require('./libs/terminal');
             const result = await startTerminal();
-            
+
             if (result.error) {
               if (statusMsg?.key) await sock.sendMessage(jid, { edit: statusMsg.key, text: `❌ *Terminal failed*\n${result.error}` });
             } else {
@@ -875,10 +875,10 @@ class DiscordWhatsAppBridge {
               }
             }
           } catch (err) {
-             const errMsg = err instanceof Error ? err.message : String(err);
-             if (statusMsg?.key) {
-               await sock.sendMessage(jid, { edit: statusMsg.key, text: `❌ *Terminal failed*\n${errMsg}` });
-             }
+            const errMsg = err instanceof Error ? err.message : String(err);
+            if (statusMsg?.key) {
+              await sock.sendMessage(jid, { edit: statusMsg.key, text: `❌ *Terminal failed*\n${errMsg}` });
+            }
           }
           continue;
         }
@@ -887,11 +887,11 @@ class DiscordWhatsAppBridge {
         if (messageText.toLowerCase() === '.vscode') {
           console.log('💻 Detected .vscode command...');
           const statusMsg = await sock.sendMessage(jid, { text: '⏳ *Starting VSCode Server...*' }, { quoted: msg });
-          
+
           try {
             const { startVSCode } = require('./libs/vscode');
             const result = await startVSCode();
-            
+
             if (result.error) {
               if (statusMsg?.key) await sock.sendMessage(jid, { edit: statusMsg.key, text: `❌ *VSCode failed*\n${result.error}` });
             } else {
@@ -915,10 +915,10 @@ class DiscordWhatsAppBridge {
               }
             }
           } catch (err) {
-             const errMsg = err instanceof Error ? err.message : String(err);
-             if (statusMsg?.key) {
-               await sock.sendMessage(jid, { edit: statusMsg.key, text: `❌ *VSCode failed*\n${errMsg}` });
-             }
+            const errMsg = err instanceof Error ? err.message : String(err);
+            if (statusMsg?.key) {
+              await sock.sendMessage(jid, { edit: statusMsg.key, text: `❌ *VSCode failed*\n${errMsg}` });
+            }
           }
           continue;
         }
@@ -927,11 +927,11 @@ class DiscordWhatsAppBridge {
         if (messageText.toLowerCase() === '.browser') {
           console.log('🌐 Detected .browser command...');
           const statusMsg = await sock.sendMessage(jid, { text: '⏳ *Starting Cloud Browser... (This may take a minute)*' }, { quoted: msg });
-          
+
           try {
             const { startBrowser } = require('./libs/browser');
             const result = await startBrowser();
-            
+
             if (result.error) {
               if (statusMsg?.key) await sock.sendMessage(jid, { edit: statusMsg.key, text: `❌ *Browser failed*\n${result.error}` });
             } else {
@@ -956,10 +956,10 @@ class DiscordWhatsAppBridge {
               }
             }
           } catch (err) {
-             const errMsg = err instanceof Error ? err.message : String(err);
-             if (statusMsg?.key) {
-               await sock.sendMessage(jid, { edit: statusMsg.key, text: `❌ *Browser failed*\n${errMsg}` });
-             }
+            const errMsg = err instanceof Error ? err.message : String(err);
+            if (statusMsg?.key) {
+              await sock.sendMessage(jid, { edit: statusMsg.key, text: `❌ *Browser failed*\n${errMsg}` });
+            }
           }
           continue;
         }
@@ -983,7 +983,7 @@ class DiscordWhatsAppBridge {
                   await sock.sendMessage(jid, { edit: statusMsg.key, text: `❌ *Android Emulator failed*\n${result.error || result.message}` });
                 }
               } else {
-                const androidMsg = 
+                const androidMsg =
                   `📱 *Android Emulator Started!*\n\n` +
                   `🌐 *Web Interface:*\n${result.webUrl}\n\n` +
                   `📱 *Device:* Samsung Galaxy S10\n` +
@@ -1057,7 +1057,7 @@ class DiscordWhatsAppBridge {
 
           // Unknown subcommand or no subcommand
           await sock.sendMessage(jid, {
-            text: 
+            text:
               '📱 *Android Emulator*\n\n' +
               '*Available commands:*\n' +
               '• `.android start` - Start Android emulator\n' +
@@ -1106,11 +1106,11 @@ class DiscordWhatsAppBridge {
 
           const statusMsg = await sock.sendMessage(jid, {
             text: `🌐 *Screenshot Options*\n_URL:_ ${url}\n\n` +
-                  `Please choose an option using the buttons below, or reply with a number:\n` +
-                  `*1* ➔ 🖼️ Full Page (PNG)\n` +
-                  `*2* ➔ 🖼️ Start Only (PNG)\n` +
-                  `*3* ➔ 📄 Full Page (PDF)\n` +
-                  `*4* ➔ 📄 Start Only (PDF)`,
+              `Please choose an option using the buttons below, or reply with a number:\n` +
+              `*1* ➔ 🖼️ Full Page (PNG)\n` +
+              `*2* ➔ 🖼️ Start Only (PNG)\n` +
+              `*3* ➔ 📄 Full Page (PDF)\n` +
+              `*4* ➔ 📄 Start Only (PDF)`,
             footer: 'Discord-WhatsApp Bridge',
             buttons: [
               { buttonId: '1', buttonText: { displayText: 'Full Page PNG' }, type: 1 },
@@ -1250,28 +1250,28 @@ class DiscordWhatsAppBridge {
           if (pick >= 1 && pick <= 4) {
             const { url, statusKey } = ssSession;
             this.ssSessions.delete(jid);
-            
+
             const isFullPage = (pick === 1 || pick === 3);
             const isPdf = (pick === 3 || pick === 4);
             const format = isPdf ? 'pdf' : 'png';
-            
+
             const updateStatus = this.makeStatusUpdater(jid, statusKey);
             await updateStatus(`📸 *Capturing ${isFullPage ? 'Full Page' : 'Start Only'} ${format.toUpperCase()} of:*\n_${url}_...`);
-            
+
             try {
               const buffer = await this.takeScreenshot(url, isFullPage, format);
-              
+
               if (isPdf) {
-                await sock.sendMessage(jid, { 
-                  document: buffer, 
-                  mimetype: 'application/pdf', 
-                  fileName: 'screenshot.pdf', 
-                  caption: `📸 *Screenshot:* ${url}` 
+                await sock.sendMessage(jid, {
+                  document: buffer,
+                  mimetype: 'application/pdf',
+                  fileName: 'screenshot.pdf',
+                  caption: `📸 *Screenshot:* ${url}`
                 }, { quoted: msg });
               } else {
-                await sock.sendMessage(jid, { 
-                  image: buffer, 
-                  caption: `📸 *Screenshot:* ${url}` 
+                await sock.sendMessage(jid, {
+                  image: buffer,
+                  caption: `📸 *Screenshot:* ${url}`
                 }, { quoted: msg });
               }
               if (statusKey) await sock.sendMessage(jid, { delete: statusKey });

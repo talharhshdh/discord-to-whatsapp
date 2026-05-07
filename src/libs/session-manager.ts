@@ -46,7 +46,7 @@ class SessionManager {
       if (fs.existsSync(SESSIONS_FILE)) {
         const data = fs.readFileSync(SESSIONS_FILE, 'utf-8');
         const savedSessions: SerializableSession[] = JSON.parse(data);
-        
+
         for (const session of savedSessions) {
           // Convert startedAt back to Date object
           const restoredSession: Session = {
@@ -55,7 +55,7 @@ class SessionManager {
           };
           this.sessions.set(session.id, restoredSession);
         }
-        
+
         console.log(`📊 Restored ${savedSessions.length} session(s) from disk`);
       }
     } catch (error) {

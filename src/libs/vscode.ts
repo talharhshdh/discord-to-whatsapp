@@ -28,14 +28,14 @@ export async function startVSCode(): Promise<{ url?: string; password?: string; 
     const vscodeProcess = spawn('code-server', ['--bind-addr', `127.0.0.1:${port}`, '--auth', 'password'], {
       env: { ...process.env, PASSWORD: password }
     });
-    
+
     vscodeProcess.on('error', (err) => {
       console.error(`❌ code-server spawn error:`, err);
     });
 
     console.log(`🚀 Starting Cloudflare Tunnel for VSCode on port ${port}...`);
     const tunnelProcess = spawn('cloudflared', ['tunnel', '--url', `http://localhost:${port}`]);
-    
+
     return new Promise((resolve) => {
       let cloudflareUrl = '';
 
@@ -45,7 +45,7 @@ export async function startVSCode(): Promise<{ url?: string; password?: string; 
         if (match && !cloudflareUrl) {
           cloudflareUrl = match[0];
           console.log(`✅ VSCode Cloudflare Tunnel URL: ${cloudflareUrl} - Waiting 5 seconds...`);
-          
+
           // Register session with cloudflared URL
           sessionManager.addSession({
             id: sessionId,
@@ -58,7 +58,7 @@ export async function startVSCode(): Promise<{ url?: string; password?: string; 
               cloudflaredUrl: cloudflareUrl,
             },
           });
-          
+
           setTimeout(() => {
             resolve({ url: cloudflareUrl, password });
           }, 5000);
