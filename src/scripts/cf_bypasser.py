@@ -267,18 +267,62 @@ class ExtractHtmlRequest(BaseModel):
 
 @app.post("/extract_html")
 def extract_html(req: ExtractHtmlRequest):
+    html = req.html
+
+    # Tier 1: mineru_html (heavy, optional)
     try:
         from mineru_html import MinerUHTML_Transformers, MinerUHTMLConfig
         global html_extractor
         if "html_extractor" not in globals():
             config = MinerUHTMLConfig(use_fall_back='trafilatura', early_load=True)
             html_extractor = MinerUHTML_Transformers(config=config)
-        
-        result = html_extractor.process(req.html)
-        return {"content": result[0].output_data.main_content}
-    except Exception as e:
-        print(f"HTML Extraction Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        result = html_extractor.process(html)
+        content = result[0].output_data.main_content
+        if content and content.strip():
+            print("extract_html: used mineru_html")
+            return {"content": content}
+    except Exception as e1:
+        print(f"extract_html: mineru_html failed ({e1}), trying trafilatura...")
+
+    # Tier 2: trafilatura (lightweight, usually installed)
+    try:
+        import trafilatura
+        content = trafilatura.extract(html, include_comments=False, include_tables=True)
+        if content and content.strip():
+            print("extract_html: used trafilatura")
+            return {"content": content}
+    except Exception as e2:
+        print(f"extract_html: trafilatura failed ({e2}), trying html2text...")
+
+    # Tier 3: html2text (markdown-style output)
+    try:
+        import html2text
+        h = html2text.HTML2Text()
+        h.ignore_links = True
+        h.ignore_images = True
+        content = h.handle(html).strip()
+        if content:
+            print("extract_html: used html2text")
+            return {"content": content}
+    except Exception as e3:
+        print(f"extract_html: html2text failed ({e3}), falling back to regex strip...")
+
+    # Tier 4: bare regex strip — always works, zero deps
+    try:
+        import re
+        text = re.sub(r'<style[^>]*>.*?</style>', ' ', html, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r'<script[^>]*>.*?</script>', ' ', text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r'<[^>]+>', ' ', text)
+        text = re.sub(r'&nbsp;', ' ', text)
+        text = re.sub(r'&amp;', '&', text)
+        text = re.sub(r'&lt;', '<', text)
+        text = re.sub(r'&gt;', '>', text)
+        text = re.sub(r'&quot;', '"', text)
+        text = re.sub(r'\s+', ' ', text).strip()
+        print("extract_html: used regex fallback")
+        return {"content": text}
+    except Exception as e4:
+        raise HTTPException(status_code=500, detail=f"All extraction methods failed: {e4}")
 
 @app.get("/health")
 def health():
