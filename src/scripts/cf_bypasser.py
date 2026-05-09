@@ -169,6 +169,62 @@ async def take_screenshot(req: ScreenshotRequest):
         print(f"Screenshot Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+class SearchRequest(BaseModel):
+    text: str
+    pageNumber: int = 1
+
+@app.post("/search")
+def google_search(req: SearchRequest):
+    try:
+        with SB(uc=True, headless=False) as sb:
+            start = (req.pageNumber - 1) * 10
+            sb.uc_open_with_reconnect(
+                f"https://www.google.com/search?q={req.text}&start={start}", 5
+            )
+            try:
+                sb.uc_gui_click_captcha()
+            except Exception:
+                pass
+            sb.sleep(3)
+
+            # Parse organic results
+            organic = []
+            results = sb.find_elements("#search .g")
+            for el in results:
+                try:
+                    title_el = el.find_element("css selector", "h3")
+                    link_el = el.find_element("css selector", "a")
+                    snippet_el = None
+                    for sel in [".VwiC3b", ".Uroaid", ".lyLwlc"]:
+                        try:
+                            snippet_el = el.find_element("css selector", sel)
+                            break
+                        except Exception:
+                            pass
+                    organic.append({
+                        "title": title_el.text.strip() if title_el else "",
+                        "link": link_el.get_attribute("href") or "",
+                        "snippet": snippet_el.text.strip() if snippet_el else "",
+                    })
+                except Exception:
+                    pass
+
+            # Try to grab AI overview
+            ai_response = None
+            for sel in [".M8OgIe", "[data-attrid='wa:/description']"]:
+                try:
+                    ai_el = sb.find_element(sel)
+                    ai_response = ai_el.text.strip()
+                    if ai_response:
+                        break
+                except Exception:
+                    pass
+
+            return {"organic": organic, "aiResponse": ai_response}
+    except Exception as e:
+        print(f"Search Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 class ExtractHtmlRequest(BaseModel):
     html: str
 

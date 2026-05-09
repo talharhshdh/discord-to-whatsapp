@@ -709,64 +709,13 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       if (!text) return err(res, 'text is required', 400);
       const pageNumber = Number(body['pageNumber']) || 1;
 
-      const { getGeneralBrowserCdpPort } = require('./browser');
-      const cdpPort = getGeneralBrowserCdpPort();
-      
-      if (!cdpPort) {
-        return err(res, 'General browser is not running. Please start it first.', 400);
-      }
-
-      // Dynamically require puppeteer-core
-      const puppeteer = require('puppeteer-core');
-      
-      const browser = await puppeteer.connect({
-        browserURL: `http://127.0.0.1:${cdpPort}`,
-        defaultViewport: null,
+      const resp = await fetch(`${PYTHON_API}/search`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, pageNumber }),
       });
-
-      const page = await browser.newPage();
-      const startParam = (pageNumber - 1) * 10;
-      await page.goto(`https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}`, { waitUntil: 'domcontentloaded' });
-
-      // Wait a bit for dynamic content like AI overviews
-      await new Promise(resolve => setTimeout(resolve, 3000));
-
-      const results = await page.evaluate(() => {
-        const parsed: any = {
-          organic: [],
-          aiResponse: null,
-        };
-
-        // Try to find AI response (Google's Search Generative Experience)
-        // These selectors are best-effort as Google's DOM changes often
-        const aiBlock = document.querySelector('.M8OgIe') || document.querySelector('[data-attrid="wa:/description"]');
-        if (aiBlock) {
-          parsed.aiResponse = (aiBlock as HTMLElement).innerText || aiBlock.textContent?.trim();
-        }
-
-        // Parse organic results
-        const resultElements = document.querySelectorAll('#search .g');
-        resultElements.forEach((el) => {
-          const titleEl = el.querySelector('h3');
-          const linkEl = el.querySelector('a');
-          const snippetEl = el.querySelector('.VwiC3b, .Uroaid, .lyLwlc');
-
-          if (titleEl && linkEl) {
-            parsed.organic.push({
-              title: titleEl.textContent?.trim() || '',
-              link: linkEl.getAttribute('href') || '',
-              snippet: snippetEl?.textContent?.trim() || ''
-            });
-          }
-        });
-
-        return parsed;
-      });
-
-      // Close the tab to prevent memory leaks, but disconnect without closing the whole browser
-      await page.close();
-      browser.disconnect();
-
+      if (!resp.ok) throw new Error(`Python API /search → HTTP ${resp.status}`);
+      const results = await resp.json();
       json(res, results);
     } catch (e) {
       err(res, (e as Error).message);
