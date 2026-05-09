@@ -159,6 +159,16 @@ MODEL_CATALOG: Dict[str, Dict[str, Any]] = {
         "chat_format": "mistral-instruct",
         "tags": ["mistral", "reliable", "capable"],
     },
+    "llama-3-8b-webparser": {
+        "label": "Llama 3 8B WebParser",
+        "description": "Llama 3 8B fine-tuned for web parsing and navigation",
+        "repo": "QuantFactory/Llama-3-8B-Web-GGUF",
+        "filename": "Llama-3-8B-Web.Q4_K_M.gguf",
+        "size_gb": 4.9,
+        "ctx": 8192,
+        "chat_format": "llama-3",
+        "tags": ["web", "capable", "llama-3"],
+    },
 }
 # fmt: on
 

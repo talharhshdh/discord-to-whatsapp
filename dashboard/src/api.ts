@@ -141,6 +141,8 @@ export const api = {
   },
   screenshot: (url: string, fullPage: boolean) =>
     postBinary('/api/ai/screenshot', { url, fullPage, format: 'png' }),
+  extractHtml: (html: string) =>
+    post<{ content: string }>('/api/ai/extract-html', { html }),
 
   downloadMedia: (url: string) =>
     postBinary('/api/media/download', { url }),

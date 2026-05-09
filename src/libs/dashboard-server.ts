@@ -214,6 +214,17 @@ function json(res: ServerResponse, data: unknown, status = 200): void {
   res.end(body);
 }
 
+async function callPythonExtractHtml(html: string): Promise<string> {
+  const resp = await fetch(`${PYTHON_API}/extract_html`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ html }),
+  });
+  if (!resp.ok) throw new Error(`Python API /extract_html → HTTP ${resp.status}`);
+  const data = await resp.json() as { content: string };
+  return data.content || '';
+}
+
 function err(res: ServerResponse, message: string, status = 500): void {
   json(res, { error: message }, status);
 }
@@ -373,6 +384,18 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       const fmt = (body['format'] as string) || 'png';
       const buf = await callPythonScreenshot(targetUrl, fullPage, fmt);
       binary(res, buf, `image/${fmt}`, `screenshot_${Date.now()}.${fmt}`);
+    } catch (e) { err(res, (e as Error).message); }
+    return;
+  }
+
+  // ── POST /api/ai/extract-html ──────────────────────────────────────────────
+  if (method === 'POST' && url === '/api/ai/extract-html') {
+    try {
+      const body = await parseJsonBody(req);
+      const html = body['html'] as string;
+      if (!html) return err(res, 'html is required', 400);
+      const content = await callPythonExtractHtml(html);
+      json(res, { content });
     } catch (e) { err(res, (e as Error).message); }
     return;
   }
@@ -697,7 +720,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       const puppeteer = require('puppeteer-core');
       
       const browser = await puppeteer.connect({
-        browserURL: `http://localhost:${cdpPort}`,
+        browserURL: `http://127.0.0.1:${cdpPort}`,
         defaultViewport: null,
       });
 

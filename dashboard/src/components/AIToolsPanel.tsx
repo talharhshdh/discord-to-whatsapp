@@ -97,6 +97,41 @@ function ScreenshotCard() {
   );
 }
 
+function HtmlCleanerCard() {
+  const [html, setHtml] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const clean = async () => {
+    if (!html.trim()) return;
+    setLoading(true); setError(null); setResult(null);
+    try {
+      const res = await api.extractHtml(html);
+      setResult(res.content);
+    } catch (e) { setError((e as Error).message); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div className="glass glass-hover rounded-2xl p-5 flex flex-col gap-3">
+      <div className="text-2xl">🧹</div>
+      <h3 className="font-semibold text-white text-sm">MinerU HTML Cleaner</h3>
+      <textarea value={html} onChange={e => setHtml(e.target.value)} placeholder="Paste raw HTML here..." rows={4}
+        className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-white/30 outline-none focus:border-white/30 resize-none" />
+      <button onClick={clean} disabled={loading || !html.trim()}
+        className="py-2 rounded-lg bg-white/[0.07] hover:bg-white/[0.12] border border-white/10 text-xs font-medium transition-all disabled:opacity-50">
+        {loading ? '⏳ Cleaning…' : 'Clean HTML'}
+      </button>
+      {error && <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">❌ {error}</p>}
+      {result && (
+        <textarea readOnly value={result} rows={5}
+          className="w-full text-xs font-mono bg-black/30 border border-white/10 rounded-lg p-3 text-white/80 resize-none mt-2" />
+      )}
+    </div>
+  );
+}
+
 export default function AIToolsPanel() {
   return (
     <div className="space-y-4">
@@ -109,6 +144,7 @@ export default function AIToolsPanel() {
         <FileUploadCard icon="🎙️" title="Whisper Transcribe" accept="audio/*" resultType="text"
           onProcess={api.transcribe} />
         <ScreenshotCard />
+        <HtmlCleanerCard />
       </div>
     </div>
   );

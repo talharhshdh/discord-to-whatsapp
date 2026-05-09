@@ -169,6 +169,24 @@ async def take_screenshot(req: ScreenshotRequest):
         print(f"Screenshot Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+class ExtractHtmlRequest(BaseModel):
+    html: str
+
+@app.post("/extract_html")
+def extract_html(req: ExtractHtmlRequest):
+    try:
+        from mineru_html import MinerUHTML_Transformers, MinerUHTMLConfig
+        global html_extractor
+        if "html_extractor" not in globals():
+            config = MinerUHTMLConfig(use_fall_back='trafilatura', early_load=True)
+            html_extractor = MinerUHTML_Transformers(config=config)
+        
+        result = html_extractor.process(req.html)
+        return {"content": result[0].output_data.main_content}
+    except Exception as e:
+        print(f"HTML Extraction Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
