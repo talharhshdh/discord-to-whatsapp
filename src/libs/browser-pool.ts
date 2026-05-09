@@ -81,19 +81,8 @@ async function acquirePage(browser: RemoteBrowser): Promise<{ conn: WorkerConnec
 
   let conn = workerConnections.get(browser.workerId);
 
-  // Validate existing connection is still alive
-  if (conn) {
-    try {
-      // Lightweight liveness check
-      await conn.browserConn.version();
-    } catch {
-      // Connection is dead — clean up and reconnect
-      console.warn(`⚠️ Stale puppeteer connection for ${browser.workerId}, reconnecting...`);
-      try { conn.browserConn.disconnect(); } catch { /* ignore */ }
-      workerConnections.delete(browser.workerId);
-      conn = undefined;
-    }
-  }
+  // No upfront liveness check — we handle stale connections reactively on error
+  // (eliminates a ~50-100ms CDP round-trip on every request).
 
   // Establish connection if not cached
   if (!conn) {
@@ -394,43 +383,37 @@ export async function searchViaPool(
       page = acquired.page;
 
       const startParam = (pageNumber - 1) * 10;
+
+      // 'commit' resolves the instant response headers arrive (before DOM is parsed).
+      // waitForSelector then drives actual readiness — no wasted time.
       await page.goto(
         `https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}&num=10`,
-        { waitUntil: 'domcontentloaded', timeout: 20_000 },
+        { waitUntil: 'commit', timeout: 20_000 },
       );
 
-      // Wait for actual results OR captcha — whichever appears first (max 4s)
-      await Promise.race([
-        page.waitForSelector('#search .g, #rso .g, .MjjYud .g, form[action="/sorry/index"]', { timeout: 4_000 }),
-        new Promise(r => setTimeout(r, 4_000)),
-      ]).catch(() => { /* ignore timeout */ });
+      // Wait for results OR captcha to appear in the DOM (max 5s)
+      await page.waitForSelector(
+        '#search .g, #rso .g, .MjjYud .g, form[action="/sorry/index"]',
+        { timeout: 5_000 },
+      ).catch(() => { /* timeout is fine — evaluate will check what's there */ });
 
-      // Captcha Check
-      const isCaptcha = await page.evaluate(() =>
-        !!document.querySelector('form[action="/sorry/index"], #captcha, .g-recaptcha'),
-      );
-
-      if (isCaptcha) {
-        console.warn(`⚠️ Captcha detected on pool browser ${browser.workerId}`);
-        pageErrored = true;
-        throw new Error('CAPTCHA_DETECTED');
-      }
-
-      // Click "Show more" buttons to expand AI overview (fire-and-forget, no sleep)
-      page.evaluate(() => {
-        const btns = document.querySelectorAll('[jsname="VwDHjd"], [aria-label="Show more"], .LGOjhe, .cUnQKe');
-        btns.forEach((b: Element) => (b as HTMLElement).click());
-      }).catch(() => { /* ignore */ });
-
-      // Extract results
+      // Single CDP round-trip: captcha check + show-more click + full extraction
       const results = await page.evaluate(() => {
+        // Captcha guard
+        if (document.querySelector('form[action="/sorry/index"], #captcha, .g-recaptcha')) {
+          return { captcha: true, organic: [], aiResponse: null };
+        }
+
+        // Expand AI overview (no sleep needed — we're already past DOMContentLoaded)
+        document.querySelectorAll('[jsname="VwDHjd"], [aria-label="Show more"], .LGOjhe, .cUnQKe')
+          .forEach((b) => (b as HTMLElement).click());
+
         const organic: Array<{ title: string; link: string; snippet: string }> = [];
         let aiResponse: string | null = null;
         const seen = new Set<string>();
 
         // AI overview
-        const aiSelectors = ['.M8OgIe', '.LLtROe', '.IZ6rdc', '[data-attrid="wa:/description"]', '.wDYxhc[data-md]', '.kp-blk'];
-        for (const sel of aiSelectors) {
+        for (const sel of ['.M8OgIe', '.LLtROe', '.IZ6rdc', '[data-attrid="wa:/description"]', '.wDYxhc[data-md]', '.kp-blk']) {
           const el = document.querySelector(sel);
           if (el && (el as HTMLElement).innerText?.trim().length > 20) {
             aiResponse = (el as HTMLElement).innerHTML || (el as HTMLElement).innerText.trim();
@@ -466,12 +449,18 @@ export async function searchViaPool(
           });
         }
 
-        return { organic, aiResponse };
+        return { captcha: false, organic, aiResponse };
       });
+
+      if (results.captcha) {
+        console.warn(`⚠️ Captcha detected on pool browser ${browser.workerId}`);
+        pageErrored = true;
+        throw new Error('CAPTCHA_DETECTED');
+      }
 
       // ✅ Success — reset this worker's CDP failure counter
       workerCdpFailures.delete(browser.workerId);
-      return results;
+      return { organic: results.organic, aiResponse: results.aiResponse };
 
     } catch (e) {
       const msg = (e as Error).message;
