@@ -1,18 +1,11 @@
 """
 tts_server.py
-FastAPI server for Qwen3-TTS voice synthesis using the official `qwen-tts` package.
+FastAPI server for multiple TTS engines:
+1. Qwen3-TTS (Local, 0.6B/1.7B)
+2. MeloTTS (Local, CPU-optimized)
+3. Edge-TTS (Cloud, High Quality)
+
 Runs on port 8002.
-
-Three models are loaded lazily on first use:
-  - Qwen3-TTS-12Hz-0.6B-CustomVoice  → /tts/generate  (built-in speaker presets)
-  - Qwen3-TTS-12Hz-0.6B-Base         → /tts/clone     (voice cloning from ref audio)
-  - Qwen3-TTS-12Hz-1.7B-VoiceDesign  → /tts/design    (natural-language style description)
-
-GET  /health        → liveness + loaded-model state
-GET  /tts/voices    → list built-in speakers for the CustomVoice model
-POST /tts/generate  → standard TTS (JSON body: text, speaker, language, instruct?)
-POST /tts/clone     → voice clone (multipart: text, reference_audio, ref_text, language)
-POST /tts/design    → voice design (JSON body: text, style, language)
 """
 
 import io
@@ -22,8 +15,9 @@ import logging
 import tempfile
 import time
 import threading
+import asyncio
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Dict, Any
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
@@ -34,7 +28,7 @@ from pydantic import BaseModel
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("tts_server")
 
-app = FastAPI(title="Qwen3-TTS Server", version="2.0.0")
+app = FastAPI(title="Multi-Engine TTS Server", version="3.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -42,13 +36,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Model IDs ─────────────────────────────────────────────────────────────────
-
+# ── Qwen3-TTS Config ─────────────────────────────────────────────────────────
 MODEL_CUSTOM_VOICE = "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice"
 MODEL_BASE         = "Qwen/Qwen3-TTS-12Hz-0.6B-Base"
 MODEL_DESIGN       = "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign"
-
-# ── Model registry ────────────────────────────────────────────────────────────
 
 _lock = threading.Lock()
 
@@ -62,39 +53,33 @@ class _ModelEntry:
     def is_ready(self) -> bool:
         return self.model is not None
 
-_models: dict[str, _ModelEntry] = {
+_qwen_models: dict[str, _ModelEntry] = {
     "custom_voice": _ModelEntry(MODEL_CUSTOM_VOICE),
     "base":         _ModelEntry(MODEL_BASE),
     "design":       _ModelEntry(MODEL_DESIGN),
 }
 
-def _load_model(key: str) -> None:
-    entry = _models[key]
+def _load_qwen_model(key: str) -> None:
+    entry = _qwen_models[key]
     if entry.is_ready() or entry.loading:
         return
     entry.loading = True
     try:
         import torch
         from qwen_tts import Qwen3TTSModel
-        logger.info(f"Loading {entry.model_id} …")
+        logger.info(f"Loading Qwen {entry.model_id} …")
         device = "cuda:0" if _has_cuda() else "cpu"
-        kwargs = dict(
-            device_map=device,
-            dtype=torch.bfloat16,
-        )
-        # flash_attention_2 only works on CUDA
+        kwargs = dict(device_map=device, dtype=torch.bfloat16)
         if _has_cuda():
             kwargs["attn_implementation"] = "flash_attention_2"
-        m = Qwen3TTSModel.from_pretrained(entry.model_id, **kwargs)
-        entry.model = m
+        entry.model = Qwen3TTSModel.from_pretrained(entry.model_id, **kwargs)
         entry.error = None
-        logger.info(f"✅ {entry.model_id} loaded")
+        logger.info(f"✅ Qwen {entry.model_id} loaded")
     except Exception as e:
         entry.error = str(e)
-        logger.error(f"❌ Failed to load {entry.model_id}: {e}")
+        logger.error(f"❌ Failed to load Qwen {entry.model_id}: {e}")
     finally:
         entry.loading = False
-
 
 def _has_cuda() -> bool:
     try:
@@ -103,27 +88,38 @@ def _has_cuda() -> bool:
     except Exception:
         return False
 
-
-def _ensure(key: str):
-    """Returns the model or raises HTTPException."""
-    entry = _models[key]
-    if entry.is_ready():
-        return entry.model
-    if entry.error:
-        raise HTTPException(503, f"Model failed to load: {entry.error}")
+def _ensure_qwen(key: str):
+    entry = _qwen_models[key]
+    if entry.is_ready(): return entry.model
+    if entry.error: raise HTTPException(503, f"Qwen model error: {entry.error}")
     if not entry.loading:
-        t = threading.Thread(target=_load_model, args=(key,), daemon=True)
-        t.start()
-    raise HTTPException(503, "Model is loading — retry in a few seconds")
+        threading.Thread(target=_load_qwen_model, args=(key,), daemon=True).start()
+    raise HTTPException(503, "Qwen model is loading")
 
+# ── MeloTTS Config ───────────────────────────────────────────────────────────
+_melo_models: Dict[str, Any] = {}
 
+def _ensure_melo(lang: str = "EN"):
+    lang = lang.upper()
+    if lang not in _melo_models:
+        try:
+            from melo.api import TTS
+            logger.info(f"Loading MeloTTS {lang} …")
+            device = "cuda:0" if _has_cuda() else "cpu"
+            _melo_models[lang] = TTS(language=lang, device=device)
+            logger.info(f"✅ MeloTTS {lang} loaded")
+        except Exception as e:
+            logger.error(f"❌ MeloTTS load error: {e}")
+            raise HTTPException(500, f"MeloTTS load failed: {e}")
+    return _melo_models[lang]
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
 def _wav_to_bytes(wav_array, sr: int) -> bytes:
     import soundfile as sf
     buf = io.BytesIO()
     sf.write(buf, wav_array, sr, format="WAV")
     buf.seek(0)
     return buf.read()
-
 
 def _audio_response(wav_bytes: bytes, prefix: str) -> Response:
     return Response(
@@ -132,80 +128,85 @@ def _audio_response(wav_bytes: bytes, prefix: str) -> Response:
         headers={"Content-Disposition": f'attachment; filename="{prefix}_{int(time.time())}.wav"'},
     )
 
-# ── Built-in speaker list ─────────────────────────────────────────────────────
-# Official speakers from Qwen3-TTS-12Hz-1.7B-CustomVoice
-# (native language shown for best quality)
-
-CUSTOM_VOICE_SPEAKERS = [
-    {"id": "Vivian",    "label": "Vivian",    "gender": "female", "lang": "Chinese",  "tone": "Expressive, emotional"},
-    {"id": "Ryan",      "label": "Ryan",      "gender": "male",   "lang": "English",  "tone": "Clear, confident"},
-    {"id": "Ethan",     "label": "Ethan",     "gender": "male",   "lang": "English",  "tone": "Friendly, conversational"},
-    {"id": "Sophia",    "label": "Sophia",    "gender": "female", "lang": "English",  "tone": "Warm, professional"},
-    {"id": "Isabella",  "label": "Isabella",  "gender": "female", "lang": "Spanish",  "tone": "Energetic, lively"},
-    {"id": "Lucas",     "label": "Lucas",     "gender": "male",   "lang": "Portuguese","tone": "Deep, articulate"},
-    {"id": "Mia",       "label": "Mia",       "gender": "female", "lang": "German",   "tone": "Crisp, precise"},
-    {"id": "Noah",      "label": "Noah",      "gender": "male",   "lang": "French",   "tone": "Smooth, sophisticated"},
-    {"id": "Yuna",      "label": "Yuna",      "gender": "female", "lang": "Korean",   "tone": "Soft, gentle"},
-    {"id": "Hiroshi",   "label": "Hiroshi",   "gender": "male",   "lang": "Japanese", "tone": "Calm, measured"},
+# ── Built-in Voices ───────────────────────────────────────────────────────────
+QWEN_SPEAKERS = [
+    {"id": "Vivian", "label": "Qwen: Vivian (CN)", "engine": "qwen", "gender": "female", "tone": "Emotional"},
+    {"id": "Ryan",   "label": "Qwen: Ryan (EN)",   "engine": "qwen", "gender": "male",   "tone": "Clear"},
+    {"id": "Sophia", "label": "Qwen: Sophia (EN)", "engine": "qwen", "gender": "female", "tone": "Professional"},
 ]
 
-# ── Health ─────────────────────────────────────────────────────────────────────
+MELO_SPEAKERS = [
+    {"id": "EN-Default", "label": "Melo: English (Default)", "engine": "melo", "gender": "female", "tone": "Fast, Natural"},
+    {"id": "EN-US",      "label": "Melo: English (US)",      "engine": "melo", "gender": "female", "tone": "American accent"},
+    {"id": "EN-BR",      "label": "Melo: English (British)", "engine": "melo", "gender": "male",   "tone": "British accent"},
+]
+
+EDGE_SPEAKERS = [
+    {"id": "en-US-AriaNeural",    "label": "Edge: Aria (US)",    "engine": "edge", "gender": "female", "tone": "Smooth Cloud"},
+    {"id": "en-US-GuyNeural",     "label": "Edge: Guy (US)",     "engine": "edge", "gender": "male",   "tone": "Deep Cloud"},
+    {"id": "en-GB-SoniaNeural",   "label": "Edge: Sonia (UK)",   "engine": "edge", "gender": "female", "tone": "British Cloud"},
+    {"id": "zh-CN-XiaoxiaoNeural","label": "Edge: Xiaoxiao (CN)","engine": "edge", "gender": "female", "tone": "Natural Chinese"},
+]
+
+# ── Routes ────────────────────────────────────────────────────────────────────
 
 @app.get("/health")
 def health():
     return {
         "status": "ok",
-        "model_loaded": any(e.is_ready() for e in _models.values()),
-        "loading": any(e.loading for e in _models.values()),
-        "error": next((e.error for e in _models.values() if e.error), None),
-        "models": {
-            k: {
-                "loaded": e.is_ready(),
-                "loading": e.loading,
-                "error": e.error,
-            }
-            for k, e in _models.items()
-        },
+        "engines": ["qwen", "melo", "edge"],
+        "qwen_loaded": any(e.is_ready() for e in _qwen_models.values()),
+        "melo_loaded": list(_melo_models.keys()),
     }
-
-# ── Voices ────────────────────────────────────────────────────────────────────
 
 @app.get("/tts/voices")
 def list_voices():
-    # Try to get live speaker list from the model if loaded, else return static list
-    entry = _models["custom_voice"]
-    if entry.is_ready():
-        try:
-            speakers = entry.model.get_supported_speakers()
-            langs    = entry.model.get_supported_languages()
-            # Build compact list from live data, augmenting with our static metadata
-            static_map = {s["id"]: s for s in CUSTOM_VOICE_SPEAKERS}
-            voices = []
-            for sp in speakers:
-                meta = static_map.get(sp, {"gender": "neutral", "lang": "Auto", "tone": "Natural"})
-                voices.append({"id": sp, "label": sp, "gender": meta.get("gender", "neutral"),
-                                "lang": meta.get("lang", "Auto"), "tone": meta.get("tone", "Natural")})
-            return {"voices": voices, "languages": langs}
-        except Exception:
-            pass
-    return {"voices": CUSTOM_VOICE_SPEAKERS, "languages": [
-        "Auto", "Chinese", "English", "Japanese", "Korean",
-        "German", "French", "Russian", "Portuguese", "Spanish", "Italian",
-    ]}
-
-# ── TTS Generate (CustomVoice) ────────────────────────────────────────────────
+    return {"voices": QWEN_SPEAKERS + MELO_SPEAKERS + EDGE_SPEAKERS}
 
 class TTSRequest(BaseModel):
     text: str
     speaker: str = "Vivian"
     language: str = "Auto"
-    instruct: str = ""   # optional style instruction e.g. "Very happy."
+    instruct: str = ""
+    engine: str = "qwen" # qwen, melo, edge
 
 @app.post("/tts/generate")
 async def tts_generate(req: TTSRequest):
-    if not req.text.strip():
-        raise HTTPException(400, "text must not be empty")
-    model = _ensure("custom_voice")
+    if not req.text.strip(): raise HTTPException(400, "Empty text")
+
+    # 1. Edge-TTS Engine
+    if req.engine == "edge":
+        import edge_tts
+        try:
+            communicate = edge_tts.Communicate(req.text, req.speaker)
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:
+                await communicate.save(tmp.name)
+                tmp_path = tmp.name
+            with open(tmp_path, "rb") as f:
+                data = f.read()
+            os.unlink(tmp_path)
+            return Response(content=data, media_type="audio/mpeg")
+        except Exception as e:
+            raise HTTPException(500, f"Edge-TTS error: {e}")
+
+    # 2. MeloTTS Engine
+    if req.engine == "melo":
+        model = _ensure_melo("EN" if "EN" in req.speaker else "ZH")
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                tmp_path = tmp.name
+            # speaker_id lookup
+            spk_id = model.hps.data.spk2id.get(req.speaker, model.hps.data.spk2id.get('EN-Default', 0))
+            model.tts_to_file(req.text, spk_id, tmp_path, speed=1.0)
+            with open(tmp_path, "rb") as f:
+                data = f.read()
+            os.unlink(tmp_path)
+            return Response(content=data, media_type="audio/wav")
+        except Exception as e:
+            raise HTTPException(500, f"MeloTTS error: {e}")
+
+    # 3. Qwen Engine (Default)
+    model = _ensure_qwen("custom_voice")
     try:
         with _lock:
             wavs, sr = model.generate_custom_voice(
@@ -215,14 +216,9 @@ async def tts_generate(req: TTSRequest):
                 instruct=req.instruct if req.instruct.strip() else None,
                 max_new_tokens=2048,
             )
-        return _audio_response(_wav_to_bytes(wavs[0], sr), "tts")
-    except HTTPException:
-        raise
+        return _audio_response(_wav_to_bytes(wavs[0], sr), "qwen")
     except Exception as e:
-        logger.error(f"/tts/generate error: {e}")
         raise HTTPException(500, str(e))
-
-# ── Voice Clone (Base) ─────────────────────────────────────────────────────────
 
 @app.post("/tts/clone")
 async def tts_clone(
@@ -231,81 +227,44 @@ async def tts_clone(
     language: str = Form("Auto"),
     reference_audio: UploadFile = File(...),
 ):
-    """
-    Voice cloning — synthesise `text` using the voice from the uploaded reference audio.
-    `ref_text` is the transcript of the reference clip (improves quality significantly).
-    """
-    if not text.strip():
-        raise HTTPException(400, "text must not be empty")
-    if not ref_text.strip():
-        raise HTTPException(400, "ref_text (transcript of the reference clip) must not be empty")
-
+    # Cloning currently only supported by Qwen Base
+    model = _ensure_qwen("base")
     ref_bytes = await reference_audio.read()
-    if len(ref_bytes) < 1024:
-        raise HTTPException(400, "Reference audio file is too small or empty")
-
-    # Write to a temp file so the model can read it
     suffix = Path(reference_audio.filename or "ref.wav").suffix or ".wav"
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         tmp.write(ref_bytes)
         tmp_path = tmp.name
-
-    model = _ensure("base")
     try:
         with _lock:
             wavs, sr = model.generate_voice_clone(
-                text=text,
-                language=language,
-                ref_audio=tmp_path,
-                ref_text=ref_text,
-                max_new_tokens=2048,
+                text=text, language=language, ref_audio=tmp_path, ref_text=ref_text, max_new_tokens=2048
             )
         return _audio_response(_wav_to_bytes(wavs[0], sr), "clone")
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error(f"/tts/clone error: {e}")
         raise HTTPException(500, str(e))
     finally:
-        try:
-            os.unlink(tmp_path)
-        except Exception:
-            pass
-
-# ── Voice Design ──────────────────────────────────────────────────────────────
-
-class VoiceDesignRequest(BaseModel):
-    text: str
-    style: str        # natural-language voice description
-    language: str = "Auto"
+        try: os.unlink(tmp_path)
+        except: pass
 
 @app.post("/tts/design")
-async def tts_design(req: VoiceDesignRequest):
-    if not req.text.strip():
-        raise HTTPException(400, "text must not be empty")
-    if not req.style.strip():
-        raise HTTPException(400, "style must not be empty")
-    model = _ensure("design")
+async def tts_design(text: str = Form(...), style: str = Form(...), language: str = Form("Auto")):
+    model = _ensure_qwen("design")
     try:
         with _lock:
             wavs, sr = model.generate_voice_design(
-                text=req.text,
-                language=req.language,
-                instruct=req.style,
-                max_new_tokens=2048,
+                text=text, language=language, instruct=style, max_new_tokens=2048
             )
         return _audio_response(_wav_to_bytes(wavs[0], sr), "design")
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error(f"/tts/design error: {e}")
         raise HTTPException(500, str(e))
-
-# ── Entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     port = int(os.environ.get("TTS_SERVER_PORT", 8002))
-    logger.info(f"🚀 TTS Server starting on port {port}")
-    # Kick off CustomVoice model loading immediately (most commonly used)
-    threading.Thread(target=_load_model, args=("custom_voice",), daemon=True).start()
+    logger.info(f"🚀 Multi-Engine TTS Server starting on port {port}")
+    # Pre-download NLTK data for MeloTTS
+    try:
+        import nltk
+        nltk.download('averaged_perceptron_tagger_eng')
+        nltk.download('universal_tagset')
+    except: pass
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")

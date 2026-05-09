@@ -78,6 +78,7 @@ export interface YtVideoInfo {
 export interface TTSVoice {
   id: string;
   label: string;
+  engine: string;
   gender: string;
   tone: string;
 }
@@ -211,8 +212,8 @@ export const api = {
   ttsStatus: () => fetch(`${BASE}/api/tts/status`).then(r => r.json()) as Promise<TTSStatus>,
   ttsVoices: () => fetch(`${BASE}/api/tts/voices`).then(r => r.json()) as Promise<{ voices: TTSVoice[] }>,
 
-  ttsGenerate: (text: string, voice: string, language: string = 'Auto', instruct: string = '') =>
-    postBinary('/api/tts/generate', { text, speaker: voice, language, instruct }),
+  ttsGenerate: (text: string, voice: string, language: string = 'Auto', instruct: string = '', engine: string = 'qwen') =>
+    postBinary('/api/tts/generate', { text, speaker: voice, language, instruct, engine }),
 
   ttsClone: (text: string, referenceAudio: File, refText: string, language: string = 'Auto') => {
     const fd = new FormData();

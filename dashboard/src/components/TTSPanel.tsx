@@ -90,11 +90,14 @@ function VoiceCard({ voice, selected, onClick }: { voice: TTSVoice; selected: bo
   return (
     <button
       onClick={onClick}
-      className={`flex flex-col gap-1 p-3 rounded-xl border text-left transition-all ${selected
+      className={`relative flex flex-col gap-1 p-3 rounded-xl border text-left transition-all ${selected
         ? 'bg-[#6c63ff]/20 border-[#6c63ff]/40 text-white'
         : 'bg-white/[0.03] border-white/[0.07] text-white/60 hover:border-white/20 hover:text-white'
       }`}
     >
+      <div className="absolute top-2 right-2 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-white/10 text-white/40">
+        {voice.engine}
+      </div>
       <div className="flex items-center gap-1.5">
         <span>{genderIcon}</span>
         <span className="font-semibold text-sm">{voice.label}</span>
@@ -121,7 +124,9 @@ function GenerateTab({ voices, serverReady }: { voices: TTSVoice[]; serverReady:
     setError(null);
     setResult(null);
     try {
-      const blob = await api.ttsGenerate(text, voice, language, instruct);
+      const selectedVoice = voices.find(v => v.id === voice);
+      const engine = selectedVoice?.engine || 'qwen';
+      const blob = await api.ttsGenerate(text, voice, language, instruct, engine);
       setResult({ blob, name: `tts_${Date.now()}.wav` });
     } catch (e) {
       setError((e as Error).message);

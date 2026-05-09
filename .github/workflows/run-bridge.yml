@@ -98,7 +98,7 @@ jobs:
           pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
           pip install seleniumbase fastapi uvicorn pydantic rembg onnxruntime python-multipart openai-whisper easyocr \
             "llama-cpp-python" huggingface_hub accelerate \
-            qwen-tts soundfile
+            qwen-tts soundfile melotts edge-tts
           seleniumbase install chromedriver
       - name: Install System Dependencies
         run: |
