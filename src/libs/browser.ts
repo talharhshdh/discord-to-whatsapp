@@ -18,6 +18,7 @@ const browserInstances = new Map<string, {
   username: string;
   password: string;
   port: number;
+  cdpPort: number;
   containerName: string;
   tunnelProcess: ChildProcess;
   targetUrl?: string;
@@ -93,6 +94,7 @@ async function startBrowserInstance(targetUrl?: string): Promise<{
 
     // Use hardcoded credentials if available, otherwise generate random ones
     const port = BROWSER_PORT || (10080 + browserInstances.size);
+    const cdpPort = 9222 + (port - 10080);
     const username = BROWSER_USERNAME || `dev_${crypto.randomBytes(3).toString('hex')}`;
     const password = BROWSER_PASSWORD || crypto.randomBytes(6).toString('hex');
 
@@ -120,20 +122,21 @@ async function startBrowserInstance(targetUrl?: string): Promise<{
     }
 
     // Build docker command.
-    // CHROMIUM_FLAGS enables the CDP debug port on loopback inside the container.
-    // We do NOT map port 9222 externally — we reach it via docker exec instead.
+    // CHROMIUM_FLAGS enables the CDP debug port inside the container.
+    // We map port 9222 externally to the cdpPort.
     const dockerCmd = [
       'docker', 'run', '-d', '--rm',
       '--name', containerName,
       '--shm-size=1gb',
       '-p', `${port}:3000`,
+      '-p', `${cdpPort}:9222`,
       '-v', `${process.cwd()}/browser_data:/config`,
       '-e', 'TZ=Etc/UTC',
       '-e', `CUSTOM_USER=${username}`,
       '-e', `PASSWORD=${password}`,
       '-e', `PUID=${process.getuid ? process.getuid() : 1000}`,
       '-e', `PGID=${process.getgid ? process.getgid() : 1000}`,
-      '-e', 'CHROMIUM_FLAGS=--remote-debugging-port=9222 --no-sandbox --disable-dev-shm-usage',
+      '-e', 'CHROMIUM_FLAGS=--remote-debugging-address=0.0.0.0 --remote-debugging-port=9222 --no-sandbox --disable-dev-shm-usage',
     ];
 
     // Add custom URL if provided
@@ -181,6 +184,7 @@ async function startBrowserInstance(targetUrl?: string): Promise<{
             username,
             password,
             port,
+            cdpPort,
             containerName,
             tunnelProcess,
             targetUrl,
@@ -222,6 +226,7 @@ async function startBrowserInstance(targetUrl?: string): Promise<{
               username,
               password,
               port,
+              cdpPort,
               containerName,
               tunnelProcess,
               targetUrl,
@@ -476,5 +481,14 @@ export function getAllBrowsers() {
     password: instance.password,
     targetUrl: instance.targetUrl,
     port: instance.port,
+    cdpPort: instance.cdpPort,
   }));
+}
+
+/**
+ * Get CDP port of the general browser instance
+ */
+export function getGeneralBrowserCdpPort(): number | undefined {
+  const general = Array.from(browserInstances.values()).find(b => !b.targetUrl);
+  return general?.cdpPort;
 }

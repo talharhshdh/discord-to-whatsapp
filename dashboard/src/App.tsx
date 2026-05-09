@@ -9,8 +9,10 @@ import MoviesPanel from './components/MoviesPanel';
 import URLsPanel from './components/URLsPanel';
 import AndroidPanel from './components/AndroidPanel';
 import LLMPanel from './components/LLMPanel';
+import SearchPanel from './components/SearchPanel';
 
 const NAV: { id: NavSection; label: string; icon: string }[] = [
+  { id: 'search',    label: 'Browser Search', icon: '🔍' },
   { id: 'sessions',  label: 'Dev Sessions',  icon: '🖥️' },
   { id: 'manager',   label: 'Session Manager', icon: '📊' },
   { id: 'android',   label: 'Android',       icon: '📱' },
@@ -139,6 +141,7 @@ export default function App() {
               {section === 'movies' && <MoviesPanel />}
               {section === 'urls' && <URLsPanel tools={data?.tools ?? {}} />}
               {section === 'llm' && <LLMPanel />}
+              {section === 'search' && <SearchPanel />}
             </div>
           </main>
         </div>

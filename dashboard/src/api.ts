@@ -57,6 +57,10 @@ export interface UrlsPayload {
 export interface SessionResult {
   url?: string; username?: string; password?: string; error?: string;
 }
+export interface BrowserSearchResult {
+  organic: { title: string; link: string; snippet: string }[];
+  aiResponse: string | null;
+}
 export interface YtSearchResult {
   videoId: string; url: string; title: string; thumbnail: string;
   duration: string; views: number; ago: string; author: string;
@@ -157,6 +161,9 @@ export const api = {
 
   exportYtCookies: () =>
     post<{ success: boolean; message: string; cookiesPath?: string }>('/api/browser/export-cookies', {}),
+
+  browserSearch: (text: string, pageNumber: number) =>
+    post<BrowserSearchResult>('/api/browser/search', { text, pageNumber }),
 
   // ── LLM ───────────────────────────────────────────────────────────────────
   llmModels: () => fetch('/api/llm/models').then(r => {

@@ -678,6 +678,79 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 
 
 
+  // ── POST /api/browser/search ───────────────────────────────────────────
+  if (method === 'POST' && url === '/api/browser/search') {
+    try {
+      const body = await parseJsonBody(req);
+      const text = body['text'] as string;
+      if (!text) return err(res, 'text is required', 400);
+      const pageNumber = Number(body['pageNumber']) || 1;
+
+      const { getGeneralBrowserCdpPort } = require('./browser');
+      const cdpPort = getGeneralBrowserCdpPort();
+      
+      if (!cdpPort) {
+        return err(res, 'General browser is not running. Please start it first.', 400);
+      }
+
+      // Dynamically require puppeteer-core
+      const puppeteer = require('puppeteer-core');
+      
+      const browser = await puppeteer.connect({
+        browserURL: `http://localhost:${cdpPort}`,
+        defaultViewport: null,
+      });
+
+      const page = await browser.newPage();
+      const startParam = (pageNumber - 1) * 10;
+      await page.goto(`https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}`, { waitUntil: 'domcontentloaded' });
+
+      // Wait a bit for dynamic content like AI overviews
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
+      const results = await page.evaluate(() => {
+        const parsed: any = {
+          organic: [],
+          aiResponse: null,
+        };
+
+        // Try to find AI response (Google's Search Generative Experience)
+        // These selectors are best-effort as Google's DOM changes often
+        const aiBlock = document.querySelector('.M8OgIe') || document.querySelector('[data-attrid="wa:/description"]');
+        if (aiBlock) {
+          parsed.aiResponse = (aiBlock as HTMLElement).innerText || aiBlock.textContent?.trim();
+        }
+
+        // Parse organic results
+        const resultElements = document.querySelectorAll('#search .g');
+        resultElements.forEach((el) => {
+          const titleEl = el.querySelector('h3');
+          const linkEl = el.querySelector('a');
+          const snippetEl = el.querySelector('.VwiC3b, .Uroaid, .lyLwlc');
+
+          if (titleEl && linkEl) {
+            parsed.organic.push({
+              title: titleEl.textContent?.trim() || '',
+              link: linkEl.getAttribute('href') || '',
+              snippet: snippetEl?.textContent?.trim() || ''
+            });
+          }
+        });
+
+        return parsed;
+      });
+
+      // Close the tab to prevent memory leaks, but disconnect without closing the whole browser
+      await page.close();
+      browser.disconnect();
+
+      json(res, results);
+    } catch (e) {
+      err(res, (e as Error).message);
+    }
+    return;
+  }
+
   // ── DELETE /api/llm/models/:id ─────────────────────────────────────────────
   if (method === 'DELETE' && url.startsWith('/api/llm/models/')) {
     try {

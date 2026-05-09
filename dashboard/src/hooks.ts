@@ -33,4 +33,4 @@ export function useCountdown(remainingSeconds: number) {
   return { rem, display: `${pad(h)}:${pad(m)}:${pad(s)}`, pct: (rem / (5 * 3600)) * 100, urgent: rem < 1800 };
 }
 
-export type NavSection = 'sessions' | 'manager' | 'android' | 'ai-tools' | 'media' | 'youtube' | 'movies' | 'urls' | 'llm';
+export type NavSection = 'sessions' | 'manager' | 'android' | 'ai-tools' | 'media' | 'youtube' | 'movies' | 'urls' | 'llm' | 'search';
