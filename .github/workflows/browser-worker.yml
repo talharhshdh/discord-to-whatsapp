@@ -47,12 +47,11 @@ jobs:
         with:
           chrome-version: stable
 
-      - name: Install cloudflared and socat
+      - name: Install cloudflared
         run: |
           curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
           sudo dpkg -i cloudflared.deb
-          sudo apt-get update && sudo apt-get install -y socat
-          echo "✅ cloudflared and socat installed"
+          echo "✅ cloudflared installed"
 
       - name: Run browser worker
         run: |

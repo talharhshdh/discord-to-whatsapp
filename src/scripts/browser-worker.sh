@@ -78,7 +78,7 @@ google-chrome-stable \
   --disable-dev-shm-usage \
   --disable-gpu \
   --remote-debugging-port=${CDP_PORT} \
-  --remote-debugging-address=127.0.0.1 \
+  --remote-debugging-address=0.0.0.0 \
   --remote-allow-origins=* \
   --user-data-dir=/tmp/chrome-user-data \
   --disable-background-networking \
@@ -106,24 +106,14 @@ for i in $(seq 1 30); do
 done
 
 # ---------------------------------------------------------------------------
-# 2. Bridge CDP with socat (Fixes Host Header / 500 issues)
+# 2. Start cloudflared tunnel (with Host header rewrite for Chrome CDP)
 # ---------------------------------------------------------------------------
-BRIDGE_PORT=9223
-echo "🌉 Bridging CDP ${CDP_PORT} -> ${BRIDGE_PORT} via socat..."
-socat TCP-LISTEN:${BRIDGE_PORT},fork,reuseaddr TCP:127.0.0.1:${CDP_PORT} &
-SOCAT_PID=$!
-
-# Pre-warm: Navigate to google.com immediately
-echo "🔥 Pre-warming browser..."
-curl -s "http://127.0.0.1:${CDP_PORT}/json/new?https://www.google.com" > /dev/null || true
-
-# ---------------------------------------------------------------------------
-# 3. Start cloudflared tunnel
-# ---------------------------------------------------------------------------
-echo "🌐 Starting cloudflared tunnel for bridge port ${BRIDGE_PORT}..."
+echo "🌐 Starting cloudflared tunnel for CDP port ${CDP_PORT}..."
 
 TUNNEL_LOG="/tmp/cloudflared-tunnel.log"
-cloudflared tunnel --url "http://127.0.0.1:${BRIDGE_PORT}" > "$TUNNEL_LOG" 2>&1 &
+# The --http-host-header flag is CRITICAL. It rewrites the Host header from xxx.trycloudflare.com 
+# to localhost. Without this, Chrome rejects the CDP request with a 500 error for security reasons.
+cloudflared tunnel --url "http://127.0.0.1:${CDP_PORT}" --http-host-header "localhost" > "$TUNNEL_LOG" 2>&1 &
 TUNNEL_PID=$!
 
 # Wait for tunnel URL to appear in logs
@@ -141,6 +131,10 @@ for i in $(seq 1 30); do
   fi
   sleep 1
 done
+
+# Pre-warm: open google.com so DNS + TCP are warm for the first real request
+echo "🔥 Pre-warming browser on google.com..."
+curl -s "http://127.0.0.1:${CDP_PORT}/json/new?https://www.google.com" > /dev/null || true
 
 # ---------------------------------------------------------------------------
 # 3. Register with main dashboard
