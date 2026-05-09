@@ -46,6 +46,128 @@ const CLEANUP_INTERVAL_MS = 30 * 1000;
 // BrowserPool
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Per-worker puppeteer connection + page pool cache
+// ---------------------------------------------------------------------------
+
+interface WorkerConnection {
+  browserConn: any;
+  wsUrl: string;
+  /** Pages available for re-use (idle). */
+  freePages: any[];
+  /** Pages currently in use. */
+  busyPages: Set<any>;
+}
+
+/** Keyed by workerId. Populated lazily on first use, invalidated on error. */
+const workerConnections = new Map<string, WorkerConnection>();
+
+/** Max idle pages kept alive per worker. Extra pages are closed. */
+const MAX_IDLE_PAGES = 3;
+
+/**
+ * Return a ready page from the worker's pool.
+ * Creates a new puppeteer connection + page if none cached yet.
+ * Throws on failure so the caller can retry with the next worker.
+ */
+async function acquirePage(browser: RemoteBrowser): Promise<{ conn: WorkerConnection; page: any }> {
+  const puppeteer = require('puppeteer-core');
+
+  let conn = workerConnections.get(browser.workerId);
+
+  // Validate existing connection is still alive
+  if (conn) {
+    try {
+      // Lightweight liveness check
+      await conn.browserConn.version();
+    } catch {
+      // Connection is dead — clean up and reconnect
+      console.warn(`⚠️ Stale puppeteer connection for ${browser.workerId}, reconnecting...`);
+      try { conn.browserConn.disconnect(); } catch { /* ignore */ }
+      workerConnections.delete(browser.workerId);
+      conn = undefined;
+    }
+  }
+
+  // Establish connection if not cached
+  if (!conn) {
+    const versionResp = await fetch(`${browser.cdpUrl}/json/version`, {
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!versionResp.ok) throw new Error('CDP_UNREACHABLE');
+    const versionInfo = await versionResp.json() as { webSocketDebuggerUrl?: string };
+    const rawWsUrl = versionInfo.webSocketDebuggerUrl;
+    if (!rawWsUrl) throw new Error('NO_WS_URL');
+
+    const tunnelHost = new URL(browser.cdpUrl).host;
+    const wsUrl = rawWsUrl.replace(/^ws:\/\/[^/]+/, `wss://${tunnelHost}`);
+
+    const browserConn = await puppeteer.connect({
+      browserWSEndpoint: wsUrl,
+      defaultViewport: null,
+    });
+
+    conn = { browserConn, wsUrl, freePages: [], busyPages: new Set() };
+    workerConnections.set(browser.workerId, conn);
+    console.log(`🔗 New puppeteer connection cached for ${browser.workerId}`);
+  }
+
+  // Re-use idle page or open a new one
+  let page = conn.freePages.pop();
+  if (!page) {
+    page = await conn.browserConn.newPage();
+
+    // One-time page setup — only runs when a NEW page is created
+    await page.setRequestInterception(true);
+    page.on('request', (req: any) => {
+      const rt = req.resourceType();
+      const url = req.url().toLowerCase();
+      if (
+        ['image', 'font', 'media', 'stylesheet'].includes(rt) ||
+        url.includes('google-analytics.com') ||
+        url.includes('doubleclick.net')
+      ) {
+        req.abort();
+      } else {
+        req.continue();
+      }
+    });
+    await page.setUserAgent(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    );
+    await page.setViewport({ width: 1280, height: 800 });
+  }
+
+  conn.busyPages.add(page);
+  return { conn, page };
+}
+
+/**
+ * Return a page back to the idle pool (or close it if pool is full).
+ * Always call this in a finally block.
+ */
+async function releasePage(conn: WorkerConnection, page: any, discard = false): Promise<void> {
+  conn.busyPages.delete(page);
+  if (discard || conn.freePages.length >= MAX_IDLE_PAGES) {
+    try { await page.close(); } catch { /* ignore */ }
+  } else {
+    conn.freePages.push(page);
+  }
+}
+
+/** Invalidate and disconnect a cached worker connection (called on fatal errors). */
+function invalidateWorkerConnection(workerId: string): void {
+  const conn = workerConnections.get(workerId);
+  if (!conn) return;
+  workerConnections.delete(workerId);
+  // Close all pages gracefully
+  for (const p of [...conn.freePages, ...conn.busyPages]) {
+    try { p.close(); } catch { /* ignore */ }
+  }
+  try { conn.browserConn.disconnect(); } catch { /* ignore */ }
+  console.log(`🗑️ Invalidated puppeteer connection for ${workerId}`);
+}
+
 class BrowserPool {
   private browsers = new Map<string, RemoteBrowser>();
   private roundRobinIndex = 0;
@@ -91,6 +213,7 @@ class BrowserPool {
   deregister(workerId: string): void {
     const existed = this.browsers.delete(workerId);
     if (existed) {
+      invalidateWorkerConnection(workerId);
       console.log(`🗑️ Browser worker deregistered: ${workerId}  (pool size: ${this.browsers.size})`);
     }
   }
@@ -212,6 +335,7 @@ class BrowserPool {
 
       if (elapsed > DEAD_TIMEOUT_MS) {
         this.browsers.delete(id);
+        invalidateWorkerConnection(id);
         console.log(`💀 Browser worker removed (dead — no heartbeat for ${Math.round(elapsed / 1000)}s): ${id}`);
       } else if (elapsed > STALE_TIMEOUT_MS && entry.status === 'active') {
         entry.status = 'stale';
@@ -253,84 +377,47 @@ export async function searchViaPool(
     const browser = browserPool.getNext();
     if (!browser) return null;
 
-    let browserConn: any = null;
+    let conn: WorkerConnection | null = null;
     let page: any = null;
+    let pageErrored = false;
 
     try {
-      // 1. Discover WebSocket endpoint via the tunnel
-      const versionResp = await fetch(`${browser.cdpUrl}/json/version`, { signal: AbortSignal.timeout(10_000) });
-      if (!versionResp.ok) {
-        console.warn(`⚠️ Pool browser ${browser.workerId} CDP /json/version → HTTP ${versionResp.status}`);
-        throw new Error('CDP_UNREACHABLE');
-      }
-      const versionInfo = await versionResp.json() as { webSocketDebuggerUrl?: string };
-      const rawWsUrl = versionInfo.webSocketDebuggerUrl;
-      if (!rawWsUrl) throw new Error('NO_WS_URL');
-
-      // 2. Rewrite ws://127.0.0.1:9222/... → wss://<tunnel-host>/...
-      //    The cloudflared tunnel terminates TLS and forwards to local Chrome.
-      const tunnelHost = new URL(browser.cdpUrl).host;
-      const wsUrl = rawWsUrl
-        .replace(/^ws:\/\/[^/]+/, `wss://${tunnelHost}`);
-
-      // 3. Connect puppeteer-core
-      const puppeteer = require('puppeteer-core');
-      browserConn = await puppeteer.connect({
-        browserWSEndpoint: wsUrl,
-        defaultViewport: null,
-      });
-
-      page = await browserConn.newPage();
-
-      // --- OPTIMIZATION: Resource Blocking ---
-      await page.setRequestInterception(true);
-      page.on('request', (req: any) => {
-        const resourceType = req.resourceType();
-        const url = req.url().toLowerCase();
-        // Block images, fonts, media, and common analytics
-        if (
-          ['image', 'font', 'media', 'stylesheet'].includes(resourceType) ||
-          url.includes('google-analytics.com') ||
-          url.includes('doubleclick.net')
-        ) {
-          req.abort();
-        } else {
-          req.continue();
-        }
-      });
-
-      // --- OPTIMIZATION: Stealth & Viewport ---
-      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
-      await page.setViewport({ width: 1280, height: 800 });
+      // Acquire a cached (or newly created) puppeteer connection + reused page
+      const acquired = await acquirePage(browser);
+      conn = acquired.conn;
+      page = acquired.page;
 
       const startParam = (pageNumber - 1) * 10;
-      // Use 'domcontentloaded' for speed, then wait briefly for JS
       await page.goto(
-        `https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}`,
+        `https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}&num=10`,
         { waitUntil: 'domcontentloaded', timeout: 20_000 },
       );
-      await new Promise(r => setTimeout(r, 1500)); // Short wait for results to render
+
+      // Wait for actual results OR captcha — whichever appears first (max 4s)
+      // This replaces the blind 1500ms sleep.
+      await Promise.race([
+        page.waitForSelector('#search .g, #rso .g, .MjjYud .g, form[action="/sorry/index"]', { timeout: 4_000 }),
+        new Promise(r => setTimeout(r, 4_000)),
+      ]).catch(() => { /* ignore timeout */ });
 
       // Captcha Check
-      const isCaptcha = await page.evaluate(() => {
-        return !!document.querySelector('form[action="/sorry/index"], #captcha, .g-recaptcha');
-      });
+      const isCaptcha = await page.evaluate(() =>
+        !!document.querySelector('form[action="/sorry/index"], #captcha, .g-recaptcha'),
+      );
 
       if (isCaptcha) {
         console.warn(`⚠️ Captcha detected on pool browser ${browser.workerId}`);
+        pageErrored = true;
         throw new Error('CAPTCHA_DETECTED');
       }
 
-      // Click "Show more" buttons to expand AI overview
-      try {
-        await page.evaluate(() => {
-          const btns = document.querySelectorAll('[jsname="VwDHjd"], [aria-label="Show more"], .LGOjhe, .cUnQKe');
-          btns.forEach((b: Element) => (b as HTMLElement).click());
-        });
-        await new Promise(r => setTimeout(r, 1500));
-      } catch { /* ignore */ }
+      // Click "Show more" buttons to expand AI overview (fire-and-forget, no sleep)
+      page.evaluate(() => {
+        const btns = document.querySelectorAll('[jsname="VwDHjd"], [aria-label="Show more"], .LGOjhe, .cUnQKe');
+        btns.forEach((b: Element) => (b as HTMLElement).click());
+      }).catch(() => { /* ignore */ });
 
-      // Extract results — identical logic to dashboard-server.ts
+      // Extract results
       const results = await page.evaluate(() => {
         const organic: Array<{ title: string; link: string; snippet: string }> = [];
         let aiResponse: string | null = null;
@@ -379,12 +466,23 @@ export async function searchViaPool(
 
       return results;
     } catch (e) {
-      console.error(`❌ Pool search failed via ${browser.workerId} (attempt ${attempt + 1}/${maxAttempts}):`, (e as Error).message);
+      const msg = (e as Error).message;
+      console.error(`❌ Pool search failed via ${browser.workerId} (attempt ${attempt + 1}/${maxAttempts}):`, msg);
       browserPool.recordFailure();
-      // Loop continues to try the next browser in the pool
+
+      // Fatal connection errors → invalidate entire worker connection so next
+      // request re-establishes a fresh puppeteer WS instead of reusing a broken one.
+      if (['CDP_UNREACHABLE', 'NO_WS_URL', 'Protocol error', 'WebSocket'].some(k => msg.includes(k))) {
+        invalidateWorkerConnection(browser.workerId);
+        page = null; // already destroyed by invalidate
+      } else {
+        pageErrored = true;
+      }
     } finally {
-      try { if (page) await page.close(); } catch { /* ignore */ }
-      try { if (browserConn) browserConn.disconnect(); } catch { /* ignore */ }
+      if (conn && page) {
+        // Discard the page if it errored (navigation state is dirty)
+        await releasePage(conn, page, pageErrored);
+      }
     }
   }
 

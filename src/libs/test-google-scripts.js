@@ -10,16 +10,64 @@ let consecutiveFailures = 0;
 let stopFlag = false;
 let activeTasks = 0;
 
-console.log(`Starting continuous requests (Max 5 at a time). Stopping after 5 consecutive failures...\n`);
+// Timing and stats variables
+let minTime = Infinity;
+let maxTime = 0;
+let totalResponseTime = 0;
+const scriptStartTime = performance.now();
 
-// Wrap the execution in a Promise so we can await the final shutdown
+// Prevent printing results multiple times
+let hasPrintedResults = false;
+
+// Extract final logging into a reusable function
+function printFinalResults() {
+    if (hasPrintedResults) return;
+    hasPrintedResults = true;
+
+    const scriptEndTime = performance.now();
+    const totalElapsedSeconds = (scriptEndTime - scriptStartTime) / 1000;
+    const averageTime = done > 0 ? (totalResponseTime / done) : 0;
+    const rps = done > 0 ? (done / totalElapsedSeconds) : 0;
+
+    console.log("\n=============================");
+    console.log("       FINAL RESULTS         ");
+    console.log("=============================");
+    console.log(`Total Processed : ${done}`);
+    console.log(`Success         : ${success}`);
+    console.log(`Failed          : ${failed}`);
+    console.log("-----------------------------");
+    console.log("      TIMING & STATS         ");
+    console.log("-----------------------------");
+    console.log(`Total Runtime   : ${totalElapsedSeconds.toFixed(2)} seconds`);
+    console.log(`Throughput      : ${rps.toFixed(2)} requests/sec`);
+    console.log(`Average Latency : ${averageTime.toFixed(2)} ms`);
+    console.log(`Min Latency     : ${minTime === Infinity ? 0 : minTime.toFixed(2)} ms`);
+    console.log(`Max Latency     : ${maxTime.toFixed(2)} ms`);
+    console.log("=============================\n");
+}
+
+// Ensure results print when the process exits natively
+process.on('exit', () => {
+    printFinalResults();
+});
+
+// Catch Ctrl+C to trigger a graceful exit (which fires the 'exit' event)
+process.on('SIGINT', () => {
+    console.log("\n\n🛑 Script interrupted by user (Ctrl+C). Generating current stats...");
+    process.exit(0);
+});
+
+console.log(`Starting continuous requests (Max 5 at a time). Stopping after 5 consecutive failures...`);
+console.log(`Press Ctrl+C at any time to stop and view current stats.\n`);
+
+// Wrap the execution in a Promise
 await new Promise((resolve) => {
     const executeTask = async () => {
-        // Prevent queuing new tasks if we are stopping
         if (stopFlag) return;
 
         activeTasks++;
         let isSuccess = false;
+        const taskStartTime = performance.now();
 
         try {
             const res = await fetch("/api/browser/search", {
@@ -37,50 +85,49 @@ await new Promise((resolve) => {
                 isSuccess = true;
             }
         } catch (error) {
-            // Network or parsing errors count as failures
             isSuccess = false;
         } finally {
             done++;
 
-            // Process outcome and manage the consecutive failure counter
+            // Calculate stats
+            const duration = performance.now() - taskStartTime;
+            totalResponseTime += duration;
+            if (duration < minTime) minTime = duration;
+            if (duration > maxTime) maxTime = duration;
+
             if (isSuccess) {
                 success++;
-                consecutiveFailures = 0; // Reset counter on success
+                consecutiveFailures = 0;
             } else {
                 failed++;
                 consecutiveFailures++;
             }
 
-            console.log(`[Task ${done}] Completed ☑️  | Success: ${success} | Failed: ${failed} | Consecutive Fails: ${consecutiveFailures}`);
+            console.log(`[Task ${done}] Completed in ${duration.toFixed(2)}ms ☑️  | Success: ${success} | Failed: ${failed} | Consecutive Fails: ${consecutiveFailures}`);
 
             activeTasks--;
 
-            // Check stopping condition
             if (consecutiveFailures >= 5 && !stopFlag) {
                 console.log("\n🛑 5 consecutive failures reached! Waiting for in-flight tasks to finish...");
                 stopFlag = true;
             }
 
-            // If we aren't stopping, queue the next task immediately
             if (!stopFlag) {
                 limit(executeTask);
             }
 
-            // If we are stopping AND this was the last active task, exit the loop
             if (stopFlag && activeTasks === 0) {
                 resolve();
             }
         }
     };
 
-    // Kick off the initial batch to saturate the limit
+    // Kick off initial batch
     for (let i = 0; i < 5; i++) {
         limit(executeTask);
     }
 });
 
-// Final summary executes only after the resolve() is called above
-console.log("\n--- FINAL RESULTS ---");
-console.log(`Total Processed: ${done}`);
-console.log(`Success: ${success}`);
-console.log(`Failed: ${failed}`);
+// If the promise resolves normally (e.g., hit 5 failures and finished in-flight tasks),
+// trigger the exit event naturally to print the stats.
+process.exit(0);
