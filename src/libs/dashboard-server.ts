@@ -702,20 +702,123 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 
 
   // ── POST /api/browser/search ───────────────────────────────────────────
+  // Supports ?engine=cdp|selenium. Default: tries CDP first, falls back to selenium.
   if (method === 'POST' && url === '/api/browser/search') {
     try {
       const body = await parseJsonBody(req);
       const text = body['text'] as string;
       if (!text) return err(res, 'text is required', 400);
       const pageNumber = Number(body['pageNumber']) || 1;
+      const engine = (body['engine'] as string) || 'auto';
 
-      const resp = await fetch(`${PYTHON_API}/search`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, pageNumber }),
-      });
-      if (!resp.ok) throw new Error(`Python API /search → HTTP ${resp.status}`);
-      const results = await resp.json();
+      // ── CDP / Puppeteer search ──────────────────────────────────────────
+      const tryCdpSearch = async (): Promise<any | null> => {
+        const { getGeneralBrowserCdpPort } = require('./browser');
+        const cdpPort = getGeneralBrowserCdpPort() || 9222;
+
+        // Pre-flight check
+        const cdpResp = await fetch(`http://127.0.0.1:${cdpPort}/json/version`);
+        if (!cdpResp.ok) return null;
+        const info = await cdpResp.json() as { webSocketDebuggerUrl?: string };
+        const wsUrl = info.webSocketDebuggerUrl;
+        if (!wsUrl) return null;
+
+        const puppeteer = require('puppeteer-core');
+        const browser = await puppeteer.connect({ browserWSEndpoint: wsUrl, defaultViewport: null });
+        const page = await browser.newPage();
+        const startParam = (pageNumber - 1) * 10;
+        await page.goto(`https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}`, { waitUntil: 'domcontentloaded' });
+        await new Promise(r => setTimeout(r, 3000));
+
+        // Click all "Show more" buttons to expand AI overview
+        try {
+          await page.evaluate(() => {
+            const btns = document.querySelectorAll('[jsname="VwDHjd"], [aria-label="Show more"], .LGOjhe, .cUnQKe');
+            btns.forEach(b => (b as HTMLElement).click());
+          });
+          await new Promise(r => setTimeout(r, 1500));
+        } catch {}
+
+        const results = await page.evaluate(() => {
+          const organic: any[] = [];
+          let aiResponse: string | null = null;
+          const seen = new Set<string>();
+
+          // AI overview — grab the entire container's HTML for rich rendering
+          const aiSelectors = ['.M8OgIe', '.LLtROe', '.IZ6rdc', '[data-attrid="wa:/description"]', '.wDYxhc[data-md]', '.kp-blk'];
+          for (const sel of aiSelectors) {
+            const el = document.querySelector(sel);
+            if (el && (el as HTMLElement).innerText?.trim().length > 20) {
+              // Get innerHTML for rich formatting, fall back to innerText
+              aiResponse = (el as HTMLElement).innerHTML || (el as HTMLElement).innerText.trim();
+              break;
+            }
+          }
+
+          // Organic results
+          document.querySelectorAll('#search .g, #rso .g, .MjjYud .g').forEach(el => {
+            const h3 = el.querySelector('h3');
+            const a = el.querySelector('a[href^="http"]');
+            if (!h3 || !a) return;
+            const link = a.getAttribute('href') || '';
+            if (seen.has(link)) return;
+            seen.add(link);
+            let snippet = '';
+            for (const s of ['.VwiC3b', '.lEBKkf', '.lyLwlc', '[data-sncf]', '.IsZvec']) {
+              const sn = el.querySelector(s);
+              if (sn && (sn as HTMLElement).innerText) { snippet = (sn as HTMLElement).innerText.trim(); break; }
+            }
+            organic.push({ title: (h3 as HTMLElement).innerText.trim(), link, snippet });
+          });
+
+          // Fallback
+          if (organic.length === 0) {
+            document.querySelectorAll('a[href^="http"]').forEach(a => {
+              const h3 = a.querySelector('h3');
+              if (!h3) return;
+              const link = a.getAttribute('href') || '';
+              if (link.includes('google.com') || seen.has(link)) return;
+              seen.add(link);
+              organic.push({ title: (h3 as HTMLElement).innerText.trim(), link, snippet: '' });
+            });
+          }
+
+          return { organic, aiResponse };
+        });
+
+        await page.close();
+        browser.disconnect();
+        return results;
+      };
+
+      // ── Python / SeleniumBase search ─────────────────────────────────────
+      const trySeleniumSearch = async (): Promise<any> => {
+        const resp = await fetch(`${PYTHON_API}/search`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, pageNumber }),
+        });
+        if (!resp.ok) throw new Error(`Python API /search → HTTP ${resp.status}`);
+        return resp.json();
+      };
+
+      let results: any;
+
+      if (engine === 'cdp') {
+        results = await tryCdpSearch();
+        if (!results) return err(res, 'CDP not reachable. Is the browser container + socat sidecar running?', 400);
+      } else if (engine === 'selenium') {
+        results = await trySeleniumSearch();
+      } else {
+        // auto: try CDP first, fallback to selenium
+        try {
+          results = await tryCdpSearch();
+        } catch { results = null; }
+        if (!results) {
+          results = await trySeleniumSearch();
+        }
+      }
+
       json(res, results);
     } catch (e) {
       err(res, (e as Error).message);

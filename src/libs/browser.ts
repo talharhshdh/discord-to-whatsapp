@@ -122,21 +122,22 @@ async function startBrowserInstance(targetUrl?: string): Promise<{
     }
 
     // Build docker command.
-    // CHROMIUM_FLAGS enables the CDP debug port inside the container.
-    // We map port 9222 externally to the cdpPort.
+    // Chrome inside the container binds CDP to 127.0.0.1:9222 (loopback).
+    // We use CHROME_CLI (not CHROMIUM_FLAGS) and map host cdpPort to container 9223.
+    // A socat sidecar sharing the container's network bridges 9223→127.0.0.1:9222.
     const dockerCmd = [
       'docker', 'run', '-d', '--rm',
       '--name', containerName,
       '--shm-size=1gb',
       '-p', `${port}:3000`,
-      '-p', `${cdpPort}:9222`,
+      '-p', `${cdpPort}:9223`,
       '-v', `${process.cwd()}/browser_data:/config`,
       '-e', 'TZ=Etc/UTC',
       '-e', `CUSTOM_USER=${username}`,
       '-e', `PASSWORD=${password}`,
       '-e', `PUID=${process.getuid ? process.getuid() : 1000}`,
       '-e', `PGID=${process.getgid ? process.getgid() : 1000}`,
-      '-e', 'CHROMIUM_FLAGS=--remote-debugging-address=0.0.0.0 --remote-debugging-port=9222 --no-sandbox --disable-dev-shm-usage',
+      '-e', 'CHROME_CLI=--remote-debugging-port=9222 --no-sandbox --disable-dev-shm-usage --remote-allow-origins=*',
     ];
 
     // Add custom URL if provided
@@ -147,8 +148,25 @@ async function startBrowserInstance(targetUrl?: string): Promise<{
     dockerCmd.push('lscr.io/linuxserver/chromium:latest');
 
     // Use execFile so args are passed directly to the OS — no shell splitting
-    // on spaces inside env values like CHROMIUM_FLAGS.
+    // on spaces inside env values like CHROME_CLI.
     await execFileAsync(dockerCmd[0], dockerCmd.slice(1));
+
+    // Start socat sidecar: shares Chrome container's network namespace
+    // and forwards port 9223 → 127.0.0.1:9222 (Chrome CDP loopback).
+    const socatName = `${containerName}-cdp-proxy`;
+    try {
+      // Remove any leftover socat container
+      await execAsync(`docker rm -f ${socatName}`).catch(() => {});
+      await execFileAsync('docker', [
+        'run', '-d', '--rm',
+        '--name', socatName,
+        '--network', `container:${containerName}`,
+        'alpine/socat',
+        'tcp-listen:9223,fork,reuseaddr', 'tcp-connect:127.0.0.1:9222',
+      ]);
+    } catch (e) {
+      console.error('⚠️ socat sidecar failed to start (CDP may be unavailable):', e);
+    }
 
     // ── Mode 1: Named tunnel with fixed custom domain ──────────────────────────
     if (BROWSER_TUNNEL_TOKEN && BROWSER_DOMAIN) {
@@ -446,6 +464,7 @@ export async function stopBrowser(sessionId?: string): Promise<{ success: boolea
       const instance = browserInstances.get(session.metadata?.targetUrl || '');
       if (instance) {
         instance.tunnelProcess.kill();
+        await execAsync(`docker rm -f ${instance.containerName}-cdp-proxy`).catch(() => {});
         await execAsync(`docker stop ${instance.containerName}`);
         browserInstances.delete(session.metadata?.targetUrl || '');
       }
@@ -460,6 +479,7 @@ export async function stopBrowser(sessionId?: string): Promise<{ success: boolea
       }
 
       general.tunnelProcess.kill();
+      await execAsync(`docker rm -f ${general.containerName}-cdp-proxy`).catch(() => {});
       await execAsync(`docker stop ${general.containerName}`);
       browserInstances.delete('general');
       return { success: true, message: 'General browser stopped' };

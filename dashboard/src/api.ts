@@ -164,8 +164,8 @@ export const api = {
   exportYtCookies: () =>
     post<{ success: boolean; message: string; cookiesPath?: string }>('/api/browser/export-cookies', {}),
 
-  browserSearch: (text: string, pageNumber: number) =>
-    post<BrowserSearchResult>('/api/browser/search', { text, pageNumber }),
+  browserSearch: (text: string, pageNumber: number, engine: 'auto' | 'cdp' | 'selenium' = 'auto') =>
+    post<BrowserSearchResult>('/api/browser/search', { text, pageNumber, engine }),
 
   // ── LLM ───────────────────────────────────────────────────────────────────
   llmModels: () => fetch('/api/llm/models').then(r => {

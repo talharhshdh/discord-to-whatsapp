@@ -185,42 +185,79 @@ def google_search(req: SearchRequest):
                 sb.uc_gui_click_captcha()
             except Exception:
                 pass
-            sb.sleep(3)
+            sb.sleep(4)
 
-            # Parse organic results
-            organic = []
-            results = sb.find_elements("#search .g")
-            for el in results:
-                try:
-                    title_el = el.find_element("css selector", "h3")
-                    link_el = el.find_element("css selector", "a")
-                    snippet_el = None
-                    for sel in [".VwiC3b", ".Uroaid", ".lyLwlc"]:
-                        try:
-                            snippet_el = el.find_element("css selector", sel)
-                            break
-                        except Exception:
-                            pass
-                    organic.append({
-                        "title": title_el.text.strip() if title_el else "",
-                        "link": link_el.get_attribute("href") or "",
-                        "snippet": snippet_el.text.strip() if snippet_el else "",
-                    })
-                except Exception:
-                    pass
+            # Click "Show more" buttons to expand AI overview
+            try:
+                sb.execute_script("""
+                    var btns = document.querySelectorAll('[jsname="VwDHjd"], [aria-label="Show more"], .LGOjhe, .cUnQKe');
+                    btns.forEach(function(b) { b.click(); });
+                """)
+                sb.sleep(1.5)
+            except Exception:
+                pass
 
-            # Try to grab AI overview
-            ai_response = None
-            for sel in [".M8OgIe", "[data-attrid='wa:/description']"]:
-                try:
-                    ai_el = sb.find_element(sel)
-                    ai_response = ai_el.text.strip()
-                    if ai_response:
-                        break
-                except Exception:
-                    pass
+            # Use JS to extract results — much more reliable than Selenium selectors
+            results = sb.execute_script("""
+                var organic = [];
+                var aiResponse = null;
 
-            return {"organic": organic, "aiResponse": ai_response}
+                // AI Overview / SGE — return innerHTML for rich rendering
+                var aiSelectors = ['.M8OgIe', '.LLtROe', '.IZ6rdc', '[data-attrid="wa:/description"]', '.wDYxhc[data-md]', '.kp-blk'];
+                for (var i = 0; i < aiSelectors.length; i++) {
+                    var aiEl = document.querySelector(aiSelectors[i]);
+                    if (aiEl && aiEl.innerText && aiEl.innerText.trim().length > 20) {
+                        aiResponse = aiEl.innerHTML || aiEl.innerText.trim();
+                        break;
+                    }
+                }
+
+                // Organic results — try multiple container selectors
+                var containers = document.querySelectorAll('#search .g, #rso .g, .MjjYud .g');
+                var seen = new Set();
+                containers.forEach(function(el) {
+                    var h3 = el.querySelector('h3');
+                    var a = el.querySelector('a[href^="http"]');
+                    if (!h3 || !a) return;
+                    var link = a.getAttribute('href') || '';
+                    if (seen.has(link)) return;
+                    seen.add(link);
+
+                    var snippet = '';
+                    var snipSelectors = ['.VwiC3b', '.lEBKkf', '.lyLwlc', '[data-sncf]', '.IsZvec'];
+                    for (var j = 0; j < snipSelectors.length; j++) {
+                        var s = el.querySelector(snipSelectors[j]);
+                        if (s && s.innerText) { snippet = s.innerText.trim(); break; }
+                    }
+
+                    organic.push({
+                        title: h3.innerText.trim(),
+                        link: link,
+                        snippet: snippet
+                    });
+                });
+
+                // Fallback: if nothing found above, grab all h3+a combos on the page
+                if (organic.length === 0) {
+                    document.querySelectorAll('a[href^="http"]').forEach(function(a) {
+                        var h3 = a.querySelector('h3');
+                        if (!h3) return;
+                        var link = a.getAttribute('href') || '';
+                        if (link.includes('google.com')) return;
+                        if (seen.has(link)) return;
+                        seen.add(link);
+                        organic.push({ title: h3.innerText.trim(), link: link, snippet: '' });
+                    });
+                }
+
+                return { organic: organic, aiResponse: aiResponse };
+            """)
+
+            # If JS extraction returned nothing, log it
+            if not results or (not results.get("organic") and not results.get("aiResponse")):
+                print("Search parse returned empty results")
+
+            return results or {"organic": [], "aiResponse": None}
     except Exception as e:
         print(f"Search Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
