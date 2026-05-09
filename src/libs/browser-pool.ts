@@ -220,12 +220,34 @@ export async function searchViaPool(
 
       page = await browserConn.newPage();
 
+      // --- OPTIMIZATION: Resource Blocking ---
+      await page.setRequestInterception(true);
+      page.on('request', (req: any) => {
+        const resourceType = req.resourceType();
+        const url = req.url().toLowerCase();
+        // Block images, fonts, media, and common analytics
+        if (
+          ['image', 'font', 'media', 'stylesheet'].includes(resourceType) ||
+          url.includes('google-analytics.com') ||
+          url.includes('doubleclick.net')
+        ) {
+          req.abort();
+        } else {
+          req.continue();
+        }
+      });
+
+      // --- OPTIMIZATION: Stealth & Viewport ---
+      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
+      await page.setViewport({ width: 1280, height: 800 });
+
       const startParam = (pageNumber - 1) * 10;
+      // Use 'domcontentloaded' for speed, then wait briefly for JS
       await page.goto(
         `https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}`,
-        { waitUntil: 'domcontentloaded', timeout: 30_000 },
+        { waitUntil: 'domcontentloaded', timeout: 20_000 },
       );
-      await new Promise(r => setTimeout(r, 3000));
+      await new Promise(r => setTimeout(r, 1500)); // Short wait for results to render
 
       // Captcha Check
       const isCaptcha = await page.evaluate(() => {
