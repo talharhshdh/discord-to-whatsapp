@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { api, LLMModelInfo, LLMChatMessage, LLMStatus } from '../api';
+import { api, BASE, LLMModelInfo, LLMChatMessage, LLMStatus } from '../api';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -81,13 +81,13 @@ function ModelCard({
       )}
 
       <div>
-        <div className="flex items-start gap-2 pr-16">
+        <div className="flex items-start gap-2 pr-12 xs:pr-16">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#6c63ff]/30 to-[#00d4aa]/20 flex items-center justify-center text-sm flex-shrink-0">
             🧠
           </div>
-          <div>
-            <h3 className="font-semibold text-white text-sm leading-tight">{model.label}</h3>
-            <p className="text-[11px] text-white/40 mt-0.5 leading-relaxed">{model.description}</p>
+          <div className="min-w-0">
+            <h3 className="font-semibold text-white text-sm leading-tight truncate">{model.label}</h3>
+            <p className="text-[11px] text-white/40 mt-0.5 leading-relaxed line-clamp-2">{model.description}</p>
           </div>
         </div>
 
@@ -196,7 +196,7 @@ function ChatPanel({ modelLabel }: { modelLabel: string }) {
     abortRef.current = ctrl;
 
     try {
-      const resp = await fetch('/api/llm/chat/stream', {
+      const resp = await fetch(`${BASE}/api/llm/chat/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages, max_tokens: maxTokens, temperature }),
@@ -516,27 +516,29 @@ export default function LLMPanel() {
       </div>
 
       {/* Stats row */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {[
           { label: 'Available Models', value: models.length.toString(), icon: '📦' },
           { label: 'Downloaded', value: downloadedCount.toString(), icon: '💾' },
           { label: 'Active Model', value: status?.label ?? 'None', icon: '⚡' },
         ].map(stat => (
-          <div key={stat.label} className="glass rounded-xl px-4 py-3 border border-white/[0.07]">
-            <div className="text-xl mb-1">{stat.icon}</div>
-            <div className="text-white font-bold text-lg">{stat.value}</div>
-            <div className="text-white/30 text-xs">{stat.label}</div>
+          <div key={stat.label} className="glass rounded-xl px-4 py-3 border border-white/[0.07] flex items-center sm:block gap-3 sm:gap-0">
+            <div className="text-xl sm:mb-1">{stat.icon}</div>
+            <div className="flex-1">
+              <div className="text-white font-bold text-lg">{stat.value}</div>
+              <div className="text-white/30 text-xs">{stat.label}</div>
+            </div>
           </div>
         ))}
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 p-1 bg-black/20 rounded-xl border border-white/[0.06] w-fit">
+      <div className="flex gap-1 p-1 bg-black/20 rounded-xl border border-white/[0.06] w-full overflow-x-auto scrollbar-none">
         {(['models', 'chat'] as const).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
+            className={`flex-shrink-0 px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
               tab === t
                 ? 'bg-[#6c63ff]/25 text-white border border-[#6c63ff]/30'
                 : 'text-white/40 hover:text-white/70'

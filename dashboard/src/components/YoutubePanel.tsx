@@ -99,14 +99,14 @@ export default function YoutubePanel() {
       {/* Search */}
       <div className="glass rounded-2xl p-5 space-y-3">
         <h3 className="font-semibold text-white text-sm">🔍 YouTube Search</h3>
-        <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row gap-2">
           <input value={query} onChange={e => setQuery(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && search()}
             placeholder="Search YouTube…"
             className="flex-1 bg-black/30 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/30 outline-none focus:border-white/30" />
           <button onClick={search} disabled={searching || !query}
-            className="px-5 py-2.5 rounded-xl bg-[#6c63ff] hover:bg-[#5a52e0] text-sm font-semibold transition-all disabled:opacity-50">
-            {searching ? '…' : 'Search'}
+            className="sm:px-5 py-2.5 rounded-xl bg-[#6c63ff] hover:bg-[#5a52e0] text-sm font-semibold transition-all disabled:opacity-50">
+            {searching ? 'Searching…' : 'Search'}
           </button>
         </div>
       </div>
@@ -114,18 +114,20 @@ export default function YoutubePanel() {
       {/* Direct URL */}
       <div className="glass rounded-2xl p-5 space-y-3">
         <h3 className="font-semibold text-white text-sm">🔗 Direct URL Download</h3>
-        <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row gap-2">
           <input value={directUrl} onChange={e => setDirectUrl(e.target.value)}
             placeholder="https://youtube.com/watch?v=…"
             className="flex-1 bg-black/30 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white font-mono placeholder-white/30 outline-none focus:border-white/30" />
-          <button onClick={() => loadInfo(directUrl)} disabled={loadingInfo || !directUrl}
-            className="px-4 py-2.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] border border-white/10 text-sm font-medium transition-all disabled:opacity-50">
-            {loadingInfo ? '…' : 'Get Info'}
-          </button>
-          <button onClick={() => download()} disabled={!!downloading || !directUrl}
-            className="px-4 py-2.5 rounded-xl bg-teal-600/30 hover:bg-teal-600/50 border border-teal-500/30 text-teal-300 text-sm font-medium transition-all disabled:opacity-50">
-            Quick DL
-          </button>
+          <div className="flex gap-2">
+            <button onClick={() => loadInfo(directUrl)} disabled={loadingInfo || !directUrl}
+              className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] border border-white/10 text-sm font-medium transition-all disabled:opacity-50">
+              {loadingInfo ? '…' : 'Get Info'}
+            </button>
+            <button onClick={() => download()} disabled={!!downloading || !directUrl}
+              className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-teal-600/30 hover:bg-teal-600/50 border border-teal-500/30 text-teal-300 text-sm font-medium transition-all disabled:opacity-50">
+              Quick DL
+            </button>
+          </div>
         </div>
       </div>
 
@@ -157,7 +159,7 @@ export default function YoutubePanel() {
               <p className="text-xs text-white/40">{info.uploader} · {fmtViews(info.viewCount)} views</p>
             </div>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 gap-2">
             {info.qualities.map(q => (
               <button key={q.key} onClick={() => download(q)} disabled={!!downloading}
                 className="py-2.5 px-3 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 hover:border-white/20 text-xs font-medium transition-all disabled:opacity-50 text-left">

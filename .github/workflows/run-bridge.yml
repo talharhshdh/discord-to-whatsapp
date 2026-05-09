@@ -97,7 +97,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install seleniumbase fastapi uvicorn pydantic rembg onnxruntime python-multipart openai-whisper easyocr \
             "llama-cpp-python" huggingface_hub \
-            transformers[torch] torchaudio soundfile accelerate
+            qwen-tts soundfile
           seleniumbase install chromedriver
       - name: Install VNC, FFmpeg, and Android tools
         run: |

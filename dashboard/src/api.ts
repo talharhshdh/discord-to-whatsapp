@@ -4,7 +4,7 @@
  * handles all /api/* routes. Both are exposed through the same Cloudflare
  * tunnel, so the browser always hits the right origin — no base URL config needed.
  */
-const BASE = '';
+export const BASE = '';
 
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
@@ -137,7 +137,7 @@ export interface LLMChatResponse {
 // ── API ─────────────────────────────────────────────────────────────────────
 
 export const api = {
-  getUrls: () => fetch('/api/urls').then(r => r.json()) as Promise<UrlsPayload>,
+  getUrls: () => fetch(`${BASE}/api/urls`).then(r => r.json()) as Promise<UrlsPayload>,
 
   startTerminal: () => post<SessionResult>('/api/sessions/terminal', {}),
   startVSCode: () => post<SessionResult>('/api/sessions/vscode', {}),
@@ -186,15 +186,15 @@ export const api = {
     post<{ ok: boolean; message: string }>('/api/browsers/restart', {}),
 
   // ── LLM ───────────────────────────────────────────────────────────────────
-  llmModels: () => fetch('/api/llm/models').then(r => {
+  llmModels: () => fetch(`${BASE}/api/llm/models`).then(r => {
     if (!r.ok) return r.json().then((e: { error: string }) => { throw new Error(e.error); });
     return r.json() as Promise<LLMModelsResponse>;
   }),
-  llmStatus: () => fetch('/api/llm/status').then(r => r.json()) as Promise<LLMStatus>,
+  llmStatus: () => fetch(`${BASE}/api/llm/status`).then(r => r.json()) as Promise<LLMStatus>,
   llmDownload: (model_id: string) =>
     post<{ message: string; status: string }>('/api/llm/download', { model_id }),
   llmDownloadStatus: (model_id: string) =>
-    fetch(`/api/llm/download/status/${model_id}`).then(r => r.json()) as Promise<{ status: string; downloaded: boolean; error?: string }>,
+    fetch(`${BASE}/api/llm/download/status/${model_id}`).then(r => r.json()) as Promise<{ status: string; downloaded: boolean; error?: string }>,
   llmLoad: (model_id: string) =>
     post<{ loaded: boolean; model_id: string; label: string }>('/api/llm/load', { model_id }),
   llmUnload: () =>
@@ -202,26 +202,27 @@ export const api = {
   llmChat: (messages: LLMChatMessage[], max_tokens = 512, temperature = 0.7) =>
     post<LLMChatResponse>('/api/llm/chat', { messages, max_tokens, temperature }),
   llmDelete: (model_id: string) =>
-    fetch(`/api/llm/models/${model_id}`, { method: 'DELETE' }).then(r => {
+    fetch(`${BASE}/api/llm/models/${model_id}`, { method: 'DELETE' }).then(r => {
       if (!r.ok) return r.json().then((e: { detail: string }) => { throw new Error(e.detail); });
       return r.json() as Promise<{ deleted: boolean }>;
     }),
 
   // ── TTS ───────────────────────────────────────────────────────────────────
-  ttsStatus: () => fetch('/api/tts/status').then(r => r.json()) as Promise<TTSStatus>,
-  ttsVoices: () => fetch('/api/tts/voices').then(r => r.json()) as Promise<{ voices: TTSVoice[] }>,
+  ttsStatus: () => fetch(`${BASE}/api/tts/status`).then(r => r.json()) as Promise<TTSStatus>,
+  ttsVoices: () => fetch(`${BASE}/api/tts/voices`).then(r => r.json()) as Promise<{ voices: TTSVoice[] }>,
 
-  ttsGenerate: (text: string, voice: string, format: string = 'wav') =>
-    postBinary('/api/tts/generate', { text, voice, format }),
+  ttsGenerate: (text: string, voice: string, language: string = 'Auto', instruct: string = '') =>
+    postBinary('/api/tts/generate', { text, speaker: voice, language, instruct }),
 
-  ttsClone: (text: string, referenceAudio: File, format: string = 'wav') => {
+  ttsClone: (text: string, referenceAudio: File, refText: string, language: string = 'Auto') => {
     const fd = new FormData();
     fd.append('text', text);
     fd.append('reference_audio', referenceAudio);
-    fd.append('format', format);
+    fd.append('ref_text', refText);
+    fd.append('language', language);
     return postFormBinary('/api/tts/clone', fd);
   },
 
-  ttsDesign: (text: string, style: string, format: string = 'wav') =>
-    postBinary('/api/tts/design', { text, style, format }),
+  ttsDesign: (text: string, style: string, language: string = 'Auto') =>
+    postBinary('/api/tts/design', { text, style, language }),
 };

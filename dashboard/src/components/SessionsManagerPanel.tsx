@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { BASE } from '../api';
 
 interface Session {
   id: string;
@@ -25,7 +26,7 @@ export default function SessionsManagerPanel() {
 
   const loadSessions = async () => {
     try {
-      const res = await fetch('/api/sessions/all');
+      const res = await fetch(`${BASE}/api/sessions/all`);
       const data = await res.json();
       setSessions(data.sessions || []);
       setBrowsers(data.browsers || []);
@@ -44,7 +45,7 @@ export default function SessionsManagerPanel() {
   const stopSession = async (sessionId: string, type: string) => {
     setLoading(true);
     try {
-      const res = await fetch('/api/sessions/stop', {
+      const res = await fetch(`${BASE}/api/sessions/stop`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId, type }),
@@ -68,7 +69,7 @@ export default function SessionsManagerPanel() {
     setLoading(true);
     setResult('');
     try {
-      const res = await fetch('/api/browser/custom', {
+      const res = await fetch(`${BASE}/api/browser/custom`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: customUrl }),
@@ -123,26 +124,26 @@ export default function SessionsManagerPanel() {
       )}
 
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
-        <div className="glass rounded-xl p-4 border border-white/[0.07]">
-          <div className="text-white/40 text-xs mb-1">Total Sessions</div>
-          <div className="text-2xl font-bold text-white">{totalSessions}</div>
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <div className="glass rounded-xl p-3 sm:p-4 border border-white/[0.07]">
+          <div className="text-white/40 text-[10px] sm:text-xs mb-1">Total</div>
+          <div className="text-xl sm:text-2xl font-bold text-white">{totalSessions}</div>
         </div>
-        <div className="glass rounded-xl p-4 border border-white/[0.07]">
-          <div className="text-white/40 text-xs mb-1">Terminals</div>
-          <div className="text-2xl font-bold text-purple-400">{terminalSessions.length}</div>
+        <div className="glass rounded-xl p-3 sm:p-4 border border-white/[0.07]">
+          <div className="text-white/40 text-[10px] sm:text-xs mb-1">Terminals</div>
+          <div className="text-xl sm:text-2xl font-bold text-purple-400">{terminalSessions.length}</div>
         </div>
-        <div className="glass rounded-xl p-4 border border-white/[0.07]">
-          <div className="text-white/40 text-xs mb-1">VSCode</div>
-          <div className="text-2xl font-bold text-blue-400">{vscodeSessions.length}</div>
+        <div className="glass rounded-xl p-3 sm:p-4 border border-white/[0.07]">
+          <div className="text-white/40 text-[10px] sm:text-xs mb-1">VSCode</div>
+          <div className="text-xl sm:text-2xl font-bold text-blue-400">{vscodeSessions.length}</div>
         </div>
-        <div className="glass rounded-xl p-4 border border-white/[0.07]">
-          <div className="text-white/40 text-xs mb-1">Browsers</div>
-          <div className="text-2xl font-bold text-teal-400">{customBrowserSessions.length + browsers.length}</div>
+        <div className="glass rounded-xl p-3 sm:p-4 border border-white/[0.07]">
+          <div className="text-white/40 text-[10px] sm:text-xs mb-1">Browsers</div>
+          <div className="text-xl sm:text-2xl font-bold text-teal-400">{customBrowserSessions.length + browsers.length}</div>
         </div>
-        <div className="glass rounded-xl p-4 border border-white/[0.07]">
-          <div className="text-white/40 text-xs mb-1">Android</div>
-          <div className="text-2xl font-bold text-green-400">{android ? '1' : '0'}</div>
+        <div className="glass rounded-xl p-3 sm:p-4 border border-white/[0.07] col-span-2 sm:col-span-1">
+          <div className="text-white/40 text-[10px] sm:text-xs mb-1">Android</div>
+          <div className="text-xl sm:text-2xl font-bold text-green-400">{android ? '1' : '0'}</div>
         </div>
       </div>
 

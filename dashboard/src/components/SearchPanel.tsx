@@ -59,24 +59,24 @@ export default function SearchPanel() {
         </p>
 
         {/* Engine selector */}
-        <div className="flex items-center gap-2 mb-4">
+        <div className="flex flex-wrap items-center gap-2 mb-4">
           <span className="text-xs text-white/40">Engine:</span>
           {(['auto', 'cdp', 'selenium'] as SearchEngine[]).map(eng => (
             <button
               key={eng}
               onClick={() => setEngine(eng)}
-              className={`px-3 py-1 rounded-lg text-xs font-medium transition-all border ${
+              className={`flex-shrink-0 px-3 py-1 rounded-lg text-xs font-medium transition-all border ${
                 engine === eng
                   ? 'bg-[#6c63ff]/20 border-[#6c63ff]/40 text-[#6c63ff]'
                   : 'bg-white/[0.03] border-white/10 text-white/40 hover:text-white/60 hover:bg-white/[0.06]'
               }`}
             >
-              {eng === 'auto' ? '⚡ Auto' : eng === 'cdp' ? '🔌 CDP (Puppeteer)' : '🐍 SeleniumBase'}
+              {eng === 'auto' ? '⚡ Auto' : eng === 'cdp' ? '🔌 CDP' : '🐍 Selenium'}
             </button>
           ))}
         </div>
 
-        <form onSubmit={handleSearch} className="flex gap-3">
+        <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-3">
           <input
             type="text"
             className="flex-1 bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-[#6c63ff]/50 transition-colors"

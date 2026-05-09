@@ -71,12 +71,14 @@ function AudioResult({ blob, filename }: { blob: Blob; filename: string }) {
         <span className="font-medium">{filename}</span>
       </div>
       <audio controls src={src} className="w-full h-9 rounded-lg" />
-      <button
-        onClick={() => downloadBlob(blob, filename)}
-        className="self-start px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/25 text-emerald-400 text-xs font-medium transition-all"
-      >
-        ⬇ Download
-      </button>
+      <div className="flex gap-2 mt-1">
+        <button
+          onClick={() => downloadBlob(blob, filename)}
+          className="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/25 text-emerald-400 text-xs font-medium transition-all"
+        >
+          ⬇ Download
+        </button>
+      </div>
     </div>
   );
 }
@@ -88,10 +90,9 @@ function VoiceCard({ voice, selected, onClick }: { voice: TTSVoice; selected: bo
   return (
     <button
       onClick={onClick}
-      className={`flex flex-col gap-1 p-3 rounded-xl border text-left transition-all ${
-        selected
-          ? 'bg-[#6c63ff]/20 border-[#6c63ff]/40 text-white'
-          : 'bg-white/[0.03] border-white/[0.07] text-white/60 hover:border-white/20 hover:text-white'
+      className={`flex flex-col gap-1 p-3 rounded-xl border text-left transition-all ${selected
+        ? 'bg-[#6c63ff]/20 border-[#6c63ff]/40 text-white'
+        : 'bg-white/[0.03] border-white/[0.07] text-white/60 hover:border-white/20 hover:text-white'
       }`}
     >
       <div className="flex items-center gap-1.5">
@@ -107,8 +108,9 @@ function VoiceCard({ voice, selected, onClick }: { voice: TTSVoice; selected: bo
 
 function GenerateTab({ voices, serverReady }: { voices: TTSVoice[]; serverReady: boolean }) {
   const [text, setText] = useState('');
-  const [voice, setVoice] = useState('alloy');
-  const [format, setFormat] = useState<'wav' | 'mp3'>('wav');
+  const [voice, setVoice] = useState('Vivian');
+  const [language, setLanguage] = useState('Auto');
+  const [instruct, setInstruct] = useState('');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ blob: Blob; name: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -119,8 +121,8 @@ function GenerateTab({ voices, serverReady }: { voices: TTSVoice[]; serverReady:
     setError(null);
     setResult(null);
     try {
-      const blob = await api.ttsGenerate(text, voice, format);
-      setResult({ blob, name: `tts_${Date.now()}.${format}` });
+      const blob = await api.ttsGenerate(text, voice, language, instruct);
+      setResult({ blob, name: `tts_${Date.now()}.wav` });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -158,7 +160,7 @@ function GenerateTab({ voices, serverReady }: { voices: TTSVoice[]; serverReady:
       {voices.length > 0 && (
         <div>
           <label className="text-[11px] text-white/40 block mb-2">Voice preset</label>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 gap-2">
             {voices.map(v => (
               <VoiceCard key={v.id} voice={v} selected={voice === v.id} onClick={() => setVoice(v.id)} />
             ))}
@@ -167,21 +169,32 @@ function GenerateTab({ voices, serverReady }: { voices: TTSVoice[]; serverReady:
       )}
 
       {/* Options row */}
-      <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2 text-xs text-white/50">
-          <label>Format</label>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label className="text-[11px] text-white/40 block mb-1.5">Language</label>
           <select
-            value={format}
-            onChange={e => setFormat(e.target.value as 'wav' | 'mp3')}
-            className="bg-black/30 border border-white/10 rounded-lg px-2 py-1 text-white text-xs outline-none"
+            value={language}
+            onChange={e => setLanguage(e.target.value)}
+            className="w-full bg-black/30 border border-white/10 rounded-xl px-3 py-2 text-white text-sm outline-none"
           >
-            <option value="wav">WAV</option>
-            <option value="mp3">MP3</option>
+            <option value="Auto">Auto Detect</option>
+            {['Chinese', 'English', 'Japanese', 'Korean', 'German', 'French', 'Russian', 'Portuguese', 'Spanish', 'Italian'].map(l => (
+              <option key={l} value={l}>{l}</option>
+            ))}
           </select>
+        </div>
+        <div>
+          <label className="text-[11px] text-white/40 block mb-1.5">Instruction (Optional)</label>
+          <input
+            type="text"
+            value={instruct}
+            onChange={e => setInstruct(e.target.value)}
+            placeholder="e.g. Very happy, angry, whisper..."
+            className="w-full bg-black/30 border border-white/10 rounded-xl px-3 py-2 text-white text-sm outline-none"
+          />
         </div>
       </div>
 
-      {/* Generate button */}
       <button
         onClick={generate}
         disabled={!text.trim() || busy || !serverReady || charCount > charLimit}
@@ -204,8 +217,9 @@ function GenerateTab({ voices, serverReady }: { voices: TTSVoice[]; serverReady:
 
 function CloneTab({ serverReady }: { serverReady: boolean }) {
   const [text, setText] = useState('');
+  const [refText, setRefText] = useState('');
+  const [language, setLanguage] = useState('Auto');
   const [refFile, setRefFile] = useState<File | null>(null);
-  const [format, setFormat] = useState<'wav' | 'mp3'>('wav');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ blob: Blob; name: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -217,14 +231,16 @@ function CloneTab({ serverReady }: { serverReady: boolean }) {
     setError(null);
     setResult(null);
     try {
-      const blob = await api.ttsClone(text, refFile, format);
-      setResult({ blob, name: `clone_${Date.now()}.${format}` });
+      const blob = await api.ttsClone(text, refFile, refText, language);
+      setResult({ blob, name: `clone_${Date.now()}.wav` });
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setBusy(false);
     }
   };
+
+  const canClone = text.trim() && refFile && refText.trim() && !busy && serverReady;
 
   return (
     <div className="space-y-4">
@@ -237,10 +253,9 @@ function CloneTab({ serverReady }: { serverReady: boolean }) {
         <label className="text-[11px] text-white/40 block mb-1.5">Reference audio clip</label>
         <div
           onClick={() => fileRef.current?.click()}
-          className={`relative flex flex-col items-center justify-center gap-2 py-8 rounded-2xl border-2 border-dashed cursor-pointer transition-all ${
-            refFile
-              ? 'border-emerald-500/40 bg-emerald-500/[0.04]'
-              : 'border-white/10 hover:border-white/20 bg-white/[0.02]'
+          className={`relative flex flex-col items-center justify-center gap-2 py-8 rounded-2xl border-2 border-dashed cursor-pointer transition-all ${refFile
+            ? 'border-emerald-500/40 bg-emerald-500/[0.04]'
+            : 'border-white/10 hover:border-white/20 bg-white/[0.02]'
           }`}
         >
           <span className="text-3xl">{refFile ? '✅' : '🎤'}</span>
@@ -265,6 +280,19 @@ function CloneTab({ serverReady }: { serverReady: boolean }) {
         </div>
       </div>
 
+      {/* Reference Transcript */}
+      <div>
+        <label className="text-[11px] text-white/40 block mb-1.5">Reference audio transcript</label>
+        <textarea
+          value={refText}
+          onChange={e => setRefText(e.target.value)}
+          rows={2}
+          placeholder="Type EXACTLY what is said in the reference audio clip..."
+          className="w-full bg-black/30 border border-white/10 rounded-xl px-4 py-2 text-sm text-white placeholder-white/20 outline-none focus:border-white/25 resize-none transition-colors"
+        />
+        <p className="text-[10px] text-white/20 mt-1">Providing the transcript significantly improves cloning quality.</p>
+      </div>
+
       {/* Text input */}
       <div>
         <label className="text-[11px] text-white/40 block mb-1.5">Text to synthesise</label>
@@ -277,22 +305,24 @@ function CloneTab({ serverReady }: { serverReady: boolean }) {
         />
       </div>
 
-      {/* Format */}
-      <div className="flex items-center gap-2 text-xs text-white/50">
-        <label>Format</label>
+      {/* Language */}
+      <div>
+        <label className="text-[11px] text-white/40 block mb-1.5">Language</label>
         <select
-          value={format}
-          onChange={e => setFormat(e.target.value as 'wav' | 'mp3')}
-          className="bg-black/30 border border-white/10 rounded-lg px-2 py-1 text-white text-xs outline-none"
+          value={language}
+          onChange={e => setLanguage(e.target.value)}
+          className="w-full bg-black/30 border border-white/10 rounded-xl px-3 py-2 text-white text-sm outline-none"
         >
-          <option value="wav">WAV</option>
-          <option value="mp3">MP3</option>
+          <option value="Auto">Auto Detect</option>
+          {['Chinese', 'English', 'Japanese', 'Korean', 'German', 'French', 'Russian', 'Portuguese', 'Spanish', 'Italian'].map(l => (
+            <option key={l} value={l}>{l}</option>
+          ))}
         </select>
       </div>
 
       <button
         onClick={clone}
-        disabled={!text.trim() || !refFile || busy || !serverReady}
+        disabled={!canClone}
         className="w-full py-3 rounded-xl bg-gradient-to-r from-[#ff6384] to-[#6c63ff] hover:opacity-90 disabled:opacity-40 text-white font-semibold text-sm transition-all shadow-lg shadow-[#ff6384]/20"
       >
         {busy ? '🧬 Cloning voice…' : '🧬 Clone Voice'}
@@ -321,7 +351,7 @@ const STYLE_EXAMPLES = [
 function DesignTab({ serverReady }: { serverReady: boolean }) {
   const [text, setText] = useState('');
   const [style, setStyle] = useState('');
-  const [format, setFormat] = useState<'wav' | 'mp3'>('wav');
+  const [language, setLanguage] = useState('Auto');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ blob: Blob; name: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -332,8 +362,8 @@ function DesignTab({ serverReady }: { serverReady: boolean }) {
     setError(null);
     setResult(null);
     try {
-      const blob = await api.ttsDesign(text, style, format);
-      setResult({ blob, name: `design_${Date.now()}.${format}` });
+      const blob = await api.ttsDesign(text, style, language);
+      setResult({ blob, name: `design_${Date.now()}.wav` });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -384,16 +414,18 @@ function DesignTab({ serverReady }: { serverReady: boolean }) {
         />
       </div>
 
-      {/* Format */}
-      <div className="flex items-center gap-2 text-xs text-white/50">
-        <label>Format</label>
+      {/* Language */}
+      <div>
+        <label className="text-[11px] text-white/40 block mb-1.5">Language</label>
         <select
-          value={format}
-          onChange={e => setFormat(e.target.value as 'wav' | 'mp3')}
-          className="bg-black/30 border border-white/10 rounded-lg px-2 py-1 text-white text-xs outline-none"
+          value={language}
+          onChange={e => setLanguage(e.target.value)}
+          className="w-full bg-black/30 border border-white/10 rounded-xl px-3 py-2 text-white text-sm outline-none"
         >
-          <option value="wav">WAV</option>
-          <option value="mp3">MP3</option>
+          <option value="Auto">Auto Detect</option>
+          {['Chinese', 'English', 'Japanese', 'Korean', 'German', 'French', 'Russian', 'Portuguese', 'Spanish', 'Italian'].map(l => (
+            <option key={l} value={l}>{l}</option>
+          ))}
         </select>
       </div>
 
@@ -420,9 +452,9 @@ function DesignTab({ serverReady }: { serverReady: boolean }) {
 type TTSTab = 'generate' | 'clone' | 'design';
 
 const TABS: { id: TTSTab; label: string; icon: string }[] = [
-  { id: 'generate', label: 'TTS',          icon: '🎙️' },
-  { id: 'clone',    label: 'Voice Clone',  icon: '🧬' },
-  { id: 'design',   label: 'Voice Design', icon: '🎨' },
+  { id: 'generate', label: 'TTS', icon: '🎙️' },
+  { id: 'clone', label: 'Voice Clone', icon: '🧬' },
+  { id: 'design', label: 'Voice Design', icon: '🎨' },
 ];
 
 export default function TTSPanel() {
@@ -470,16 +502,18 @@ export default function TTSPanel() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {[
-          { label: 'Model',   value: 'Qwen3-TTS', icon: '🤖' },
-          { label: 'Server',  value: status?.running ? 'Online' : 'Offline', icon: status?.running ? '🟢' : '🔴' },
-          { label: 'Status',  value: status?.model_loaded ? 'Ready' : status?.loading ? 'Loading…' : 'Idle', icon: '⚡' },
+          { label: 'Model', value: 'Qwen3-TTS', icon: '🤖' },
+          { label: 'Server', value: status?.running ? 'Online' : 'Offline', icon: status?.running ? '🟢' : '🔴' },
+          { label: 'Status', value: status?.model_loaded ? 'Ready' : status?.loading ? 'Loading…' : 'Idle', icon: '⚡' },
         ].map(s => (
-          <div key={s.label} className="glass rounded-xl px-4 py-3 border border-white/[0.07]">
-            <div className="text-xl mb-1">{s.icon}</div>
-            <div className="text-white font-bold text-sm truncate">{s.value}</div>
-            <div className="text-white/30 text-xs">{s.label}</div>
+          <div key={s.label} className="glass rounded-xl px-4 py-3 border border-white/[0.07] flex items-center sm:block gap-3 sm:gap-0">
+            <div className="text-xl sm:mb-1">{s.icon}</div>
+            <div className="flex-1">
+              <div className="text-white font-bold text-sm truncate">{s.value}</div>
+              <div className="text-white/30 text-xs">{s.label}</div>
+            </div>
           </div>
         ))}
       </div>
@@ -490,22 +524,21 @@ export default function TTSPanel() {
           <p className="font-medium">⚠️ TTS server is not running</p>
           <p className="text-xs text-amber-400/70">
             The <code className="font-mono">tts_server.py</code> process must be started in the GitHub Actions workflow.
-            Check that the workflow installs <code className="font-mono">transformers soundfile torchaudio</code> and starts the server on port 8002.
+            Check that the workflow installs <code className="font-mono">transformers soundfile torchaudio qwen-tts</code> and starts the server on port 8002.
           </p>
         </div>
       )}
 
       {/* Tabs */}
-      <div className="flex gap-1 p-1 bg-black/20 rounded-xl border border-white/[0.06] w-fit">
+      <div className="flex gap-1 p-1 bg-black/20 rounded-xl border border-white/[0.06] w-full overflow-x-auto scrollbar-none">
         {TABS.map(t => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
-              tab === t.id
-                ? 'bg-[#6c63ff]/25 text-white border border-[#6c63ff]/30'
-                : 'text-white/40 hover:text-white/70'
-            }`}
+            className={`flex-shrink-0 px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${tab === t.id
+              ? 'bg-[#6c63ff]/25 text-white border border-[#6c63ff]/30'
+              : 'text-white/40 hover:text-white/70'
+              }`}
           >
             {t.icon} {t.label}
           </button>
@@ -515,8 +548,8 @@ export default function TTSPanel() {
       {/* Tab content */}
       <div className="glass rounded-2xl p-5 border border-white/[0.07]">
         {tab === 'generate' && <GenerateTab voices={voices} serverReady={serverReady} />}
-        {tab === 'clone'    && <CloneTab serverReady={serverReady} />}
-        {tab === 'design'   && <DesignTab serverReady={serverReady} />}
+        {tab === 'clone' && <CloneTab serverReady={serverReady} />}
+        {tab === 'design' && <DesignTab serverReady={serverReady} />}
       </div>
     </div>
   );

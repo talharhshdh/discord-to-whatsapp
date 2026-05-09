@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { api, SessionResult } from '../api';
+import { api, BASE, SessionResult } from '../api';
 
 interface SessionCardProps {
   icon: string;
@@ -71,7 +71,7 @@ export default function SessionsPanel() {
     setSshError(null);
     setSshResult(null);
     try {
-      const res = await fetch('/api/sessions/ssh', { method: 'POST' });
+      const res = await fetch(`${BASE}/api/sessions/ssh`, { method: 'POST' });
       const data = await res.json();
       if (data.error) {
         setSshError(data.error);
@@ -89,7 +89,7 @@ export default function SessionsPanel() {
     <div className="space-y-4">
       <p className="text-white/40 text-sm">Launch new isolated sessions. Each call creates a fresh Cloudflare tunnel.</p>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4">
         <SessionCard
           icon="💻" title="Web Terminal" color="bg-green-500/15 border border-green-500/20"
           description="ttyd web terminal with sudo access"
