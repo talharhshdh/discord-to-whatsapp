@@ -39,6 +39,8 @@ import { detectAndDownload } from './downloader';
 import { searchYouTube, getYouTubeInfo, downloadYouTubeVideo, downloadYouTubeVideoFallback } from './youtube-dl';
 import { searchMovies } from './movie-search';
 import type { YouTubeQualityOption } from './youtube-dl';
+import { browserPool, searchViaPool } from './browser-pool';
+import type { WebhookPayload } from './browser-pool';
 
 // ── URL Registry ─────────────────────────────────────────────────────────────
 
@@ -698,7 +700,64 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     return;
   }
 
+  // ── POST /api/browsers/webhook ─────────────────────────────────────────
+  // Remote browser workers register, heartbeat, and deregister via this endpoint.
+  if (method === 'POST' && url === '/api/browsers/webhook') {
+    try {
+      const body = await parseJsonBody(req) as unknown as WebhookPayload;
+      const { event, workerId, cdpUrl } = body;
 
+      if (!event || !workerId) {
+        return err(res, 'event and workerId are required', 400);
+      }
+
+      switch (event) {
+        case 'register':
+          if (!cdpUrl) return err(res, 'cdpUrl is required for register', 400);
+          browserPool.register(workerId, cdpUrl);
+          json(res, { ok: true, message: 'Registered', poolSize: browserPool.size });
+          break;
+
+        case 'heartbeat': {
+          const known = browserPool.heartbeat(workerId);
+          if (!known) {
+            // Worker not in pool — tell it to re-register
+            return json(res, { ok: false, message: 'Unknown worker — please re-register' }, 404);
+          }
+          json(res, { ok: true });
+          break;
+        }
+
+        case 'deregister':
+          browserPool.deregister(workerId);
+          json(res, { ok: true, message: 'Removed', poolSize: browserPool.size });
+          break;
+
+        default:
+          return err(res, `Unknown event: ${event}`, 400);
+      }
+    } catch (e) { err(res, (e as Error).message); }
+    return;
+  }
+
+  // ── GET /api/browsers/pool ──────────────────────────────────────────────
+  if (method === 'GET' && url === '/api/browsers/pool') {
+    const all = browserPool.getAll();
+    const active = browserPool.getActive();
+    json(res, {
+      total: all.length,
+      active: active.length,
+      browsers: all.map(b => ({
+        workerId: b.workerId,
+        cdpUrl: b.cdpUrl,
+        status: b.status,
+        registeredAt: new Date(b.registeredAt).toISOString(),
+        lastHeartbeat: new Date(b.lastHeartbeat).toISOString(),
+        secondsSinceHeartbeat: Math.round((Date.now() - b.lastHeartbeat) / 1000),
+      })),
+    });
+    return;
+  }
 
 
   // ── POST /api/browser/search ───────────────────────────────────────────
@@ -809,11 +868,19 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         if (!results) return err(res, 'CDP not reachable. Is the browser container + socat sidecar running?', 400);
       } else if (engine === 'selenium') {
         results = await trySeleniumSearch();
+      } else if (engine === 'pool') {
+        results = await searchViaPool(text, pageNumber);
+        if (!results) return err(res, 'No browsers available in pool', 503);
       } else {
-        // auto: try CDP first, fallback to selenium
+        // auto: try pool first → local CDP → selenium fallback
         try {
-          results = await tryCdpSearch();
+          results = await searchViaPool(text, pageNumber);
         } catch { results = null; }
+        if (!results) {
+          try {
+            results = await tryCdpSearch();
+          } catch { results = null; }
+        }
         if (!results) {
           results = await trySeleniumSearch();
         }
@@ -843,6 +910,9 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 // ── Server bootstrap ──────────────────────────────────────────────────────────
 
 export function startLocalServer(port = 4000): Promise<string> {
+  // Start the browser pool cleanup loop so stale/dead workers are pruned
+  browserPool.startCleanupLoop();
+
   return new Promise((resolve, reject) => {
     const distDir = join(__dirname, '..', '..', 'dashboard', 'dist');
     const server = createServer((req, res) => {

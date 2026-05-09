@@ -1,0 +1,308 @@
+/**
+ * @file browser-pool.ts
+ * @description In-memory pool manager for remote browser instances.
+ *
+ * Remote browser workers (GitHub Actions jobs) register themselves via webhook,
+ * send heartbeats every 60 s, and deregister on shutdown.  This module tracks
+ * their lifecycle, prunes stale/dead entries, and provides round-robin selection
+ * for distributed search.
+ */
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export interface RemoteBrowser {
+  workerId: string;
+  cdpUrl: string;          // https://xxx.trycloudflare.com  (proxies CDP :9222)
+  registeredAt: number;    // Date.now() ms
+  lastHeartbeat: number;   // Date.now() ms — updated on every heartbeat
+  status: 'active' | 'stale' | 'dead';
+}
+
+export type WebhookEvent = 'register' | 'heartbeat' | 'deregister';
+
+export interface WebhookPayload {
+  event: WebhookEvent;
+  workerId: string;
+  cdpUrl: string;
+  timestamp: string;       // ISO-8601
+}
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/** If no heartbeat for 2 min → mark stale (skip for new search requests). */
+const STALE_TIMEOUT_MS = 2 * 60 * 1000;
+
+/** If no heartbeat for 5 min → remove entirely. */
+const DEAD_TIMEOUT_MS = 5 * 60 * 1000;
+
+/** Background cleanup interval. */
+const CLEANUP_INTERVAL_MS = 30 * 1000;
+
+// ---------------------------------------------------------------------------
+// BrowserPool
+// ---------------------------------------------------------------------------
+
+class BrowserPool {
+  private browsers = new Map<string, RemoteBrowser>();
+  private roundRobinIndex = 0;
+  private cleanupTimer: ReturnType<typeof setInterval> | null = null;
+
+  // ── Lifecycle ──────────────────────────────────────────────────────────
+
+  /** Register a new remote browser (or update existing — idempotent upsert). */
+  register(workerId: string, cdpUrl: string): void {
+    const now = Date.now();
+    const existing = this.browsers.get(workerId);
+    if (existing) {
+      // Upsert: update URL and reset heartbeat
+      existing.cdpUrl = cdpUrl;
+      existing.lastHeartbeat = now;
+      existing.status = 'active';
+      console.log(`🔄 Browser worker re-registered: ${workerId} → ${cdpUrl}`);
+    } else {
+      this.browsers.set(workerId, {
+        workerId,
+        cdpUrl,
+        registeredAt: now,
+        lastHeartbeat: now,
+        status: 'active',
+      });
+      console.log(`✅ Browser worker registered: ${workerId} → ${cdpUrl}  (pool size: ${this.browsers.size})`);
+    }
+  }
+
+  /** Update heartbeat timestamp for a known worker. Returns false if unknown. */
+  heartbeat(workerId: string): boolean {
+    const entry = this.browsers.get(workerId);
+    if (!entry) return false;
+    entry.lastHeartbeat = Date.now();
+    if (entry.status !== 'active') {
+      console.log(`💚 Browser worker recovered from stale: ${workerId}`);
+    }
+    entry.status = 'active';
+    return true;
+  }
+
+  /** Explicitly remove a worker. */
+  deregister(workerId: string): void {
+    const existed = this.browsers.delete(workerId);
+    if (existed) {
+      console.log(`🗑️ Browser worker deregistered: ${workerId}  (pool size: ${this.browsers.size})`);
+    }
+  }
+
+  // ── Queries ────────────────────────────────────────────────────────────
+
+  /** Return all browsers (any status). */
+  getAll(): RemoteBrowser[] {
+    return Array.from(this.browsers.values());
+  }
+
+  /** Return only active browsers. */
+  getActive(): RemoteBrowser[] {
+    return Array.from(this.browsers.values()).filter(b => b.status === 'active');
+  }
+
+  /** Round-robin pick from active browsers. Returns null if none available. */
+  getNext(): RemoteBrowser | null {
+    const active = this.getActive();
+    if (active.length === 0) return null;
+    this.roundRobinIndex = this.roundRobinIndex % active.length;
+    const picked = active[this.roundRobinIndex];
+    this.roundRobinIndex = (this.roundRobinIndex + 1) % active.length;
+    return picked;
+  }
+
+  /** Pool size (all statuses). */
+  get size(): number {
+    return this.browsers.size;
+  }
+
+  // ── Background cleanup ─────────────────────────────────────────────────
+
+  /** Start the periodic cleanup loop (call once at server startup). */
+  startCleanupLoop(): void {
+    if (this.cleanupTimer) return; // already running
+    this.cleanupTimer = setInterval(() => this.cleanup(), CLEANUP_INTERVAL_MS);
+    // Allow the process to exit even if the timer is still running
+    if (this.cleanupTimer && typeof this.cleanupTimer === 'object' && 'unref' in this.cleanupTimer) {
+      (this.cleanupTimer as NodeJS.Timeout).unref();
+    }
+  }
+
+  /** Stop the cleanup loop. */
+  stopCleanupLoop(): void {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = null;
+    }
+  }
+
+  /** Single cleanup pass. */
+  private cleanup(): void {
+    const now = Date.now();
+    for (const [id, entry] of this.browsers) {
+      const elapsed = now - entry.lastHeartbeat;
+
+      if (elapsed > DEAD_TIMEOUT_MS) {
+        this.browsers.delete(id);
+        console.log(`💀 Browser worker removed (dead — no heartbeat for ${Math.round(elapsed / 1000)}s): ${id}`);
+      } else if (elapsed > STALE_TIMEOUT_MS && entry.status === 'active') {
+        entry.status = 'stale';
+        console.log(`⚠️ Browser worker marked stale (${Math.round(elapsed / 1000)}s since heartbeat): ${id}`);
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Singleton export
+// ---------------------------------------------------------------------------
+
+export const browserPool = new BrowserPool();
+
+// ---------------------------------------------------------------------------
+// Distributed search helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Execute a Google search via a remote browser from the pool.
+ *
+ * The flow mirrors the existing CDP search in dashboard-server.ts (lines 714-791)
+ * but connects to a remote Chrome instance exposed through a cloudflared tunnel
+ * instead of a local Docker container.
+ *
+ * The cloudflared tunnel proxies HTTP/WS traffic to Chrome's CDP port (9222).
+ * We fetch `/json/version` from the tunnel URL to discover the WebSocket
+ * debugger URL, rewrite the host to point at the tunnel, then connect
+ * puppeteer-core over `wss://`.
+ */
+export async function searchViaPool(
+  text: string,
+  pageNumber: number = 1,
+): Promise<{ organic: Array<{ title: string; link: string; snippet: string }>; aiResponse: string | null } | null> {
+  const maxAttempts = Math.max(1, browserPool.getActive().length);
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const browser = browserPool.getNext();
+    if (!browser) return null;
+
+    let browserConn: any = null;
+    let page: any = null;
+
+    try {
+      // 1. Discover WebSocket endpoint via the tunnel
+      const versionResp = await fetch(`${browser.cdpUrl}/json/version`, { signal: AbortSignal.timeout(10_000) });
+      if (!versionResp.ok) {
+        console.warn(`⚠️ Pool browser ${browser.workerId} CDP /json/version → HTTP ${versionResp.status}`);
+        throw new Error('CDP_UNREACHABLE');
+      }
+      const versionInfo = await versionResp.json() as { webSocketDebuggerUrl?: string };
+      const rawWsUrl = versionInfo.webSocketDebuggerUrl;
+      if (!rawWsUrl) throw new Error('NO_WS_URL');
+
+      // 2. Rewrite ws://127.0.0.1:9222/... → wss://<tunnel-host>/...
+      //    The cloudflared tunnel terminates TLS and forwards to local Chrome.
+      const tunnelHost = new URL(browser.cdpUrl).host;
+      const wsUrl = rawWsUrl
+        .replace(/^ws:\/\/[^/]+/, `wss://${tunnelHost}`);
+
+      // 3. Connect puppeteer-core
+      const puppeteer = require('puppeteer-core');
+      browserConn = await puppeteer.connect({
+        browserWSEndpoint: wsUrl,
+        defaultViewport: null,
+      });
+
+      page = await browserConn.newPage();
+
+      const startParam = (pageNumber - 1) * 10;
+      await page.goto(
+        `https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}`,
+        { waitUntil: 'domcontentloaded', timeout: 30_000 },
+      );
+      await new Promise(r => setTimeout(r, 3000));
+
+      // Captcha Check
+      const isCaptcha = await page.evaluate(() => {
+        return !!document.querySelector('form[action="/sorry/index"], #captcha, .g-recaptcha');
+      });
+
+      if (isCaptcha) {
+        console.warn(`⚠️ Captcha detected on pool browser ${browser.workerId}`);
+        throw new Error('CAPTCHA_DETECTED');
+      }
+
+      // Click "Show more" buttons to expand AI overview
+      try {
+        await page.evaluate(() => {
+          const btns = document.querySelectorAll('[jsname="VwDHjd"], [aria-label="Show more"], .LGOjhe, .cUnQKe');
+          btns.forEach((b: Element) => (b as HTMLElement).click());
+        });
+        await new Promise(r => setTimeout(r, 1500));
+      } catch { /* ignore */ }
+
+      // Extract results — identical logic to dashboard-server.ts
+      const results = await page.evaluate(() => {
+        const organic: Array<{ title: string; link: string; snippet: string }> = [];
+        let aiResponse: string | null = null;
+        const seen = new Set<string>();
+
+        // AI overview
+        const aiSelectors = ['.M8OgIe', '.LLtROe', '.IZ6rdc', '[data-attrid="wa:/description"]', '.wDYxhc[data-md]', '.kp-blk'];
+        for (const sel of aiSelectors) {
+          const el = document.querySelector(sel);
+          if (el && (el as HTMLElement).innerText?.trim().length > 20) {
+            aiResponse = (el as HTMLElement).innerHTML || (el as HTMLElement).innerText.trim();
+            break;
+          }
+        }
+
+        // Organic results
+        document.querySelectorAll('#search .g, #rso .g, .MjjYud .g').forEach(el => {
+          const h3 = el.querySelector('h3');
+          const a = el.querySelector('a[href^="http"]');
+          if (!h3 || !a) return;
+          const link = a.getAttribute('href') || '';
+          if (seen.has(link)) return;
+          seen.add(link);
+          let snippet = '';
+          for (const s of ['.VwiC3b', '.lEBKkf', '.lyLwlc', '[data-sncf]', '.IsZvec']) {
+            const sn = el.querySelector(s);
+            if (sn && (sn as HTMLElement).innerText) { snippet = (sn as HTMLElement).innerText.trim(); break; }
+          }
+          organic.push({ title: (h3 as HTMLElement).innerText.trim(), link, snippet });
+        });
+
+        // Fallback
+        if (organic.length === 0) {
+          document.querySelectorAll('a[href^="http"]').forEach(a => {
+            const h3 = a.querySelector('h3');
+            if (!h3) return;
+            const link = a.getAttribute('href') || '';
+            if (link.includes('google.com') || seen.has(link)) return;
+            seen.add(link);
+            organic.push({ title: (h3 as HTMLElement).innerText.trim(), link, snippet: '' });
+          });
+        }
+
+        return { organic, aiResponse };
+      });
+
+      return results;
+    } catch (e) {
+      console.error(`❌ Pool search failed via ${browser.workerId} (attempt ${attempt + 1}/${maxAttempts}):`, (e as Error).message);
+      // Loop continues to try the next browser in the pool
+    } finally {
+      try { if (page) await page.close(); } catch { /* ignore */ }
+      try { if (browserConn) browserConn.disconnect(); } catch { /* ignore */ }
+    }
+  }
+
+  // All attempts failed
+  return null;
+}

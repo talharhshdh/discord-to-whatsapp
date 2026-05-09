@@ -1,0 +1,68 @@
+name: Browser Workers
+
+on:
+  workflow_dispatch: # Manual trigger
+  repository_dispatch: # Triggered by main workflow
+    types: [spawn-browsers]
+
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 310 # 5 hours + 10 min buffer
+    strategy:
+      matrix:
+        worker: [1, 2, 3, 4, 5]
+      fail-fast: false # Don't kill siblings if one crashes
+
+    steps:
+      - name: Check concurrent worker runs
+        run: |
+          echo "🔍 Checking for concurrent browser-worker runs..."
+          RUNNING_COUNT=$(curl -s \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.PAT_TOKEN }}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/runs?status=in_progress&per_page=100" \
+            | jq '[.workflow_runs[] | select(.name == "Browser Workers")] | length')
+
+          echo "📊 Currently running Browser Workers workflows: $RUNNING_COUNT"
+
+          if [ "$RUNNING_COUNT" -gt 2 ]; then
+            echo "⚠️ Too many concurrent browser worker runs ($RUNNING_COUNT). Exiting."
+            exit 1
+          fi
+
+          echo "✅ Concurrent run check passed."
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create .env from GitHub Secret
+        run: |
+          echo '${{ secrets.ENV_FILE }}' > .env
+          echo "✅ .env file created"
+
+      - name: Install Chrome
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+
+      - name: Install cloudflared
+        run: |
+          curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+          sudo dpkg -i cloudflared.deb
+          echo "✅ cloudflared installed"
+
+      - name: Run browser worker
+        run: |
+          source .env
+          export DASHBOARD_DOMAIN="${DASHBOARD_DOMAIN}"
+          export WORKER_ID="browser-worker-${{ matrix.worker }}-$(hostname | cut -c1-6)-$(head -c4 /dev/urandom | xxd -p)"
+          export MAX_RUNTIME=18000
+          export HEARTBEAT_INTERVAL=60
+
+          echo "🏷️ Worker ID: ${WORKER_ID}"
+          echo "🌍 Dashboard: https://${DASHBOARD_DOMAIN}"
+
+          chmod +x src/scripts/browser-worker.sh
+          bash src/scripts/browser-worker.sh
