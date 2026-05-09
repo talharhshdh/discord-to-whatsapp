@@ -65,6 +65,12 @@ const workerConnections = new Map<string, WorkerConnection>();
 /** Max idle pages kept alive per worker. Extra pages are closed. */
 const MAX_IDLE_PAGES = 3;
 
+/** Per-worker consecutive CDP_UNREACHABLE counter. Reset on success or reconnect. */
+const workerCdpFailures = new Map<string, number>();
+
+/** After this many consecutive CDP failures a worker is evicted from the pool immediately. */
+const MAX_WORKER_CDP_FAILURES = 3;
+
 /**
  * Return a ready page from the worker's pool.
  * Creates a new puppeteer connection + page if none cached yet.
@@ -248,7 +254,7 @@ class BrowserPool {
   // ── Background cleanup ─────────────────────────────────────────────────
   private failureTimestamps: number[] = [];
   private lastRestartTime = 0;
-  private readonly RESTART_COOLDOWN_MS = 5 * 60 * 1000; // 5 min cooldown
+  private readonly RESTART_COOLDOWN_MS = 2 * 60 * 1000; // 2 min cooldown (reduced from 5)
 
   /** Start the periodic cleanup loop (call once at server startup). */
   startCleanupLoop(): void {
@@ -375,7 +381,7 @@ export async function searchViaPool(
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const browser = browserPool.getNext();
-    if (!browser) return null;
+    if (!browser) break;
 
     let conn: WorkerConnection | null = null;
     let page: any = null;
@@ -394,7 +400,6 @@ export async function searchViaPool(
       );
 
       // Wait for actual results OR captcha — whichever appears first (max 4s)
-      // This replaces the blind 1500ms sleep.
       await Promise.race([
         page.waitForSelector('#search .g, #rso .g, .MjjYud .g, form[action="/sorry/index"]', { timeout: 4_000 }),
         new Promise(r => setTimeout(r, 4_000)),
@@ -464,28 +469,45 @@ export async function searchViaPool(
         return { organic, aiResponse };
       });
 
+      // ✅ Success — reset this worker's CDP failure counter
+      workerCdpFailures.delete(browser.workerId);
       return results;
+
     } catch (e) {
       const msg = (e as Error).message;
       console.error(`❌ Pool search failed via ${browser.workerId} (attempt ${attempt + 1}/${maxAttempts}):`, msg);
       browserPool.recordFailure();
 
-      // Fatal connection errors → invalidate entire worker connection so next
-      // request re-establishes a fresh puppeteer WS instead of reusing a broken one.
+      // Fatal CDP errors → track per-worker failures and evict fast
       if (['CDP_UNREACHABLE', 'NO_WS_URL', 'Protocol error', 'WebSocket'].some(k => msg.includes(k))) {
         invalidateWorkerConnection(browser.workerId);
-        page = null; // already destroyed by invalidate
+        page = null;
+
+        const cdpFails = (workerCdpFailures.get(browser.workerId) ?? 0) + 1;
+        workerCdpFailures.set(browser.workerId, cdpFails);
+
+        if (cdpFails >= MAX_WORKER_CDP_FAILURES) {
+          // Worker is clearly dead — remove it from the pool immediately
+          // instead of waiting 2 min for the heartbeat cleanup loop.
+          console.warn(`🔥 Worker ${browser.workerId} hit ${cdpFails} consecutive CDP failures — evicting from pool.`);
+          workerCdpFailures.delete(browser.workerId);
+          browserPool.deregister(browser.workerId);
+        }
       } else {
         pageErrored = true;
       }
     } finally {
       if (conn && page) {
-        // Discard the page if it errored (navigation state is dirty)
         await releasePage(conn, page, pageErrored);
       }
     }
   }
 
-  // All attempts failed
+  // All attempts failed — if the pool is now empty, dispatch new workers immediately.
+  if (browserPool.getActive().length === 0) {
+    console.error('🚨 All pool workers are dead. Triggering emergency worker restart...');
+    browserPool.restartWorkers();
+  }
+
   return null;
 }

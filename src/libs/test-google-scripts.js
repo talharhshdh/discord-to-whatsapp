@@ -3,11 +3,14 @@ import pLimit from "p-limit";
 // Initialize p-limit to 5 concurrent executions
 const limit = pLimit(5);
 
+const BASE_URL = "https://services.ufone-claim.site";
+
 let failed = 0;
 let success = 0;
 let done = 0;
 let consecutiveFailures = 0;
 let stopFlag = false;
+let waitingForRecovery = false;
 let activeTasks = 0;
 
 // Timing and stats variables
@@ -57,20 +60,64 @@ process.on('SIGINT', () => {
     process.exit(0);
 });
 
-console.log(`Starting continuous requests (Max 5 at a time). Stopping after 5 consecutive failures...`);
+console.log(`Starting continuous requests (Max 5 at a time). Auto-recovers when workers restart...`);
 console.log(`Press Ctrl+C at any time to stop and view current stats.\n`);
 
 // Wrap the execution in a Promise
 await new Promise((resolve) => {
+
+    /**
+     * Poll the pool status until at least 1 active worker is back.
+     * Called when all workers appear dead. Blocks new tasks until recovery.
+     */
+    async function waitForPoolRecovery() {
+        if (waitingForRecovery) return; // only one recovery loop at a time
+        waitingForRecovery = true;
+        console.log("\n⏳ Pausing new tasks — waiting for pool workers to recover (up to 5 min)...");
+
+        const maxWaitMs = 5 * 60 * 1000;
+        const pollIntervalMs = 15_000;
+        const start = Date.now();
+
+        while (Date.now() - start < maxWaitMs) {
+            await new Promise(r => setTimeout(r, pollIntervalMs));
+            try {
+                const res = await fetch(`${BASE_URL}/api/browser/pool`, { method: 'GET' });
+                if (res.ok) {
+                    const data = await res.json();
+                    const activeCount = data?.active ?? data?.browsers?.filter((b) => b.status === 'active').length ?? 0;
+                    if (activeCount > 0) {
+                        console.log(`\n✅ Pool recovered — ${activeCount} active worker(s) detected. Resuming...\n`);
+                        consecutiveFailures = 0;
+                        waitingForRecovery = false;
+                        // Kick off a fresh batch
+                        for (let i = 0; i < 5; i++) limit(executeTask);
+                        return;
+                    } else {
+                        console.log(`   Still waiting... pool has ${activeCount} active workers. (${Math.round((Date.now() - start) / 1000)}s elapsed)`);
+                    }
+                }
+            } catch {
+                // Pool status endpoint unreachable — keep waiting
+            }
+        }
+
+        // Timed out waiting for recovery
+        console.log("\n🛑 Pool did not recover within 5 minutes. Stopping.");
+        stopFlag = true;
+        waitingForRecovery = false;
+        if (activeTasks === 0) resolve();
+    }
+
     const executeTask = async () => {
-        if (stopFlag) return;
+        if (stopFlag || waitingForRecovery) return;
 
         activeTasks++;
         let isSuccess = false;
         const taskStartTime = performance.now();
 
         try {
-            const res = await fetch("/api/browser/search", {
+            const res = await fetch(`${BASE_URL}/api/browser/search`, {
                 "body": JSON.stringify({
                     "text": "what is phsics",
                     "pageNumber": 1,
@@ -107,12 +154,16 @@ await new Promise((resolve) => {
 
             activeTasks--;
 
-            if (consecutiveFailures >= 5 && !stopFlag) {
-                console.log("\n🛑 5 consecutive failures reached! Waiting for in-flight tasks to finish...");
-                stopFlag = true;
+            // If consecutive failures cross threshold → pause and wait for pool recovery
+            // instead of stopping entirely.
+            if (consecutiveFailures >= 9 && !waitingForRecovery && !stopFlag) {
+                console.log(`\n🔄 ${consecutiveFailures} consecutive failures — all workers likely dead. Triggering recovery wait...`);
+                waitForPoolRecovery(); // fire-and-forget, resumes tasks internally
+                if (stopFlag && activeTasks === 0) resolve();
+                return;
             }
 
-            if (!stopFlag) {
+            if (!stopFlag && !waitingForRecovery) {
                 limit(executeTask);
             }
 
