@@ -4,8 +4,8 @@ FastAPI server for Qwen3-TTS voice synthesis using the official `qwen-tts` packa
 Runs on port 8002.
 
 Three models are loaded lazily on first use:
-  - Qwen3-TTS-12Hz-1.7B-CustomVoice  → /tts/generate  (built-in speaker presets)
-  - Qwen3-TTS-12Hz-1.7B-Base         → /tts/clone     (voice cloning from ref audio)
+  - Qwen3-TTS-12Hz-0.6B-CustomVoice  → /tts/generate  (built-in speaker presets)
+  - Qwen3-TTS-12Hz-0.6B-Base         → /tts/clone     (voice cloning from ref audio)
   - Qwen3-TTS-12Hz-1.7B-VoiceDesign  → /tts/design    (natural-language style description)
 
 GET  /health        → liveness + loaded-model state
@@ -44,8 +44,8 @@ app.add_middleware(
 
 # ── Model IDs ─────────────────────────────────────────────────────────────────
 
-MODEL_CUSTOM_VOICE = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
-MODEL_BASE         = "Qwen/Qwen3-TTS-12Hz-1.7B-Base"
+MODEL_CUSTOM_VOICE = "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice"
+MODEL_BASE         = "Qwen/Qwen3-TTS-12Hz-0.6B-Base"
 MODEL_DESIGN       = "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign"
 
 # ── Model registry ────────────────────────────────────────────────────────────
