@@ -388,7 +388,7 @@ export async function searchViaPool(
       // waitForSelector then drives actual readiness — no wasted time.
       await page.goto(
         `https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}&num=10`,
-        { waitUntil: 'commit', timeout: 20_000 },
+        { waitUntil: 'domcontentloaded', timeout: 20_000 },
       );
 
       // Wait for results OR captcha to appear in the DOM (max 5s)
