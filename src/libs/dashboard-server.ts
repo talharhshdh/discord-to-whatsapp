@@ -911,6 +911,91 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     return;
   }
 
+  // ── GET /api/tts/status ──────────────────────────────────────────────────────
+  if (method === 'GET' && url === '/api/tts/status') {
+    try {
+      const r = await fetch('http://127.0.0.1:8002/health');
+      if (!r.ok) return json(res, { running: false, model_loaded: false, loading: false, error: `HTTP ${r.status}` });
+      const d = await r.json() as { status: string; model_loaded: boolean; loading: boolean; error?: string };
+      json(res, { running: true, ...d });
+    } catch {
+      json(res, { running: false, model_loaded: false, loading: false, error: 'TTS server not reachable' });
+    }
+    return;
+  }
+
+  // ── GET /api/tts/voices ───────────────────────────────────────────────────────
+  if (method === 'GET' && url === '/api/tts/voices') {
+    try {
+      const r = await fetch('http://127.0.0.1:8002/tts/voices');
+      if (!r.ok) return err(res, `TTS server HTTP ${r.status}`);
+      json(res, await r.json());
+    } catch (e) { err(res, (e as Error).message); }
+    return;
+  }
+
+  // ── POST /api/tts/generate ───────────────────────────────────────────────────
+  if (method === 'POST' && url === '/api/tts/generate') {
+    try {
+      const body = await parseJsonBody(req);
+      const r = await fetch('http://127.0.0.1:8002/tts/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({ detail: `HTTP ${r.status}` })) as { detail?: string };
+        return err(res, e.detail ?? `TTS server HTTP ${r.status}`);
+      }
+      const buf = Buffer.from(await r.arrayBuffer());
+      const fmt = (body['format'] as string) || 'wav';
+      binary(res, buf, fmt === 'mp3' ? 'audio/mpeg' : 'audio/wav', `tts_${Date.now()}.${fmt}`);
+    } catch (e) { err(res, (e as Error).message); }
+    return;
+  }
+
+  // ── POST /api/tts/clone ──────────────────────────────────────────────────────
+  // Forwards the raw multipart body directly to the Python TTS server.
+  if (method === 'POST' && url === '/api/tts/clone') {
+    try {
+      const rawBody = await readBody(req);
+      const r = await fetch('http://127.0.0.1:8002/tts/clone', {
+        method: 'POST',
+        headers: { 'Content-Type': ct },
+        body: rawBody as unknown as BodyInit,
+      });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({ detail: `HTTP ${r.status}` })) as { detail?: string };
+        return err(res, e.detail ?? `TTS server HTTP ${r.status}`);
+      }
+      const buf = Buffer.from(await r.arrayBuffer());
+      const { fields } = parseMultipart(rawBody, ct);
+      const fmt = fields['format'] || 'wav';
+      binary(res, buf, fmt === 'mp3' ? 'audio/mpeg' : 'audio/wav', `clone_${Date.now()}.${fmt}`);
+    } catch (e) { err(res, (e as Error).message); }
+    return;
+  }
+
+  // ── POST /api/tts/design ──────────────────────────────────────────────────────
+  if (method === 'POST' && url === '/api/tts/design') {
+    try {
+      const body = await parseJsonBody(req);
+      const r = await fetch('http://127.0.0.1:8002/tts/design', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({ detail: `HTTP ${r.status}` })) as { detail?: string };
+        return err(res, e.detail ?? `TTS server HTTP ${r.status}`);
+      }
+      const buf = Buffer.from(await r.arrayBuffer());
+      const fmt = (body['format'] as string) || 'wav';
+      binary(res, buf, fmt === 'mp3' ? 'audio/mpeg' : 'audio/wav', `design_${Date.now()}.${fmt}`);
+    } catch (e) { err(res, (e as Error).message); }
+    return;
+  }
+
   // 404
   res.writeHead(404, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ error: 'Not found' }));

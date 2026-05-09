@@ -10,6 +10,7 @@ import URLsPanel from './components/URLsPanel';
 import AndroidPanel from './components/AndroidPanel';
 import LLMPanel from './components/LLMPanel';
 import SearchPanel from './components/SearchPanel';
+import TTSPanel from './components/TTSPanel';
 
 const NAV: { id: NavSection; label: string; icon: string }[] = [
   { id: 'search',    label: 'Browser Search', icon: '🔍' },
@@ -22,6 +23,7 @@ const NAV: { id: NavSection; label: string; icon: string }[] = [
   { id: 'movies',    label: 'Movies',         icon: '🎬' },
   { id: 'urls',      label: 'Live URLs',      icon: '🔗' },
   { id: 'llm',       label: 'Local LLM',      icon: '🧠' },
+  { id: 'tts',       label: 'Voice / TTS',    icon: '🎙️' },
 ];
 
 export default function App() {
@@ -142,6 +144,7 @@ export default function App() {
               {section === 'urls' && <URLsPanel tools={data?.tools ?? {}} />}
               {section === 'llm' && <LLMPanel />}
               {section === 'search' && <SearchPanel />}
+              {section === 'tts' && <TTSPanel />}
             </div>
           </main>
         </div>

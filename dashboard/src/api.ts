@@ -73,6 +73,22 @@ export interface YtVideoInfo {
   videoId: string; url: string; title: string; thumbnail: string;
   durationSeconds: number; uploader: string; viewCount: number; qualities: YtQuality[];
 }
+// ── TTS Types ───────────────────────────────────────────────────────────────
+
+export interface TTSVoice {
+  id: string;
+  label: string;
+  gender: string;
+  tone: string;
+}
+
+export interface TTSStatus {
+  running: boolean;
+  model_loaded: boolean;
+  loading: boolean;
+  error?: string;
+}
+
 export interface MovieResult {
   tmdbId: number; title: string; overview: string; posterUrl: string;
   mediaType: string; releaseDate: string; voteAverage: number; watchUrl: string;
@@ -190,4 +206,22 @@ export const api = {
       if (!r.ok) return r.json().then((e: { detail: string }) => { throw new Error(e.detail); });
       return r.json() as Promise<{ deleted: boolean }>;
     }),
+
+  // ── TTS ───────────────────────────────────────────────────────────────────
+  ttsStatus: () => fetch('/api/tts/status').then(r => r.json()) as Promise<TTSStatus>,
+  ttsVoices: () => fetch('/api/tts/voices').then(r => r.json()) as Promise<{ voices: TTSVoice[] }>,
+
+  ttsGenerate: (text: string, voice: string, format: string = 'wav') =>
+    postBinary('/api/tts/generate', { text, voice, format }),
+
+  ttsClone: (text: string, referenceAudio: File, format: string = 'wav') => {
+    const fd = new FormData();
+    fd.append('text', text);
+    fd.append('reference_audio', referenceAudio);
+    fd.append('format', format);
+    return postFormBinary('/api/tts/clone', fd);
+  },
+
+  ttsDesign: (text: string, style: string, format: string = 'wav') =>
+    postBinary('/api/tts/design', { text, style, format }),
 };
