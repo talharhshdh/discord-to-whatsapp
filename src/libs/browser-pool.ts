@@ -123,6 +123,9 @@ class BrowserPool {
   }
 
   // ── Background cleanup ─────────────────────────────────────────────────
+  private failureTimestamps: number[] = [];
+  private lastRestartTime = 0;
+  private readonly RESTART_COOLDOWN_MS = 5 * 60 * 1000; // 5 min cooldown
 
   /** Start the periodic cleanup loop (call once at server startup). */
   startCleanupLoop(): void {
@@ -139,6 +142,65 @@ class BrowserPool {
     if (this.cleanupTimer) {
       clearInterval(this.cleanupTimer);
       this.cleanupTimer = null;
+    }
+  }
+
+  /** Record a failure and check if restart is needed. */
+  recordFailure(): void {
+    const now = Date.now();
+    this.failureTimestamps.push(now);
+    
+    // Cleanup old timestamps (> 1 min)
+    this.failureTimestamps = this.failureTimestamps.filter(t => now - t < 60000);
+
+    if (this.failureTimestamps.length >= 20) {
+      console.error(`🚨 ERROR LIMIT REACHED: ${this.failureTimestamps.length} failures in last minute.`);
+      this.failureTimestamps = []; // Reset after trigger
+      this.restartWorkers();
+    }
+  }
+
+  /** Trigger a restart of all browser workers via GitHub Actions. */
+  async restartWorkers(): Promise<void> {
+    const now = Date.now();
+    if (now - this.lastRestartTime < this.RESTART_COOLDOWN_MS) {
+      console.log('⏭️ Restart skipped: Cooldown active.');
+      return;
+    }
+    this.lastRestartTime = now;
+
+    const pat = process.env.GITHUB_PAT || process.env.PAT_TOKEN;
+    const repo = process.env.GITHUB_REPO || 'talharhshdh/discord-to-whatsapp';
+
+    if (!pat) {
+      console.error('❌ Cannot restart workers: GITHUB_PAT or PAT_TOKEN not found in env.');
+      return;
+    }
+
+    console.log(`🔄 Restarting browser workers for ${repo}...`);
+
+    try {
+      // Trigger spawn-browsers event
+      const resp = await fetch(`https://api.github.com/repos/${repo}/dispatches`, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/vnd.github+json',
+          'Authorization': `Bearer ${pat}`,
+          'X-GitHub-Api-Version': '2022-11-28',
+        },
+        body: JSON.stringify({
+          event_type: 'spawn-browsers',
+        }),
+      });
+
+      if (resp.ok) {
+        console.log('✅ GitHub dispatch sent successfully!');
+      } else {
+        const error = await resp.text();
+        console.error(`❌ Failed to send GitHub dispatch (HTTP ${resp.status}):`, error);
+      }
+    } catch (e) {
+      console.error('❌ Error triggering GitHub dispatch:', e);
     }
   }
 
@@ -318,6 +380,7 @@ export async function searchViaPool(
       return results;
     } catch (e) {
       console.error(`❌ Pool search failed via ${browser.workerId} (attempt ${attempt + 1}/${maxAttempts}):`, (e as Error).message);
+      browserPool.recordFailure();
       // Loop continues to try the next browser in the pool
     } finally {
       try { if (page) await page.close(); } catch { /* ignore */ }

@@ -36,7 +36,24 @@ export default function SearchPanel() {
   return (
     <div className="space-y-6">
       <div className="glass p-6 rounded-2xl border border-white/[0.07] shadow-xl">
-        <h3 className="text-lg font-bold text-white mb-2">Automated Browser Search</h3>
+        <div className="flex justify-between items-start mb-2">
+          <h3 className="text-lg font-bold text-white">Automated Browser Search</h3>
+          <button
+            onClick={async () => {
+              if (window.confirm('Restart all browser workers? Current searches will be interrupted.')) {
+                try {
+                  await api.restartBrowsers();
+                  alert('Restart command sent to GitHub Actions!');
+                } catch (e: any) {
+                  alert('Error: ' + e.message);
+                }
+              }
+            }}
+            className="px-3 py-1.5 rounded-lg bg-white/[0.04] border border-white/10 text-white/40 hover:text-white/70 text-xs transition-colors"
+          >
+            🔄 Restart Workers
+          </button>
+        </div>
         <p className="text-sm text-white/50 mb-4">
           Search Google via the running Chromium container (CDP) or Python SeleniumBase engine.
         </p>

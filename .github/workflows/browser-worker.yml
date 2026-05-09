@@ -5,6 +5,10 @@ on:
   repository_dispatch: # Triggered by main workflow
     types: [spawn-browsers]
 
+concurrency:
+  group: browser-workers
+  cancel-in-progress: true
+
 jobs:
   browser:
     runs-on: ubuntu-latest

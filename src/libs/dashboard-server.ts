@@ -759,6 +759,15 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     return;
   }
 
+  // ── POST /api/browsers/restart ─────────────────────────────────────────
+  if (method === 'POST' && url === '/api/browsers/restart') {
+    try {
+      await browserPool.restartWorkers();
+      json(res, { ok: true, message: 'Restart command sent to GitHub Actions' });
+    } catch (e) { err(res, (e as Error).message); }
+    return;
+  }
+
 
   // ── POST /api/browser/search ───────────────────────────────────────────
   // Supports ?engine=cdp|selenium. Default: tries CDP first, falls back to selenium.

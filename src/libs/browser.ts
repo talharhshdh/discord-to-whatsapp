@@ -41,6 +41,11 @@ export async function startBrowser(): Promise<{ url?: string; username?: string;
   return startBrowserInstance();
 }
 
+export function getGeneralBrowserCdpPort(): number | null {
+  const existing = Array.from(browserInstances.values()).find(b => !b.targetUrl);
+  return existing ? existing.cdpPort : null;
+}
+
 /**
  * Start a browser with a specific URL pre-loaded
  */
@@ -94,12 +99,9 @@ async function startBrowserInstance(targetUrl?: string): Promise<{
 
     // Use hardcoded credentials if available, otherwise generate random ones
     const port = BROWSER_PORT || (10080 + browserInstances.size);
-    const cdpPort = 9222 + (port - 10080);
+    const cdpPort = 10222 + (port - 10080);
     const username = BROWSER_USERNAME || `dev_${crypto.randomBytes(3).toString('hex')}`;
     const password = BROWSER_PASSWORD || crypto.randomBytes(6).toString('hex');
-
-    if (BROWSER_USERNAME && BROWSER_PASSWORD) {
-    }
 
     // Ensure Docker is available
     try {
@@ -503,12 +505,4 @@ export function getAllBrowsers() {
     port: instance.port,
     cdpPort: instance.cdpPort,
   }));
-}
-
-/**
- * Get CDP port of the general browser instance
- */
-export function getGeneralBrowserCdpPort(): number | undefined {
-  const general = Array.from(browserInstances.values()).find(b => !b.targetUrl);
-  return general?.cdpPort;
 }

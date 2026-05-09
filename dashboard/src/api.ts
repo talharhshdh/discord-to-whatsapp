@@ -166,6 +166,8 @@ export const api = {
 
   browserSearch: (text: string, pageNumber: number, engine: 'auto' | 'cdp' | 'selenium' = 'auto') =>
     post<BrowserSearchResult>('/api/browser/search', { text, pageNumber, engine }),
+  restartBrowsers: () =>
+    post<{ ok: boolean; message: string }>('/api/browsers/restart', {}),
 
   // ── LLM ───────────────────────────────────────────────────────────────────
   llmModels: () => fetch('/api/llm/models').then(r => {

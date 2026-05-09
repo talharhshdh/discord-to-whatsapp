@@ -10,7 +10,7 @@
 #   5. On shutdown sends a deregister event
 #
 # Required env vars:
-#   DASHBOARD_DOMAIN  — domain of the main dashboard (e.g. services.ufone-claim.site)
+#   DASHBOARD_DOMAIN  — domain of the main dashboard (e.g. )
 #   WORKER_ID         — unique identifier for this worker (set by the workflow)
 #
 # Optional:
