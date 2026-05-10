@@ -139,7 +139,7 @@ curl -s "http://127.0.0.1:${CDP_PORT}/json/new?https://www.google.com" > /dev/nu
 # ---------------------------------------------------------------------------
 # 3. Register with main dashboard
 # ---------------------------------------------------------------------------
-echo "📡 Registering with dashboard at ${WEBHOOK_URL}..."
+echo "📡 Registering with dashboard at ..."
 
 REGISTERED=false
 for attempt in $(seq 1 20); do

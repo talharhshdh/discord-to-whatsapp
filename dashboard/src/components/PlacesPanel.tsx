@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { api, PlaceResult, PlacesSearchResult } from '../api';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { api, PlaceResult } from '../api';
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
@@ -42,11 +42,17 @@ function StatusBadge({ openNow }: { openNow: boolean | null }) {
   );
 }
 
-function PlaceCard({ place }: { place: PlaceResult }) {
+function PlaceCard({ place, isNew }: { place: PlaceResult; isNew: boolean }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="glass rounded-2xl border border-white/[0.06] hover:border-white/[0.12] transition-all duration-300 overflow-hidden group">
+    <div
+      className={`glass rounded-2xl border transition-all duration-500 overflow-hidden group ${
+        isNew
+          ? 'border-[#6c63ff]/40 shadow-lg shadow-[#6c63ff]/10 animate-in fade-in slide-in-from-bottom-2 duration-400'
+          : 'border-white/[0.06] hover:border-white/[0.12]'
+      }`}
+    >
       {/* Header */}
       <div className="p-5">
         <div className="flex items-start justify-between gap-3 mb-2">
@@ -65,7 +71,6 @@ function PlaceCard({ place }: { place: PlaceResult }) {
           )}
         </div>
 
-        {/* Rating row */}
         {place.rating !== null && (
           <div className="flex items-center gap-2 mb-3">
             <span className="text-amber-400 font-bold text-sm">{place.rating.toFixed(1)}</span>
@@ -78,20 +83,13 @@ function PlaceCard({ place }: { place: PlaceResult }) {
           </div>
         )}
 
-        {/* Status + hours */}
         <div className="flex flex-wrap items-center gap-2 mb-3">
           <StatusBadge openNow={place.openNow} />
           {place.todaysHours && (
             <span className="text-xs text-white/45">{place.todaysHours}</span>
           )}
-          {place.isClaimed && (
-            <span className="text-[10px] text-[#6c63ff] bg-[#6c63ff]/10 border border-[#6c63ff]/20 px-2 py-0.5 rounded-full">
-              ✓ Claimed
-            </span>
-          )}
         </div>
 
-        {/* Address + phone */}
         <div className="space-y-1.5">
           {place.address && (
             <div className="flex items-start gap-2 text-xs text-white/55">
@@ -122,7 +120,6 @@ function PlaceCard({ place }: { place: PlaceResult }) {
           )}
         </div>
 
-        {/* Description */}
         {place.description && (
           <p className="mt-3 text-xs text-white/50 leading-relaxed line-clamp-2">
             {place.description}
@@ -130,8 +127,7 @@ function PlaceCard({ place }: { place: PlaceResult }) {
         )}
       </div>
 
-      {/* Expandable details */}
-      {(place.weeklyHours || place.amenities.length > 0 || place.lat !== null) && (
+      {(place.weeklyHours || (place.amenities?.length ?? 0) > 0 || place.lat !== null) && (
         <>
           <button
             onClick={() => setExpanded((v) => !v)}
@@ -143,7 +139,6 @@ function PlaceCard({ place }: { place: PlaceResult }) {
 
           {expanded && (
             <div className="px-5 pb-5 space-y-4 border-t border-white/[0.04] pt-4">
-              {/* Weekly hours */}
               {place.weeklyHours && Object.keys(place.weeklyHours).length > 0 && (
                 <div>
                   <p className="text-[10px] uppercase tracking-wider text-white/30 mb-2">Hours</p>
@@ -158,16 +153,12 @@ function PlaceCard({ place }: { place: PlaceResult }) {
                 </div>
               )}
 
-              {/* Amenities */}
-              {place.amenities.length > 0 && (
+              {(place.amenities?.length ?? 0) > 0 && (
                 <div>
                   <p className="text-[10px] uppercase tracking-wider text-white/30 mb-2">Amenities</p>
                   <div className="flex flex-wrap gap-1.5">
                     {place.amenities.map((a, i) => (
-                      <span
-                        key={i}
-                        className="text-[10px] bg-white/[0.04] border border-white/[0.07] text-white/50 px-2 py-0.5 rounded-full"
-                      >
+                      <span key={i} className="text-[10px] bg-white/[0.04] border border-white/[0.07] text-white/50 px-2 py-0.5 rounded-full">
                         {a}
                       </span>
                     ))}
@@ -175,7 +166,6 @@ function PlaceCard({ place }: { place: PlaceResult }) {
                 </div>
               )}
 
-              {/* Coordinates */}
               {place.lat !== null && place.lng !== null && (
                 <div className="flex items-center gap-3">
                   <p className="text-[10px] uppercase tracking-wider text-white/30">Coordinates</p>
@@ -185,7 +175,6 @@ function PlaceCard({ place }: { place: PlaceResult }) {
                 </div>
               )}
 
-              {/* Flags */}
               <div className="flex flex-wrap gap-2">
                 {place.hasPopularTimes && (
                   <span className="text-[10px] text-purple-400 bg-purple-400/10 border border-purple-400/20 px-2 py-0.5 rounded-full">
@@ -208,7 +197,6 @@ function PlaceCard({ place }: { place: PlaceResult }) {
         </>
       )}
 
-      {/* Footer: Maps link */}
       {place.mapsUrl && (
         <div className="px-5 py-3 border-t border-white/[0.04] flex justify-end">
           <a
@@ -225,33 +213,122 @@ function PlaceCard({ place }: { place: PlaceResult }) {
   );
 }
 
+// ── Streaming progress bar ────────────────────────────────────────────────────
+
+function StreamProgress({ round, total, done }: { round: number; total: number; done: boolean }) {
+  return (
+    <div className="glass rounded-xl border border-[#6c63ff]/20 p-4 flex items-center gap-4">
+      <div className="relative w-8 h-8 flex-shrink-0">
+        {!done ? (
+          <>
+            <div className="absolute inset-0 rounded-full border-2 border-[#6c63ff]/20" />
+            <div className="absolute inset-0 rounded-full border-2 border-[#6c63ff] border-t-transparent animate-spin" />
+          </>
+        ) : (
+          <div className="w-8 h-8 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 text-sm">
+            ✓
+          </div>
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-white/70 text-sm font-medium">
+          {done ? `Done — ${total} places scraped` : `Scrolling feed… ${total} places found`}
+        </p>
+        <p className="text-white/30 text-xs mt-0.5">
+          {done ? 'All results loaded' : `Scroll round ${round} of up to 20`}
+        </p>
+      </div>
+      <span className="text-2xl font-bold text-[#6c63ff] tabular-nums">{total}</span>
+    </div>
+  );
+}
+
 // ── Main panel ────────────────────────────────────────────────────────────────
 
+interface PlaceEntry {
+  place: PlaceResult;
+  isNew: boolean;
+}
+
 export default function PlacesPanel() {
-  const [query, setQuery] = useState('');
-  const [page, setPage] = useState(1);
-  const [deepScrape, setDeepScrape] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [result, setResult] = useState<PlacesSearchResult | null>(null);
+  const [query, setQuery]       = useState('');
+  const [streaming, setStreaming] = useState(false);
+  const [done, setDone]         = useState(false);
+  const [error, setError]       = useState('');
+  const [entries, setEntries]   = useState<PlaceEntry[]>([]);
+  const [round, setRound]       = useState(0);
+  const [total, setTotal]       = useState(0);
 
-  const handleSearch = async (e?: React.FormEvent, customPage?: number) => {
+  const esRef = useRef<EventSource | null>(null);
+  // Track which card names are newly arrived (highlighted for 3s)
+  const newNamesRef = useRef<Set<string>>(new Set());
+
+  const stopStream = useCallback(() => {
+    esRef.current?.close();
+    esRef.current = null;
+  }, []);
+
+  // Clean up on unmount
+  useEffect(() => () => stopStream(), [stopStream]);
+
+  // After 3s, remove the "isNew" glow from newly added cards
+  const scheduleNewFade = useCallback((names: string[]) => {
+    setTimeout(() => {
+      setEntries(prev =>
+        prev.map(e => names.includes(e.place.name) ? { ...e, isNew: false } : e)
+      );
+      names.forEach(n => newNamesRef.current.delete(n));
+    }, 3000);
+  }, []);
+
+  const handleSearch = (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!query.trim()) return;
+    if (!query.trim() || streaming) return;
 
-    const targetPage = customPage ?? page;
-    setLoading(true);
+    stopStream();
+    setEntries([]);
+    setRound(0);
+    setTotal(0);
+    setDone(false);
     setError('');
+    setStreaming(true);
+    newNamesRef.current.clear();
 
-    try {
-      const res = await api.placesSearch(query, targetPage, deepScrape);
-      setResult(res);
-      setPage(targetPage);
-    } catch (err: any) {
-      setError(err.message || 'Search failed');
-    } finally {
-      setLoading(false);
-    }
+    const es = api.placesStream(
+      query.trim(),
+      // onBatch
+      (cards, newTotal, newRound) => {
+        const newNames = cards.map(c => c.name);
+        newNames.forEach(n => newNamesRef.current.add(n));
+        setRound(newRound);
+        setTotal(newTotal);
+        setEntries(prev => [
+          ...prev,
+          ...cards.map(c => ({ place: c, isNew: true })),
+        ]);
+        scheduleNewFade(newNames);
+      },
+      // onDone
+      (finalTotal) => {
+        setTotal(finalTotal);
+        setStreaming(false);
+        setDone(true);
+      },
+      // onError
+      (msg) => {
+        setError(msg);
+        setStreaming(false);
+        setDone(true);
+      },
+    );
+
+    esRef.current = es;
+  };
+
+  const handleStop = () => {
+    stopStream();
+    setStreaming(false);
+    setDone(true);
   };
 
   return (
@@ -261,55 +338,41 @@ export default function PlacesPanel() {
         <div className="flex items-start justify-between mb-1">
           <h3 className="text-lg font-bold text-white">Google Maps Places Search</h3>
           <span className="text-xs text-white/30 bg-white/[0.04] border border-white/[0.07] px-2 py-0.5 rounded-full">
-            via browser pool
+            live stream
           </span>
         </div>
         <p className="text-sm text-white/45 mb-5">
-          Scrape Google Maps place cards — name, rating, address, hours, phone, website, coordinates &amp; more.
+          Results appear in real-time as the browser scrolls through Google Maps.
         </p>
 
         <form onSubmit={handleSearch} className="space-y-3">
           <div className="flex flex-col sm:flex-row gap-3">
             <input
+              id="places-query"
               type="text"
               className="flex-1 bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-[#6c63ff]/50 transition-colors"
               placeholder='e.g. "pizza near Times Square" or "dentists in London"'
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              disabled={streaming}
             />
-            <button
-              type="submit"
-              disabled={loading || !query.trim()}
-              className="px-6 py-2.5 bg-gradient-to-r from-[#6c63ff] to-[#00d4aa] rounded-xl text-white font-medium hover:opacity-90 disabled:opacity-50 transition-all shadow-lg shadow-[#6c63ff]/20 whitespace-nowrap"
-            >
-              {loading ? 'Searching…' : '🗺 Search Places'}
-            </button>
-          </div>
-
-          {/* Options row */}
-          <div className="flex flex-wrap items-center gap-4">
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <div
-                onClick={() => setDeepScrape((v) => !v)}
-                className={`relative w-9 h-5 rounded-full border transition-all duration-200 ${
-                  deepScrape
-                    ? 'bg-[#6c63ff]/30 border-[#6c63ff]/50'
-                    : 'bg-white/[0.05] border-white/10'
-                }`}
+            {streaming ? (
+              <button
+                type="button"
+                onClick={handleStop}
+                className="px-6 py-2.5 bg-red-500/20 border border-red-500/30 rounded-xl text-red-400 font-medium hover:bg-red-500/30 transition-all whitespace-nowrap"
               >
-                <span
-                  className={`absolute top-0.5 w-4 h-4 rounded-full transition-all duration-200 shadow ${
-                    deepScrape
-                      ? 'left-4 bg-[#6c63ff]'
-                      : 'left-0.5 bg-white/30'
-                  }`}
-                />
-              </div>
-              <span className="text-xs text-white/50">
-                Deep scrape{' '}
-                <span className="text-white/25">(clicks into each place — slower, more data)</span>
-              </span>
-            </label>
+                ⏹ Stop
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={!query.trim()}
+                className="px-6 py-2.5 bg-gradient-to-r from-[#6c63ff] to-[#00d4aa] rounded-xl text-white font-medium hover:opacity-90 disabled:opacity-50 transition-all shadow-lg shadow-[#6c63ff]/20 whitespace-nowrap"
+              >
+                🗺 Search Places
+              </button>
+            )}
           </div>
         </form>
 
@@ -320,74 +383,46 @@ export default function PlacesPanel() {
         )}
       </div>
 
-      {/* Loading */}
-      {loading && (
+      {/* Live progress bar */}
+      {(streaming || done) && entries.length >= 0 && (
+        <StreamProgress round={round} total={total} done={done && !streaming} />
+      )}
+
+      {/* Results grid — grows in real-time */}
+      {entries.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span className="text-white/60 text-sm font-medium">
+              {entries.length} place{entries.length !== 1 ? 's' : ''}
+              {streaming && <span className="ml-2 text-[#6c63ff] animate-pulse">● live</span>}
+            </span>
+            {done && !streaming && (
+              <span className="text-xs text-emerald-400/70 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                ✓ Complete
+              </span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {entries.map((entry, idx) => (
+              <PlaceCard
+                key={`${entry.place.name}-${idx}`}
+                place={entry.place}
+                isNew={entry.isNew}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Empty state while searching with no results yet */}
+      {streaming && entries.length === 0 && (
         <div className="flex flex-col items-center justify-center gap-4 p-16">
           <div className="relative w-12 h-12">
             <div className="absolute inset-0 rounded-full border-2 border-[#6c63ff]/20" />
             <div className="absolute inset-0 rounded-full border-2 border-[#6c63ff] border-t-transparent animate-spin" />
           </div>
-          <p className="text-white/40 text-sm">
-            {deepScrape ? 'Deep scraping places (may take a while)…' : 'Scraping Google Maps…'}
-          </p>
-        </div>
-      )}
-
-      {/* Results */}
-      {!loading && result && (
-        <div className="space-y-5">
-          {/* Meta bar */}
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <span className="text-white/60 text-sm font-medium">
-                {result.results.length} place{result.results.length !== 1 ? 's' : ''}
-              </span>
-              {result.totalResultsText && (
-                <span className="text-xs text-white/30 bg-white/[0.04] border border-white/[0.06] px-2 py-0.5 rounded-full">
-                  {result.totalResultsText}
-                </span>
-              )}
-              {deepScrape && (
-                <span className="text-[10px] text-[#6c63ff] bg-[#6c63ff]/10 border border-[#6c63ff]/20 px-2 py-0.5 rounded-full">
-                  deep scrape
-                </span>
-              )}
-            </div>
-            <span className="text-xs text-white/30">Page {result.page}</span>
-          </div>
-
-          {result.results.length === 0 ? (
-            <div className="glass rounded-2xl border border-white/[0.06] p-12 flex flex-col items-center gap-3 text-center">
-              <span className="text-4xl">🗺</span>
-              <p className="text-white/50 text-sm">No places found for this query.</p>
-              <p className="text-white/25 text-xs">Try a different search or add a city name.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {result.results.map((place, idx) => (
-                <PlaceCard key={`${place.name}-${idx}`} place={place} />
-              ))}
-            </div>
-          )}
-
-          {/* Pagination */}
-          <div className="flex justify-center items-center gap-3 pt-2">
-            <button
-              disabled={page <= 1}
-              onClick={() => handleSearch(undefined, Math.max(1, page - 1))}
-              className="px-4 py-2 rounded-lg bg-white/[0.05] border border-white/10 text-white hover:bg-white/10 disabled:opacity-30 text-sm transition-all"
-            >
-              ← Previous
-            </button>
-            <span className="text-white/40 text-sm font-medium px-2">Page {page}</span>
-            <button
-              disabled={!result.hasNextPage}
-              onClick={() => handleSearch(undefined, page + 1)}
-              className="px-4 py-2 rounded-lg bg-white/[0.05] border border-white/10 text-white hover:bg-white/10 disabled:opacity-30 text-sm transition-all"
-            >
-              Next →
-            </button>
-          </div>
+          <p className="text-white/40 text-sm">Navigating to Google Maps…</p>
         </div>
       )}
     </div>

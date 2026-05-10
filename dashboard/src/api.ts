@@ -108,6 +108,7 @@ export interface PlaceResult {
   category: string | null;
   openNow: boolean | null;
   todaysHours: string | null;
+  openStatus: string | null;
   weeklyHours: Record<string, string> | null;
   description: string | null;
   photosCount: number | null;
@@ -119,6 +120,15 @@ export interface PlaceResult {
   isClaimed: boolean | null;
   amenities: string[];
   relatedPlaces: string[];
+}
+
+export interface PlacesBatchEvent {
+  type: 'batch' | 'progress' | 'done' | 'error';
+  cards?: PlaceResult[];
+  total?: number;
+  round?: number;
+  reachedEnd?: boolean;
+  message?: string;
 }
 
 export interface PlacesSearchResult {
@@ -221,6 +231,38 @@ export const api = {
     post<{ ok: boolean; message: string }>('/api/browsers/restart', {}),
   placesSearch: (query: string, pageNumber = 1, deepScrape = false) =>
     post<PlacesSearchResult>('/api/browser/places', { query, pageNumber, deepScrape }),
+
+  /**
+   * Opens an SSE connection to /api/browser/places/stream.
+   * Calls `onBatch` each time a new scroll round reveals more cards.
+   * Calls `onDone` when all cards are loaded.
+   * Calls `onError` on failure.
+   * Returns the EventSource so the caller can close it.
+   */
+  placesStream: (
+    query: string,
+    onBatch: (cards: PlaceResult[], total: number, round: number) => void,
+    onDone: (total: number, reachedEnd: boolean) => void,
+    onError: (message: string) => void,
+  ): EventSource => {
+    const es = new EventSource(`${BASE}/api/browser/places/stream?query=${encodeURIComponent(query)}`);
+    es.onmessage = (e) => {
+      try {
+        const event = JSON.parse(e.data) as PlacesBatchEvent;
+        if (event.type === 'batch' && event.cards) {
+          onBatch(event.cards, event.total ?? 0, event.round ?? 0);
+        } else if (event.type === 'done') {
+          onDone(event.total ?? 0, event.reachedEnd ?? false);
+          es.close();
+        } else if (event.type === 'error') {
+          onError(event.message ?? 'Unknown error');
+          es.close();
+        }
+      } catch { /* ignore parse errors */ }
+    };
+    es.onerror = () => { onError('Stream connection lost'); es.close(); };
+    return es;
+  },
 
   // ── LLM ───────────────────────────────────────────────────────────────────
   llmModels: () => fetch(`${BASE}/api/llm/models`).then(r => {

@@ -41,7 +41,7 @@ import { searchMovies } from './movie-search';
 import type { YouTubeQualityOption } from './youtube-dl';
 import { browserPool, searchViaPool } from './browser-pool';
 import type { WebhookPayload } from './browser-pool';
-import { searchPlacesViaPool } from './google-places-search';
+import { searchPlacesViaPool, searchPlacesStream } from './google-places-search';
 
 // ── URL Registry ─────────────────────────────────────────────────────────────
 
@@ -899,6 +899,47 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       json(res, results);
     } catch (e) {
       err(res, (e as Error).message);
+    }
+    return;
+  }
+
+  // ── GET /api/browser/places/stream ────────────────────────────────────────
+  // SSE endpoint: streams PlaceResult batches as the browser scrolls the feed.
+  // Query params: query (required)
+  // Events:
+  //   data: {type:"batch", cards:[...], total:N, round:N}
+  //   data: {type:"done",  total:N, reachedEnd:bool}
+  //   data: {type:"error", message:string}
+  if (method === 'GET' && url.startsWith('/api/browser/places/stream')) {
+    const params = new URL(url, 'http://localhost').searchParams;
+    const query  = params.get('query')?.trim() ?? '';
+    if (!query) { err(res, 'query param is required', 400); return; }
+
+    res.writeHead(200, {
+      'Content-Type':  'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection':    'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+    });
+
+    // Keep-alive comment every 15s so the connection doesn't time out
+    const keepAlive = setInterval(() => {
+      if (!res.writableEnded) res.write(': ping\n\n');
+    }, 15_000);
+
+    const send = (event: object) => {
+      if (!res.writableEnded) res.write(`data: ${JSON.stringify(event)}\n\n`);
+    };
+
+    req.on('close', () => clearInterval(keepAlive));
+
+    try {
+      await searchPlacesStream(query, send);
+    } catch (e) {
+      send({ type: 'error', message: (e as Error).message });
+    } finally {
+      clearInterval(keepAlive);
+      if (!res.writableEnded) res.end();
     }
     return;
   }
