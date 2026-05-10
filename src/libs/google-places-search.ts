@@ -655,6 +655,24 @@ export async function searchPlacesStream(
 
       await page.setUserAgent(USER_AGENT);
 
+      // ── Request interception: block heavy assets (mirrors scratch-test) ──
+      // Blocking image/font/media makes Google Maps render and lazy-load
+      // cards 3-4× faster, so the scroll loop loads far more results within
+      // the same 3 s retry window. Stylesheets are intentionally allowed so
+      // the feed layout height is computed correctly for scrollTop to work.
+      // We clear stale listeners first (recycled pages keep old handlers).
+      page.removeAllListeners('request');
+      await page.setRequestInterception(true);
+      page.on('request', (req: any) => {
+        // Guard against double-fire from any remaining internal handlers.
+        if (req.isInterceptResolutionHandled()) return;
+        if (['image', 'font', 'media'].includes(req.resourceType())) {
+          req.abort();
+        } else {
+          req.continue();
+        }
+      });
+
       // ── Navigate ──────────────────────────────────────────────────────
       const encodedQuery = encodeURIComponent(query);
       await page.goto(
@@ -671,64 +689,82 @@ export async function searchPlacesStream(
       );
       if (hasCaptcha) throw new Error('CAPTCHA_DETECTED');
 
-      // ── Scroll entirely in-browser (scratch-test technique) ───────────
-      // Single evaluate call: 100 ms polling, dynamic scroller, MAX_RETRIES=30
+      // ── Expose a Node.js callback into the browser context ────────────
+      // page.exposeFunction bridges browser → Node so the scroll loop can
+      // push newly-discovered cards in real-time without waiting for the
+      // entire scroll to finish.
+      // exposeFunction throws if the name is already registered on the CDP
+      // session (recycled page), so we swallow that specific error.
       const seenNames = new Set<string>();
+      let round = 0;
 
-      await page.evaluate(async () => {
+      await page.exposeFunction(
+        '__emitCards',
+        (rawCards: ReturnType<typeof extractAllCards>) => {
+          const newCards: PlaceResult[] = rawCards
+            .filter((c) => !seenNames.has(c.name))
+            .map((c) => ({
+              ...c,
+              phone: null,
+              website: null,
+              weeklyHours: null,
+              photosCount: null,
+              hasPopularTimes: false,
+              isClaimed: null,
+              amenities: [],
+              relatedPlaces: [],
+            }));
+
+          if (newCards.length === 0) return;
+
+          newCards.forEach((c) => seenNames.add(c.name));
+          round++;
+          onEvent({ type: 'batch', cards: newCards, total: seenNames.size, round });
+        },
+      ).catch((err: Error) => {
+        // On recycled pages the binding already exists on the CDP session — safe to ignore.
+        if (!err.message.includes('already exists') && !err.message.includes('already been registered')) throw err;
+      });
+
+      // ── Scroll + stream entirely in-browser ───────────────────────────
+      // The feed is scrolled directly (scratch-test approach).
+      // Every time the article count grows, extractAllCards() is called for
+      // the new slice and __emitCards() bridges the data to Node.js.
+      // MAX_RETRIES × 100 ms = 3 s max stable wait before declaring end.
+      await page.evaluate(async (extractFn: string) => {
+        // Reconstruct extractAllCards inside the browser from its serialised source.
+        // eslint-disable-next-line no-new-func
+        const extractAllCardsBrowser = new Function(`return (${extractFn})`)() as () => unknown[];
+
         const feed = document.querySelector<HTMLElement>('[role="feed"]');
         if (!feed) return;
 
-        function findScroller(): HTMLElement {
-          feed!.scrollTop = feed!.scrollHeight + 9999;
-          if (feed!.scrollTop > 0) return feed!;
-          let el: HTMLElement | null = feed!.parentElement;
-          while (el && el !== document.documentElement) {
-            const ov = getComputedStyle(el).overflowY;
-            if ((ov === 'scroll' || ov === 'auto') && el.scrollHeight > el.clientHeight) return el;
-            el = el.parentElement;
-          }
-          return document.documentElement as unknown as HTMLElement;
-        }
+        const emitCards = (window as any).__emitCards as (cards: unknown[]) => void;
 
-        const scroller = findScroller();
         let previousCount = 0;
         let retries = 0;
         const MAX_RETRIES = 30;
 
         while (true) {
-          const currentCount = document.querySelectorAll('[role="article"]').length;
-          if (currentCount === previousCount) {
-            retries++;
-            if (retries >= MAX_RETRIES) break;
-          } else {
+          const cards = document.querySelectorAll('[role="article"]');
+          const currentCount = cards.length;
+
+          if (currentCount > previousCount) {
+            // New cards loaded — extract and stream them immediately.
+            // We pass ALL cards each time; Node deduplicates via seenNames.
+            const extracted = (extractAllCardsBrowser as unknown as () => unknown[])();
+            await emitCards(extracted);
             retries = 0;
             previousCount = currentCount;
+          } else {
+            retries++;
+            if (retries >= MAX_RETRIES) break;
           }
-          scroller.scrollTop = scroller.scrollHeight;
+
+          feed.scrollTop = feed.scrollHeight;
           await new Promise((r) => setTimeout(r, 100));
         }
-      });
-
-      // ── Extract all cards and emit as a single batch ──────────────────
-      const allCards: ReturnType<typeof extractAllCards> = await page.evaluate(extractAllCards);
-      const newCards: PlaceResult[] = allCards
-        .filter((c) => !seenNames.has(c.name))
-        .map((c) => ({
-          ...c,
-          phone: null,
-          website: null,
-          weeklyHours: null,
-          photosCount: null,
-          hasPopularTimes: false,
-          isClaimed: null,
-          amenities: [],
-          relatedPlaces: [],
-        }));
-      newCards.forEach((c) => seenNames.add(c.name));
-      if (newCards.length > 0) {
-        onEvent({ type: 'batch', cards: newCards, total: seenNames.size, round: 1 });
-      }
+      }, extractAllCards.toString());
 
       onEvent({ type: 'done', total: seenNames.size, reachedEnd: true });
       workerCdpFailures.delete(browser.workerId);

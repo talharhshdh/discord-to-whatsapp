@@ -1,7 +1,7 @@
 import puppeteer from 'puppeteer-core';
 import fs from 'fs';
 
-const BROWSER_URL = 'https://rail-mustang-arise-schedule.trycloudflare.com';
+const BROWSER_URL = 'https://critics-historical-stability-invited.trycloudflare.com';
 
 async function main() {
   // Fetch the WebSocket URL from the remote browser
@@ -15,7 +15,7 @@ async function main() {
   const browser = await puppeteer.connect({ browserWSEndpoint: wsUrl, defaultViewport: null });
   const pages = await browser.pages();
   const page = pages[0]; // reuse the existing open tab
-  
+
   await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36');
 
   // ⚡ OPTIMIZATION 1: Intercept network requests to speed up load time
@@ -32,9 +32,9 @@ async function main() {
   });
 
   console.log('Navigating to Google Maps...');
-  await page.goto('https://www.google.com/maps/search/pizza+places+in+NY', { 
-    waitUntil: 'domcontentloaded', 
-    timeout: 30_000 
+  await page.goto('https://www.google.com/maps/search/pizza+places+in+NY', {
+    waitUntil: 'domcontentloaded',
+    timeout: 30_000
   });
 
   await page.waitForSelector('[role="feed"]');
@@ -43,7 +43,7 @@ async function main() {
   // ⚡ OPTIMIZATION 2 & THE FIX: Scroll the container directly using fast polling
   const childrenHTML = await page.evaluate(async () => {
     const feed = document.querySelector('[role="feed"]');
-    
+
     if (!feed) {
       throw new Error("Feed not found");
     }
@@ -77,7 +77,7 @@ async function main() {
     }
 
     console.log("Scrolled through all cards");
-    
+
     // Extract and return the HTML directly
     return Array.from(feed.children).map((el) => el.outerHTML);
   });
@@ -85,7 +85,7 @@ async function main() {
   // Save as a single HTML file
   const htmlContent = childrenHTML.join("\n\n");
   fs.writeFileSync("./data.html", htmlContent, "utf8");
-  
+
   console.log(`✅ Saved ${childrenHTML.length} elements to data.html`);
 
   await browser.disconnect();
