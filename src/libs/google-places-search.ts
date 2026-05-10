@@ -801,3 +801,419 @@ export async function searchPlacesStream(
     }
   }
 }
+
+// ---------------------------------------------------------------------------
+// Google Search (udm=1) scraper — URL-based pagination
+// ---------------------------------------------------------------------------
+//
+// Target URL pattern:
+//   https://www.google.com/search?q=<query>&udm=1&start=<offset>
+//
+// DOM observations (verified from data.html 2026-05-10):
+//   - Card:       [role="article"].Nv2PK  (same as Maps feed view)
+//   - Name:       .qBF1Pd
+//   - Link:       a.hfpxzc  (href = maps/place/... with !3d/!4d coords)
+//   - Rating row: .AJB7ye → e.g. "4.5 stars 25,367 Reviews · $10–20"
+//     * Rating value: .MW4etd
+//     * Review count: .UY7F9  e.g. "(25,367)"
+//   - Info rows:  outer .W4Efsd → direct-child .W4Efsd rows
+//     * Row 0: "Category · ♿ · Address"
+//     * Row 1: editorial description  (optional)
+//     * Row 2: open/closed status with inline color span (optional)
+//
+// Pagination: each page = 20 results; next page = start += 20.
+// hasNextPage is determined by whether Google rendered 20 cards on this page.
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract all visible place cards from a Google Search `udm=1` result page.
+ * Identical card structure to the Maps feed view — reuses the same selectors.
+ *
+ * NOTE: Runs inside page.evaluate — no Node.js APIs.
+ */
+function extractGoogleSearchCards(): Array<{
+  name: string;
+  rating: number | null;
+  reviewCount: number | null;
+  priceLevel: string | null;
+  category: string | null;
+  address: string | null;
+  description: string | null;
+  openNow: boolean | null;
+  todaysHours: string | null;
+  openStatus: string | null;
+  mapsUrl: string | null;
+  lat: number | null;
+  lng: number | null;
+  placeId: string | null;
+}> {
+  const results: ReturnType<typeof extractGoogleSearchCards> = [];
+  const seen = new Set<string>();
+
+  document.querySelectorAll<HTMLElement>('[role="article"]').forEach((card) => {
+    // ── Name ────────────────────────────────────────────────────────────
+    const name = card.querySelector<HTMLElement>('.qBF1Pd')?.innerText?.trim();
+    if (!name || seen.has(name)) return;
+    seen.add(name);
+
+    // ── Link → lat / lng / placeId ──────────────────────────────────────
+    const linkEl = card.querySelector<HTMLAnchorElement>('a.hfpxzc, a[href*="maps/place"]');
+    const mapsUrl = linkEl?.href || null;
+
+    const latM = mapsUrl?.match(/!3d(-?\d+\.\d+)/);
+    const lngM = mapsUrl?.match(/!4d(-?\d+\.\d+)/);
+    const lat = latM ? parseFloat(latM[1]) : null;
+    const lng = lngM ? parseFloat(lngM[1]) : null;
+
+    const pidM = mapsUrl?.match(/0x[0-9a-f]+:0x[0-9a-f]+/i);
+    const placeId = pidM ? pidM[0] : null;
+
+    // ── Rating row ────────────────────────────────────────────────────
+    // .MW4etd holds the numeric rating; .UY7F9 holds "(25,367)"
+    const ratingEl = card.querySelector<HTMLElement>('.MW4etd');
+    const rating = ratingEl ? parseFloat(ratingEl.innerText.trim()) : null;
+
+    const reviewEl = card.querySelector<HTMLElement>('.UY7F9');
+    const reviewRaw = reviewEl?.innerText?.replace(/[^0-9,]/g, '') ?? '';
+    const reviewCount = reviewRaw ? parseInt(reviewRaw.replace(/,/g, ''), 10) : null;
+
+    // Price level lives in .AJB7ye after the last "·"
+    const ratingRowText = card.querySelector<HTMLElement>('.AJB7ye')?.innerText?.trim() ?? '';
+    const priceM = ratingRowText.match(/·\s*(\$[^\s·]+)/);
+    const priceLevel = priceM ? priceM[1] : null;
+
+    // ── Info rows ──────────────────────────────────────────────────────
+    let outerW4: HTMLElement | null = null;
+    card.querySelectorAll<HTMLElement>('.W4Efsd').forEach((el) => {
+      if (!outerW4 && el.querySelector('.W4Efsd')) {
+        outerW4 = el;
+      }
+    });
+
+    const infoRows = outerW4
+      ? Array.from((outerW4 as HTMLElement).querySelectorAll<HTMLElement>(':scope > .W4Efsd'))
+      : [];
+
+    // Row 0: "Category · ♿ · Address"
+    const row0Text = infoRows[0]?.innerText?.trim() ?? '';
+    const row0Parts = row0Text.split('·').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+    const category = row0Parts[0] || null;
+    const address = row0Parts.length > 1 ? row0Parts[row0Parts.length - 1] || null : null;
+
+    let description: string | null = null;
+    let openStatus: string | null = null;
+    let openNow: boolean | null = null;
+
+    for (let i = 1; i < infoRows.length; i++) {
+      const rowText = infoRows[i]?.innerText?.trim() ?? '';
+      const coloredSpan = infoRows[i]?.querySelector<HTMLElement>('span[style*="color"]');
+      const colorStyle = coloredSpan?.getAttribute('style') ?? '';
+
+      if (coloredSpan && (colorStyle.includes('25,134,57') || colorStyle.includes('220,54,46'))) {
+        openStatus = rowText;
+        openNow = colorStyle.includes('25,134,57');
+      } else if (rowText && !description) {
+        description = rowText;
+      }
+    }
+
+    results.push({
+      name,
+      rating,
+      reviewCount,
+      priceLevel,
+      category,
+      address,
+      description,
+      openNow,
+      todaysHours: openStatus,
+      openStatus,
+      mapsUrl,
+      lat,
+      lng,
+      placeId,
+    });
+  });
+
+  return results;
+}
+
+/**
+ * Build the Google Search `udm=1` URL for the given query and page.
+ */
+function buildGoogleSearchUrl(query: string, pageNumber: number): string {
+  const start = (pageNumber - 1) * PAGE_SIZE;
+  return `https://www.google.com/search?q=${encodeURIComponent(query)}&udm=1&start=${start}`;
+}
+
+/**
+ * Scrape a single page of Google Search `?udm=1` results.
+ *
+ * @param query      - Search query, e.g. "banks in pakistan"
+ * @param pageNumber - 1-based page number (20 results per page)
+ */
+export async function searchViaGoogleSearchUrl(
+  query: string,
+  pageNumber = 1,
+): Promise<PlacesSearchResult | null> {
+  const maxAttempts = Math.max(1, browserPool.getActive().length);
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const browser = browserPool.getNext();
+    if (!browser) break;
+
+    let conn: WorkerConnection | null = null;
+    let page: any = null;
+
+    try {
+      const acquired = await acquirePage(browser);
+      conn = acquired.conn;
+      page = acquired.page;
+
+      await page.setUserAgent(USER_AGENT);
+
+      // ── Request interception: block heavy assets ───────────────────────
+      page.removeAllListeners('request');
+      await page.setRequestInterception(true);
+      page.on('request', (req: any) => {
+        if (req.isInterceptResolutionHandled()) return;
+        if (['image', 'font', 'media'].includes(req.resourceType())) {
+          req.abort();
+        } else {
+          req.continue();
+        }
+      });
+
+      // ── Navigate to the correct paginated URL ─────────────────────────
+      const url = buildGoogleSearchUrl(query, pageNumber);
+      console.log(`🔍 Google Search (udm=1) page ${pageNumber}: ${url}`);
+
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+
+      // Wait for at least one result card
+      await page
+        .waitForSelector('[role="article"].Nv2PK', { timeout: 15_000 })
+        .catch(() => { /* proceed even if it times out */ });
+
+      // ── Captcha check ─────────────────────────────────────────────────
+      const hasCaptcha: boolean = await page.evaluate(() =>
+        !!document.querySelector('form[action="/sorry/index"], #captcha, .g-recaptcha'),
+      );
+      if (hasCaptcha) throw new Error('CAPTCHA_DETECTED');
+
+      // ── Extract cards ─────────────────────────────────────────────────
+      const rawCards = await page.evaluate(extractGoogleSearchCards);
+
+      console.log(`📋 Google Search (udm=1): found ${rawCards.length} cards on page ${pageNumber}`);
+
+      const results: PlaceResult[] = rawCards.map(
+        (c: ReturnType<typeof extractGoogleSearchCards>[number]) => ({
+          ...c,
+          phone: null,
+          website: null,
+          weeklyHours: null,
+          photosCount: null,
+          hasPopularTimes: false,
+          isClaimed: null,
+          amenities: [],
+          relatedPlaces: [],
+        }),
+      );
+
+      // hasNextPage: if we got a full page of results, there is likely a next page
+      const hasNextPage = rawCards.length >= PAGE_SIZE;
+
+      workerCdpFailures.delete(browser.workerId);
+      return {
+        query,
+        page: pageNumber,
+        results,
+        hasNextPage,
+        totalResultsText: `${rawCards.length} results on page ${pageNumber}`,
+      };
+
+    } catch (e) {
+      const msg = (e as Error).message;
+      console.error(
+        `❌ Google Search scrape failed via ${browser.workerId} (attempt ${attempt + 1}/${maxAttempts}):`,
+        msg,
+      );
+      browserPool.recordFailure();
+
+      if (['CDP_UNREACHABLE', 'NO_WS_URL', 'Protocol error', 'WebSocket'].some((k) => msg.includes(k))) {
+        invalidateWorkerConnection(browser.workerId);
+        page = null;
+
+        const cdpFails = (workerCdpFailures.get(browser.workerId) ?? 0) + 1;
+        workerCdpFailures.set(browser.workerId, cdpFails);
+
+        if (cdpFails >= MAX_WORKER_CDP_FAILURES) {
+          workerCdpFailures.delete(browser.workerId);
+          browserPool.deregister(browser.workerId);
+        }
+      }
+
+      if (attempt < maxAttempts - 1) continue;
+
+    } finally {
+      if (conn && page) {
+        await releasePage(conn, page, /* discard= */ true);
+      }
+    }
+  }
+
+  if (browserPool.getActive().length === 0) {
+    console.error('🚨 All pool workers are dead. Triggering emergency worker restart...');
+    browserPool.restartWorkers();
+  }
+
+  return null;
+}
+
+/**
+ * Streaming variant of the Google Search (udm=1) scraper.
+ *
+ * Iterates pages (start=0, 20, 40, …) up to `maxPages` and emits a 'batch'
+ * event after each page. Stops early when a page returns fewer than PAGE_SIZE
+ * results (last page) or when `maxPages` is reached.
+ *
+ * @param query    - Search query
+ * @param onEvent  - Callback receiving PlacesBatchEvent
+ * @param maxPages - Maximum number of pages to scrape (default: 10 = 200 results)
+ */
+export async function searchViaGoogleSearchStream(
+  query: string,
+  onEvent: (event: PlacesBatchEvent) => void,
+  maxPages = 40,
+): Promise<void> {
+  const seenNames = new Set<string>();
+  let totalEmitted = 0;
+
+  for (let pageNumber = 1; pageNumber <= maxPages; pageNumber++) {
+    const maxAttempts = Math.max(1, browserPool.getActive().length);
+    let pageSuccess = false;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const browser = browserPool.getNext();
+      if (!browser) break;
+
+      let conn: WorkerConnection | null = null;
+      let page: any = null;
+
+      try {
+        const acquired = await acquirePage(browser);
+        conn = acquired.conn;
+        page = acquired.page;
+
+        await page.setUserAgent(USER_AGENT);
+
+        // ── Request interception ─────────────────────────────────────────
+        page.removeAllListeners('request');
+        await page.setRequestInterception(true);
+        page.on('request', (req: any) => {
+          if (req.isInterceptResolutionHandled()) return;
+          if (['image', 'font', 'media'].includes(req.resourceType())) {
+            req.abort();
+          } else {
+            req.continue();
+          }
+        });
+
+        // ── Navigate ─────────────────────────────────────────────────────
+        const url = buildGoogleSearchUrl(query, pageNumber);
+        console.log(`🔍 Google Search stream page ${pageNumber}/${maxPages}: ${url}`);
+
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+
+        await page
+          .waitForSelector('[role="article"].Nv2PK', { timeout: 15_000 })
+          .catch(() => { /* proceed anyway */ });
+
+        // ── Captcha check ─────────────────────────────────────────────────
+        const hasCaptcha: boolean = await page.evaluate(() =>
+          !!document.querySelector('form[action="/sorry/index"], #captcha, .g-recaptcha'),
+        );
+        if (hasCaptcha) throw new Error('CAPTCHA_DETECTED');
+
+        // ── Extract cards for this page ───────────────────────────────────
+        const rawCards = await page.evaluate(extractGoogleSearchCards);
+
+        const newCards: PlaceResult[] = rawCards
+          .filter((c: ReturnType<typeof extractGoogleSearchCards>[number]) => !seenNames.has(c.name))
+          .map((c: ReturnType<typeof extractGoogleSearchCards>[number]) => ({
+            ...c,
+            phone: null,
+            website: null,
+            weeklyHours: null,
+            photosCount: null,
+            hasPopularTimes: false,
+            isClaimed: null,
+            amenities: [],
+            relatedPlaces: [],
+          }));
+
+        newCards.forEach((c) => seenNames.add(c.name));
+        totalEmitted += newCards.length;
+
+        if (newCards.length > 0) {
+          onEvent({ type: 'batch', cards: newCards, total: totalEmitted, round: pageNumber });
+        }
+
+        console.log(`📋 Page ${pageNumber}: +${newCards.length} new cards (total: ${totalEmitted})`);
+
+        workerCdpFailures.delete(browser.workerId);
+        pageSuccess = true;
+
+        // If we got fewer than a full page, this is the last page
+        if (rawCards.length < PAGE_SIZE) {
+          console.log(`✅ Google Search stream: reached last page at page ${pageNumber}`);
+          onEvent({ type: 'done', total: totalEmitted, reachedEnd: true });
+          return;
+        }
+
+        break; // success — proceed to next page
+
+      } catch (e) {
+        const msg = (e as Error).message;
+        console.error(
+          `❌ Google Search stream page ${pageNumber} failed via ${browser.workerId} (attempt ${attempt + 1}/${maxAttempts}):`,
+          msg,
+        );
+        onEvent({ type: 'error', message: `Page ${pageNumber}: ${msg}` });
+        browserPool.recordFailure();
+
+        if (['CDP_UNREACHABLE', 'NO_WS_URL', 'Protocol error', 'WebSocket'].some((k) => msg.includes(k))) {
+          invalidateWorkerConnection(browser.workerId);
+          page = null;
+
+          const cdpFails = (workerCdpFailures.get(browser.workerId) ?? 0) + 1;
+          workerCdpFailures.set(browser.workerId, cdpFails);
+
+          if (cdpFails >= MAX_WORKER_CDP_FAILURES) {
+            workerCdpFailures.delete(browser.workerId);
+            browserPool.deregister(browser.workerId);
+          }
+        }
+
+        if (attempt < maxAttempts - 1) continue;
+
+      } finally {
+        if (conn && page) {
+          await releasePage(conn, page, /* discard= */ true);
+        }
+      }
+    }
+
+    if (!pageSuccess) {
+      // All workers failed for this page — abort the stream
+      console.error(`🚨 Google Search stream: all workers failed on page ${pageNumber}, aborting.`);
+      if (browserPool.getActive().length === 0) {
+        browserPool.restartWorkers();
+      }
+      break;
+    }
+  }
+
+  onEvent({ type: 'done', total: totalEmitted, reachedEnd: false });
+}
+

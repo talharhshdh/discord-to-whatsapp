@@ -41,7 +41,7 @@ import { searchMovies } from './movie-search';
 import type { YouTubeQualityOption } from './youtube-dl';
 import { browserPool, searchViaPool } from './browser-pool';
 import type { WebhookPayload } from './browser-pool';
-import { searchPlacesViaPool, searchPlacesStream } from './google-places-search';
+import { searchPlacesViaPool, searchPlacesStream, searchViaGoogleSearchUrl, searchViaGoogleSearchStream } from './google-places-search';
 
 // ── URL Registry ─────────────────────────────────────────────────────────────
 
@@ -963,6 +963,64 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     }
     return;
   }
+
+  // ── POST /api/browser/places/google-search ────────────────────────────────
+  // Single-page scrape via Google Search (udm=1) URL pattern.
+  // Body: { query: string, pageNumber?: number }
+  if (method === 'POST' && url === '/api/browser/places/google-search') {
+    try {
+      const body = await parseJsonBody(req);
+      const query = body['query'] as string;
+      if (!query) return err(res, 'query is required', 400);
+      const pageNumber = Number(body['pageNumber']) || 1;
+
+      const result = await searchViaGoogleSearchUrl(query, pageNumber);
+      if (!result) return err(res, 'No browsers available in pool or all attempts failed', 503);
+      json(res, result);
+    } catch (e) {
+      err(res, (e as Error).message);
+    }
+    return;
+  }
+
+  // ── GET /api/browser/places/google-search/stream ──────────────────────────
+  // SSE endpoint: streams PlaceResult batches page-by-page via Google Search
+  // (udm=1) URL pattern.
+  // Query params: query (required), maxPages (optional, default 10)
+  if (method === 'GET' && url.startsWith('/api/browser/places/google-search/stream')) {
+    const params = new URL(url, 'http://localhost').searchParams;
+    const query   = params.get('query')?.trim() ?? '';
+    const maxPages = Number(params.get('maxPages')) || 10;
+    if (!query) { err(res, 'query param is required', 400); return; }
+
+    res.writeHead(200, {
+      'Content-Type':  'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection':    'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+    });
+
+    const keepAlive = setInterval(() => {
+      if (!res.writableEnded) res.write(': ping\n\n');
+    }, 15_000);
+
+    const send = (event: object) => {
+      if (!res.writableEnded) res.write(`data: ${JSON.stringify(event)}\n\n`);
+    };
+
+    req.on('close', () => clearInterval(keepAlive));
+
+    try {
+      await searchViaGoogleSearchStream(query, send, maxPages);
+    } catch (e) {
+      send({ type: 'error', message: (e as Error).message });
+    } finally {
+      clearInterval(keepAlive);
+      if (!res.writableEnded) res.end();
+    }
+    return;
+  }
+
 
   // ── DELETE /api/llm/models/:id ─────────────────────────────────────────────
   if (method === 'DELETE' && url.startsWith('/api/llm/models/')) {

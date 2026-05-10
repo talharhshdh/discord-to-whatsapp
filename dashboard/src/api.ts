@@ -264,6 +264,43 @@ export const api = {
     return es;
   },
 
+  /** Single page via Google Search (udm=1) URL pattern. */
+  googleSearchPlaces: (query: string, pageNumber = 1) =>
+    post<PlacesSearchResult>('/api/browser/places/google-search', { query, pageNumber }),
+
+  /**
+   * SSE stream via Google Search (udm=1) — iterates pages automatically.
+   * Calls onBatch per page, onDone when all maxPages are done or last page reached.
+   */
+  googleSearchPlacesStream: (
+    query: string,
+    onBatch: (cards: PlaceResult[], total: number, page: number) => void,
+    onDone: (total: number, reachedEnd: boolean) => void,
+    onError: (message: string) => void,
+    maxPages = 10,
+  ): EventSource => {
+    const es = new EventSource(
+      `${BASE}/api/browser/places/google-search/stream?query=${encodeURIComponent(query)}&maxPages=${maxPages}`,
+    );
+    es.onmessage = (e) => {
+      try {
+        const event = JSON.parse(e.data) as PlacesBatchEvent;
+        if (event.type === 'batch' && event.cards) {
+          onBatch(event.cards, event.total ?? 0, event.round ?? 0);
+        } else if (event.type === 'done') {
+          onDone(event.total ?? 0, event.reachedEnd ?? false);
+          es.close();
+        } else if (event.type === 'error') {
+          onError(event.message ?? 'Unknown error');
+          es.close();
+        }
+      } catch { /* ignore parse errors */ }
+    };
+    es.onerror = () => { onError('Stream connection lost'); es.close(); };
+    return es;
+  },
+
+
   // ── LLM ───────────────────────────────────────────────────────────────────
   llmModels: () => fetch(`${BASE}/api/llm/models`).then(r => {
     if (!r.ok) return r.json().then((e: { error: string }) => { throw new Error(e.error); });

@@ -37,6 +37,27 @@ import { startDashboard, registerUrl, getAllUrls } from './libs/dashboard-server
 dotenv.config();
 
 // ---------------------------------------------------------------------------
+// Suppress known libsignal / Baileys decryption noise
+// ---------------------------------------------------------------------------
+// "Over 2000 messages into the future" is a session-drift error thrown by
+// libsignal when a device reconnects after being offline for a long time.
+// "Failed to decrypt message with any known session" is the follow-up log.
+// Neither indicates a real application error — they are harmless and very
+// noisy in CI logs, so we filter them out here.
+const _origConsoleError = console.error.bind(console);
+console.error = (...args: unknown[]) => {
+  const msg = args.map(String).join(' ');
+  if (
+    msg.includes('Over 2000 messages into the future') ||
+    msg.includes('Failed to decrypt message with any known session') ||
+    msg.includes('SessionError')
+  ) {
+    return; // swallow silently
+  }
+  _origConsoleError(...args);
+};
+
+// ---------------------------------------------------------------------------
 // YouTube interactive session state
 // ---------------------------------------------------------------------------
 const lol = (...db: any) => { }

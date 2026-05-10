@@ -245,7 +245,7 @@ function StreamProgress({ round, total, done }: { round: number; total: number; 
 
 // ── Mode toggle ───────────────────────────────────────────────────────────────
 
-type Mode = 'stream' | 'paginated';
+type Mode = 'stream' | 'paginated' | 'google-search';
 
 // ── Paginated panel ───────────────────────────────────────────────────────────
 
@@ -353,6 +353,282 @@ function PaginatedPanel() {
   );
 }
 
+// ── Google Search panel ──────────────────────────────────────────────────────
+
+type GsSubMode = 'stream' | 'paginated';
+
+function GoogleSearchPanel() {
+  const [subMode, setSubMode] = useState<GsSubMode>('stream');
+
+  // ── Streaming state ────────────────────────────────────────────────────────
+  const [sQuery, setSQuery]     = useState('');
+  const [maxPages, setMaxPages] = useState(10);
+  const [streaming, setStreaming] = useState(false);
+  const [sDone, setSDone]       = useState(false);
+  const [sError, setSError]     = useState('');
+  const [sEntries, setSEntries] = useState<PlaceEntry[]>([]);
+  const [sRound, setSRound]     = useState(0);
+  const [sTotal, setSTotal]     = useState(0);
+  const esRef = useRef<EventSource | null>(null);
+  const newNamesRef = useRef<Set<string>>(new Set());
+
+  const stopStream = useCallback(() => {
+    esRef.current?.close();
+    esRef.current = null;
+  }, []);
+
+  useEffect(() => () => stopStream(), [stopStream]);
+
+  const scheduleNewFade = useCallback((names: string[]) => {
+    setTimeout(() => {
+      setSEntries(prev => prev.map(e => names.includes(e.place.name) ? { ...e, isNew: false } : e));
+      names.forEach(n => newNamesRef.current.delete(n));
+    }, 3000);
+  }, []);
+
+  const handleStreamSearch = (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!sQuery.trim() || streaming) return;
+    stopStream();
+    setSEntries([]);
+    setSRound(0);
+    setSTotal(0);
+    setSDone(false);
+    setSError('');
+    setStreaming(true);
+    newNamesRef.current.clear();
+
+    const es = api.googleSearchPlacesStream(
+      sQuery.trim(),
+      (cards, newTotal, newPage) => {
+        const newNames = cards.map(c => c.name);
+        newNames.forEach(n => newNamesRef.current.add(n));
+        setSRound(newPage);
+        setSTotal(newTotal);
+        setSEntries(prev => [...prev, ...cards.map(c => ({ place: c, isNew: true }))]);
+        scheduleNewFade(newNames);
+      },
+      (finalTotal) => { setSTotal(finalTotal); setStreaming(false); setSDone(true); },
+      (msg)        => { setSError(msg); setStreaming(false); setSDone(true); },
+      maxPages,
+    );
+    esRef.current = es;
+  };
+
+  const handleStop = () => { stopStream(); setStreaming(false); setSDone(true); };
+
+  // ── Paginated state ────────────────────────────────────────────────────────
+  const [pQuery, setPQuery]   = useState('');
+  const [pLoading, setPLoading] = useState(false);
+  const [pError, setPError]   = useState('');
+  const [pPage, setPPage]     = useState(1);
+  const [pResult, setPResult] = useState<import('../api').PlacesSearchResult | null>(null);
+
+  const runPagedSearch = async (pageNum: number) => {
+    if (!pQuery.trim() || pLoading) return;
+    setPLoading(true);
+    setPError('');
+    try {
+      const res = await api.googleSearchPlaces(pQuery.trim(), pageNum);
+      setPResult(res);
+      setPPage(pageNum);
+    } catch (e) {
+      setPError((e as Error).message);
+    } finally {
+      setPLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Sub-mode toggle */}
+      <div className="flex gap-1 p-1 bg-white/[0.04] border border-white/[0.07] rounded-xl w-fit">
+        {(['stream', 'paginated'] as GsSubMode[]).map(m => (
+          <button
+            key={m}
+            onClick={() => setSubMode(m)}
+            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
+              subMode === m
+                ? 'bg-[#00d4aa] text-black shadow shadow-[#00d4aa]/30'
+                : 'text-white/40 hover:text-white/70'
+            }`}
+          >
+            {m === 'stream' ? '📡 Auto-paginate' : '📄 Single page'}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Streaming / auto-paginate mode ─────────────────────────────── */}
+      {subMode === 'stream' && (
+        <>
+          <div className="glass p-6 rounded-2xl border border-white/[0.07] shadow-xl">
+            <div className="flex items-start justify-between mb-1">
+              <h3 className="text-lg font-bold text-white">Google Search Places — Auto-paginate</h3>
+              <span className="text-xs text-white/30 bg-white/[0.04] border border-white/[0.07] px-2 py-0.5 rounded-full">
+                udm=1 · sse
+              </span>
+            </div>
+            <p className="text-sm text-white/45 mb-5">
+              Iterates Google Search pages (start=0, 20, 40…) and streams results live.
+            </p>
+
+            <form onSubmit={handleStreamSearch} className="space-y-3">
+              <div className="flex flex-col sm:flex-row gap-3">
+                <input
+                  id="gs-stream-query"
+                  type="text"
+                  className="flex-1 bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-[#00d4aa]/50 transition-colors"
+                  placeholder='e.g. "banks in pakistan place"'
+                  value={sQuery}
+                  onChange={e => setSQuery(e.target.value)}
+                  disabled={streaming}
+                />
+                {streaming ? (
+                  <button
+                    type="button"
+                    onClick={handleStop}
+                    className="px-6 py-2.5 bg-red-500/20 border border-red-500/30 rounded-xl text-red-400 font-medium hover:bg-red-500/30 transition-all whitespace-nowrap"
+                  >
+                    ⏹ Stop
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={!sQuery.trim()}
+                    className="px-6 py-2.5 bg-gradient-to-r from-[#00d4aa] to-[#6c63ff] rounded-xl text-white font-medium hover:opacity-90 disabled:opacity-50 transition-all shadow-lg shadow-[#00d4aa]/20 whitespace-nowrap"
+                  >
+                    🔍 Search
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                <label className="text-xs text-white/40" htmlFor="gs-max-pages">Max pages:</label>
+                <select
+                  id="gs-max-pages"
+                  value={maxPages}
+                  onChange={e => setMaxPages(Number(e.target.value))}
+                  disabled={streaming}
+                  className="bg-black/20 border border-white/10 rounded-lg px-3 py-1.5 text-white text-xs focus:outline-none focus:border-[#00d4aa]/50"
+                >
+                  {[1,2,5,10,20,50].map(n => (
+                    <option key={n} value={n}>{n} ({n * 20} results max)</option>
+                  ))}
+                </select>
+              </div>
+            </form>
+
+            {sError && (
+              <div className="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{sError}</div>
+            )}
+          </div>
+
+          {(streaming || sDone) && (
+            <StreamProgress round={sRound} total={sTotal} done={sDone && !streaming} />
+          )}
+
+          {sEntries.length > 0 && (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <span className="text-white/60 text-sm font-medium">
+                  {sEntries.length} place{sEntries.length !== 1 ? 's' : ''}
+                  {streaming && <span className="ml-2 text-[#00d4aa] animate-pulse">● live</span>}
+                </span>
+                {sDone && !streaming && (
+                  <span className="text-xs text-emerald-400/70 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">✓ Complete</span>
+                )}
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {sEntries.map((entry, idx) => (
+                  <PlaceCard key={`${entry.place.name}-${idx}`} place={entry.place} isNew={entry.isNew} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {streaming && sEntries.length === 0 && (
+            <div className="flex flex-col items-center justify-center gap-4 p-16">
+              <div className="relative w-12 h-12">
+                <div className="absolute inset-0 rounded-full border-2 border-[#00d4aa]/20" />
+                <div className="absolute inset-0 rounded-full border-2 border-[#00d4aa] border-t-transparent animate-spin" />
+              </div>
+              <p className="text-white/40 text-sm">Navigating to Google Search…</p>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── Single-page paginated mode ──────────────────────────────────── */}
+      {subMode === 'paginated' && (
+        <div className="space-y-6">
+          <div className="glass p-6 rounded-2xl border border-white/[0.07] shadow-xl">
+            <div className="flex items-start justify-between mb-1">
+              <h3 className="text-lg font-bold text-white">Google Search Places — Single Page</h3>
+              <span className="text-xs text-white/30 bg-white/[0.04] border border-white/[0.07] px-2 py-0.5 rounded-full">udm=1 · page {pPage}</span>
+            </div>
+            <p className="text-sm text-white/45 mb-5">Fetches one page (20 results) at a time via Google Search URL.</p>
+
+            <form onSubmit={(e) => { e.preventDefault(); runPagedSearch(1); }} className="space-y-3">
+              <div className="flex flex-col sm:flex-row gap-3">
+                <input
+                  id="gs-paged-query"
+                  type="text"
+                  className="flex-1 bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-[#00d4aa]/50 transition-colors"
+                  placeholder='e.g. "banks in pakistan place"'
+                  value={pQuery}
+                  onChange={e => setPQuery(e.target.value)}
+                  disabled={pLoading}
+                />
+                <button
+                  type="submit"
+                  disabled={!pQuery.trim() || pLoading}
+                  className="px-6 py-2.5 bg-gradient-to-r from-[#00d4aa] to-[#6c63ff] rounded-xl text-white font-medium hover:opacity-90 disabled:opacity-50 transition-all shadow-lg shadow-[#00d4aa]/20 whitespace-nowrap"
+                >
+                  {pLoading ? '⏳ Searching…' : '🔍 Search'}
+                </button>
+              </div>
+            </form>
+
+            {pError && (
+              <div className="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{pError}</div>
+            )}
+          </div>
+
+          {pResult && (
+            <>
+              <div className="flex items-center justify-between">
+                <span className="text-white/60 text-sm">{pResult.totalResultsText ?? `${pResult.results.length} results`}</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => runPagedSearch(pPage - 1)}
+                    disabled={pPage <= 1 || pLoading}
+                    className="px-3 py-1.5 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white/60 text-sm hover:bg-white/[0.09] disabled:opacity-30 transition-all"
+                  >← Prev</button>
+                  <span className="text-white/40 text-xs px-2">Page {pPage}</span>
+                  <button
+                    onClick={() => runPagedSearch(pPage + 1)}
+                    disabled={!pResult.hasNextPage || pLoading}
+                    className="px-3 py-1.5 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white/60 text-sm hover:bg-white/[0.09] disabled:opacity-30 transition-all"
+                  >Next →</button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {pResult.results.map((place, idx) => (
+                  <PlaceCard key={`${place.name}-${idx}`} place={place} isNew={false} />
+                ))}
+              </div>
+
+              {pResult.results.length === 0 && (
+                <p className="text-center text-white/30 py-12 text-sm">No results found for this page.</p>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main panel ────────────────────────────────────────────────────────────────
 
 interface PlaceEntry {
@@ -361,7 +637,7 @@ interface PlaceEntry {
 }
 
 export default function PlacesPanel() {
-  const [mode, setMode]         = useState<Mode>('stream');
+  const [mode, setMode]         = useState<Mode>('google-search');
   const [query, setQuery]       = useState('');
   const [streaming, setStreaming] = useState(false);
   const [done, setDone]         = useState(false);
@@ -446,21 +722,26 @@ export default function PlacesPanel() {
     <div className="space-y-6">
       {/* Mode toggle */}
       <div className="flex gap-1 p-1 bg-white/[0.04] border border-white/[0.07] rounded-xl w-fit">
-        {(['stream', 'paginated'] as Mode[]).map((m) => (
+        {([
+          { id: 'google-search', label: '🔍 Google Search' },
+          { id: 'stream',        label: '📡 Maps Stream' },
+          { id: 'paginated',     label: '📄 Maps Paginated' },
+        ] as { id: Mode; label: string }[]).map(({ id, label }) => (
           <button
-            key={m}
-            onClick={() => setMode(m)}
+            key={id}
+            onClick={() => setMode(id)}
             className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
-              mode === m
+              mode === id
                 ? 'bg-[#6c63ff] text-white shadow shadow-[#6c63ff]/30'
                 : 'text-white/40 hover:text-white/70'
             }`}
           >
-            {m === 'stream' ? '📡 Live Stream' : '📄 Paginated'}
+            {label}
           </button>
         ))}
       </div>
 
+      {mode === 'google-search' && <GoogleSearchPanel />}
       {mode === 'paginated' && <PaginatedPanel />}
 
       {mode === 'stream' && (
