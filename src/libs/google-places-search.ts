@@ -1041,6 +1041,11 @@ export async function searchViaGoogleSearchUrl(
 
       console.log(`📋 Google Search (udm=1): found ${rawCards.length} cards on page ${pageNumber}`);
 
+      // hasNextPage: check for Google's "Next" pagination link (#pnnext is stable)
+      const hasNextPage: boolean = await page.evaluate(() =>
+        !!document.querySelector('#pnnext'),
+      );
+
       const results: PlaceResult[] = rawCards.map(
         (c: ReturnType<typeof extractGoogleSearchCards>[number]) => ({
           name: c.name,
@@ -1068,9 +1073,6 @@ export async function searchViaGoogleSearchUrl(
         }),
       );
 
-      // hasNextPage: if we got a full page of results, there is likely a next page
-      const hasNextPage = rawCards.length >= PAGE_SIZE;
-
       workerCdpFailures.delete(browser.workerId);
       return {
         query,
@@ -1079,6 +1081,7 @@ export async function searchViaGoogleSearchUrl(
         hasNextPage,
         totalResultsText: `${rawCards.length} results on page ${pageNumber}`,
       };
+
 
     } catch (e) {
       const msg = (e as Error).message;
@@ -1226,9 +1229,13 @@ export async function searchViaGoogleSearchStream(
         workerCdpFailures.delete(browser.workerId);
         pageSuccess = true;
 
-        // If we got fewer than a full page, this is the last page
-        if (rawCards.length < PAGE_SIZE) {
-          console.log(`✅ Google Search stream: reached last page at page ${pageNumber}`);
+        // If Google has no "Next" link, this is the last page
+        const hasNextPage: boolean = await page.evaluate(() =>
+          !!document.querySelector('#pnnext'),
+        );
+
+        if (!hasNextPage) {
+          console.log(`✅ Google Search stream: no #pnnext on page ${pageNumber} — last page`);
           onEvent({ type: 'done', total: totalEmitted, reachedEnd: true });
           return;
         }
