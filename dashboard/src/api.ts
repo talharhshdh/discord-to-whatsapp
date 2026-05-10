@@ -95,6 +95,40 @@ export interface MovieResult {
   mediaType: string; releaseDate: string; voteAverage: number; watchUrl: string;
 }
 
+// ── Places Types ─────────────────────────────────────────────────────────────
+
+export interface PlaceResult {
+  name: string;
+  address: string | null;
+  phone: string | null;
+  website: string | null;
+  rating: number | null;
+  reviewCount: number | null;
+  priceLevel: string | null;
+  category: string | null;
+  openNow: boolean | null;
+  todaysHours: string | null;
+  weeklyHours: Record<string, string> | null;
+  description: string | null;
+  photosCount: number | null;
+  mapsUrl: string | null;
+  placeId: string | null;
+  lat: number | null;
+  lng: number | null;
+  hasPopularTimes: boolean;
+  isClaimed: boolean | null;
+  amenities: string[];
+  relatedPlaces: string[];
+}
+
+export interface PlacesSearchResult {
+  query: string;
+  page: number;
+  results: PlaceResult[];
+  hasNextPage: boolean;
+  totalResultsText: string | null;
+}
+
 // ── LLM Types ───────────────────────────────────────────────────────────────
 
 export interface LLMModelInfo {
@@ -185,6 +219,8 @@ export const api = {
     post<BrowserSearchResult>('/api/browser/search', { text, pageNumber, engine }),
   restartBrowsers: () =>
     post<{ ok: boolean; message: string }>('/api/browsers/restart', {}),
+  placesSearch: (query: string, pageNumber = 1, deepScrape = false) =>
+    post<PlacesSearchResult>('/api/browser/places', { query, pageNumber, deepScrape }),
 
   // ── LLM ───────────────────────────────────────────────────────────────────
   llmModels: () => fetch(`${BASE}/api/llm/models`).then(r => {

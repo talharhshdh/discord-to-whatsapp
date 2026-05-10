@@ -11,9 +11,11 @@ import AndroidPanel from './components/AndroidPanel';
 import LLMPanel from './components/LLMPanel';
 import SearchPanel from './components/SearchPanel';
 import TTSPanel from './components/TTSPanel';
+import PlacesPanel from './components/PlacesPanel';
 
 const NAV: { id: NavSection; label: string; icon: string }[] = [
   { id: 'search',    label: 'Browser Search', icon: '🔍' },
+  { id: 'places',    label: 'Maps Places',    icon: '🗺️' },
   { id: 'sessions',  label: 'Dev Sessions',  icon: '🖥️' },
   { id: 'manager',   label: 'Session Manager', icon: '📊' },
   { id: 'android',   label: 'Android',       icon: '📱' },
@@ -210,6 +212,7 @@ export default function App() {
                 {section === 'urls' && <URLsPanel tools={data?.tools ?? {}} />}
                 {section === 'llm' && <LLMPanel />}
                 {section === 'search' && <SearchPanel />}
+                {section === 'places' && <PlacesPanel />}
                 {section === 'tts' && <TTSPanel />}
               </div>
             </div>

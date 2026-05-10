@@ -41,6 +41,7 @@ import { searchMovies } from './movie-search';
 import type { YouTubeQualityOption } from './youtube-dl';
 import { browserPool, searchViaPool } from './browser-pool';
 import type { WebhookPayload } from './browser-pool';
+import { searchPlacesViaPool } from './google-places-search';
 
 // ── URL Registry ─────────────────────────────────────────────────────────────
 
@@ -496,11 +497,11 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       const { sessionManager } = require('./session-manager');
       const { getAllBrowsers } = require('./browser');
       const { getAndroidEmulatorStatus } = require('./android-emulator');
-      
+
       const sessions = sessionManager.getAllSessions();
       const browsers = getAllBrowsers();
       const androidStatus = await getAndroidEmulatorStatus();
-      
+
       json(res, {
         sessions,
         browsers,
@@ -516,14 +517,14 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       const body = await parseJsonBody(req);
       const sessionId = body['sessionId'] as string;
       const sessionType = body['type'] as string;
-      
+
       if (!sessionId) return err(res, 'sessionId is required', 400);
-      
+
       const { sessionManager } = require('./session-manager');
       const session = sessionManager.getSession(sessionId);
-      
+
       if (!session) return err(res, 'Session not found', 404);
-      
+
       // Stop based on type
       if (session.type === 'custom-browser') {
         const { stopBrowser } = require('./browser');
@@ -546,7 +547,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       const body = await parseJsonBody(req);
       const targetUrl = body['url'] as string;
       if (!targetUrl) return err(res, 'url is required', 400);
-      
+
       const { startCustomBrowser } = require('./browser');
       const result = await startCustomBrowser(targetUrl);
       json(res, result);
@@ -805,7 +806,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
             btns.forEach(b => (b as HTMLElement).click());
           });
           await new Promise(r => setTimeout(r, 1500));
-        } catch {}
+        } catch { }
 
         const results = await page.evaluate(() => {
           const organic: any[] = [];
@@ -896,6 +897,26 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       }
 
       json(res, results);
+    } catch (e) {
+      err(res, (e as Error).message);
+    }
+    return;
+  }
+
+  // ── POST /api/browser/places ───────────────────────────────────────────
+  // Google Maps Places search with pagination and optional deep-scrape.
+  // Body: { query: string, pageNumber?: number, deepScrape?: boolean }
+  if (method === 'POST' && url === '/api/browser/places') {
+    try {
+      const body = await parseJsonBody(req);
+      const query = body['query'] as string;
+      if (!query) return err(res, 'query is required', 400);
+      const pageNumber = Number(body['pageNumber']) || 1;
+      const deepScrape = Boolean(body['deepScrape']);
+
+      const result = await searchPlacesViaPool(query, pageNumber, deepScrape);
+      if (!result) return err(res, 'No browsers available in pool or all attempts failed', 503);
+      json(res, result);
     } catch (e) {
       err(res, (e as Error).message);
     }
@@ -1035,7 +1056,7 @@ export function startLocalServer(port = 4000): Promise<string> {
  *     Neither env var is set. A random URL is generated each session.
  */
 export function exposeDashboard(localPort = 4000): Promise<string> {
-  const tunnelToken  = process.env.CLOUDFLARE_TUNNEL_TOKEN;
+  const tunnelToken = process.env.CLOUDFLARE_TUNNEL_TOKEN;
   const customDomain = process.env.DASHBOARD_DOMAIN;
 
   // ── Mode 1: Named tunnel with fixed custom domain ──────────────────────────
