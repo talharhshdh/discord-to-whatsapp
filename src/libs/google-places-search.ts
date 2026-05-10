@@ -105,11 +105,9 @@ export interface PlacesBatchEvent {
 /** Logical results per page (Google Maps shows ~20 per scroll batch). */
 const PAGE_SIZE = 20;
 
-/** Max scroll rounds before giving up on loading more. */
-const MAX_SCROLL_ROUNDS = 20;
-
-/** Wait between each scroll attempt (ms). */
-const SCROLL_WAIT_MS = 2_500;
+/** User-agent that matches the tested scratch-test environment. */
+const USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36';
 
 // ---------------------------------------------------------------------------
 // In-browser scraping helpers
@@ -158,30 +156,30 @@ function extractAllCards(): Array<{
     seen.add(name);
 
     // ── Link → lat/lng/placeId ──────────────────────────────────────────
-    const linkEl  = card.querySelector<HTMLAnchorElement>('a.hfpxzc, a[href*="maps/place"]');
+    const linkEl = card.querySelector<HTMLAnchorElement>('a.hfpxzc, a[href*="maps/place"]');
     const mapsUrl = linkEl?.href || null;
 
     // Coords encoded as !3d<lat>!4d<lng> in the data= query param
-    const latM  = mapsUrl?.match(/!3d(-?\d+\.\d+)/);
-    const lngM  = mapsUrl?.match(/!4d(-?\d+\.\d+)/);
-    const lat   = latM  ? parseFloat(latM[1])  : null;
-    const lng   = lngM  ? parseFloat(lngM[1])  : null;
+    const latM = mapsUrl?.match(/!3d(-?\d+\.\d+)/);
+    const lngM = mapsUrl?.match(/!4d(-?\d+\.\d+)/);
+    const lat = latM ? parseFloat(latM[1]) : null;
+    const lng = lngM ? parseFloat(lngM[1]) : null;
 
     // place_id: hex address pair "0x…:0x…"
-    const pidM    = mapsUrl?.match(/0x[0-9a-f]+:0x[0-9a-f]+/i);
+    const pidM = mapsUrl?.match(/0x[0-9a-f]+:0x[0-9a-f]+/i);
     const placeId = pidM ? pidM[0] : null;
 
     // ── Rating row (.AJB7ye) text: "4.6(6,999) · $20–70" ──────────────
     const ratingRowText = card.querySelector<HTMLElement>('.AJB7ye')?.innerText?.trim() ?? '';
 
-    const ratingM    = ratingRowText.match(/^(\d+\.\d+)/);
-    const rating     = ratingM ? parseFloat(ratingM[1]) : null;
+    const ratingM = ratingRowText.match(/^(\d+\.\d+)/);
+    const rating = ratingM ? parseFloat(ratingM[1]) : null;
 
-    const reviewM    = ratingRowText.match(/\(([\d,]+)\)/);
+    const reviewM = ratingRowText.match(/\(([\d,]+)\)/);
     const reviewCount = reviewM ? parseInt(reviewM[1].replace(/,/g, ''), 10) : null;
 
     // Price: anything after last · e.g. "$20–70" or "$$"
-    const priceM     = ratingRowText.match(/·\s*(\$[^\s·]+)/);
+    const priceM = ratingRowText.match(/·\s*(\$[^\s·]+)/);
     const priceLevel = priceM ? priceM[1] : null;
 
     // ── Info rows: children .W4Efsd of the outer .W4Efsd block ─────────
@@ -202,22 +200,22 @@ function extractAllCards(): Array<{
     const row0Text = infoRows[0]?.innerText?.trim() ?? '';
     const row0Parts = row0Text.split('·').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
     const category = row0Parts[0] || null;
-    const address  = row0Parts.length > 1 ? row0Parts[row0Parts.length - 1] || null : null;
+    const address = row0Parts.length > 1 ? row0Parts[row0Parts.length - 1] || null : null;
 
     // Remaining rows: description and open-status
     let description: string | null = null;
-    let openStatus: string | null  = null;
-    let openNow: boolean | null    = null;
+    let openStatus: string | null = null;
+    let openNow: boolean | null = null;
 
     for (let i = 1; i < infoRows.length; i++) {
-      const rowText     = infoRows[i]?.innerText?.trim() ?? '';
+      const rowText = infoRows[i]?.innerText?.trim() ?? '';
       const coloredSpan = infoRows[i]?.querySelector<HTMLElement>('span[style*="color"]');
-      const colorStyle  = coloredSpan?.getAttribute('style') ?? '';
+      const colorStyle = coloredSpan?.getAttribute('style') ?? '';
 
       if (coloredSpan && (colorStyle.includes('25,134,57') || colorStyle.includes('220,54,46'))) {
         // Open/closed row detected via inline color style
         openStatus = rowText;
-        openNow    = colorStyle.includes('25,134,57'); // green = open
+        openNow = colorStyle.includes('25,134,57'); // green = open
       } else if (rowText && !description) {
         description = rowText;
       }
@@ -289,7 +287,7 @@ function extractPlaceFromPanel(): PlaceResult {
   const reviewMatch = reviewText?.replace(/,/g, '').match(/[\d.]+/);
   const reviewCount = reviewMatch ? parseInt(reviewMatch[0], 10) : null;
 
-  const priceEl    = document.querySelector('[aria-label*="Price: "], [aria-label*="price"]');
+  const priceEl = document.querySelector('[aria-label*="Price: "], [aria-label*="price"]');
   const priceLabel = priceEl?.getAttribute('aria-label') || '';
   const priceMatch = priceLabel.match(/\$+/);
   const priceLevel = priceMatch ? priceMatch[0] : null;
@@ -325,17 +323,17 @@ function extractPlaceFromPanel(): PlaceResult {
     null;
 
   const photoCountEl = document.querySelector('[aria-label*="photo"], [aria-label*="Photo"]');
-  const photoMatch   = photoCountEl?.getAttribute('aria-label')?.match(/[\d,]+/);
-  const photosCount  = photoMatch ? parseInt(photoMatch[0].replace(/,/g, ''), 10) : null;
+  const photoMatch = photoCountEl?.getAttribute('aria-label')?.match(/[\d,]+/);
+  const photosCount = photoMatch ? parseInt(photoMatch[0].replace(/,/g, ''), 10) : null;
 
-  const mapsUrl      = window.location.href;
+  const mapsUrl = window.location.href;
   // Try URL-encoded place path first, then data param hex pair
-  const pidM         = mapsUrl.match(/0x[0-9a-f]+:0x[0-9a-f]+/i);
-  const placeId      = pidM ? pidM[0] : null;
-  const latM         = mapsUrl.match(/!3d(-?\d+\.\d+)/);
-  const lngM         = mapsUrl.match(/!4d(-?\d+\.\d+)/);
-  const lat          = latM ? parseFloat(latM[1]) : null;
-  const lng          = lngM ? parseFloat(lngM[1]) : null;
+  const pidM = mapsUrl.match(/0x[0-9a-f]+:0x[0-9a-f]+/i);
+  const placeId = pidM ? pidM[0] : null;
+  const latM = mapsUrl.match(/!3d(-?\d+\.\d+)/);
+  const lngM = mapsUrl.match(/!4d(-?\d+\.\d+)/);
+  const lat = latM ? parseFloat(latM[1]) : null;
+  const lng = lngM ? parseFloat(lngM[1]) : null;
 
   const hasPopularTimes =
     !!document.querySelector('.g2BVhd, [jsdata*="popular"], [aria-label*="Popular times"]');
@@ -384,97 +382,68 @@ function extractPlaceFromPanel(): PlaceResult {
 }
 
 // ---------------------------------------------------------------------------
-// Scroll helper (runs in Node context, operates on the puppeteer page)
+// Scroll helper — mirrors the working scratch-test.ts technique
 // ---------------------------------------------------------------------------
 
 /**
- * Scroll [role="feed"] until:
- *   (a) at least `targetCount` cards are loaded (early exit — fast path), OR
- *   (b) no new cards appear for 2 consecutive rounds (full load), OR
- *   (c) MAX_SCROLL_ROUNDS is exhausted.
+ * Scrolls the feed (or its real scrollable ancestor) until no new cards appear
+ * for MAX_RETRIES × 100 ms.  Runs entirely inside the browser in a single
+ * page.evaluate call — no 2.5 s round-trip waits.
  *
- * `onBatch` is called after each scroll round with newly scraped PlaceResult[]
- * so callers can stream results to the client in real-time.
- *
- * Pass targetCount = Infinity to always load everything.
+ * Dynamic scroller resolution (same as scratch-test.ts):
+ *  1. Probe [role="feed"].scrollTop — if it moves, feed is the scroller.
+ *  2. Walk up the DOM for an overflow-y: scroll/auto ancestor.
+ *  3. Fall back to document.documentElement.
  */
 async function scrollFeedForMore(
   page: any,
-  targetCount = Infinity,
-  onBatch?: (newCards: PlaceResult[], total: number, round: number) => void,
 ): Promise<{ loaded: number; total: number; reachedEnd: boolean }> {
-  let prevCount    = 0;
-  let stableRounds = 0;
-  let scrollRound  = 0;
-  let seenNames    = new Set<string>();
+  const total: number = await page.evaluate(async () => {
+    const feed = document.querySelector<HTMLElement>('[role="feed"]');
+    if (!feed) return 0;
 
-  while (scrollRound < MAX_SCROLL_ROUNDS) {
-    const { count, scrolledTo, scrollHeight } = await page.evaluate(() => {
-      const feed = document.querySelector<HTMLElement>('[role="feed"]');
-      if (!feed) return { count: 0, scrolledTo: 0, scrollHeight: 0 };
-      feed.scrollTop = feed.scrollHeight;
-      return {
-        count: document.querySelectorAll('[role="article"]').length,
-        scrolledTo: feed.scrollTop,
-        scrollHeight: feed.scrollHeight,
-      };
-    });
+    // ── Resolve the real scrollable container ──────────────────────────
+    function findScroller(): HTMLElement {
+      feed!.scrollTop = feed!.scrollHeight + 9999;
+      if (feed!.scrollTop > 0) return feed!;
 
-    console.log(
-      `   Scroll ${scrollRound + 1}: ${count} cards visible | scrollTop=${Math.round(scrolledTo)}/${scrollHeight}`,
-    );
-
-    await new Promise<void>((r) => setTimeout(r, SCROLL_WAIT_MS));
-
-    const afterCount: number = await page.evaluate(
-      () => document.querySelectorAll('[role="article"]').length,
-    );
-
-    // Fire onBatch with newly visible cards since last round
-    if (onBatch && afterCount > prevCount) {
-      const allCards: ReturnType<typeof extractAllCards> = await page.evaluate(extractAllCards);
-      const newCards = allCards
-        .filter(c => !seenNames.has(c.name))
-        .map(c => ({
-          ...c,
-          phone: null,
-          website: null,
-          weeklyHours: null,
-          photosCount: null,
-          hasPopularTimes: false,
-          isClaimed: null,
-          amenities: [] as string[],
-          relatedPlaces: [] as string[],
-        }) as PlaceResult);
-      newCards.forEach(c => seenNames.add(c.name));
-      if (newCards.length > 0) onBatch(newCards, seenNames.size, scrollRound + 1);
-    }
-
-    // Early exit: we have enough cards for the requested page
-    if (afterCount >= targetCount) {
-      console.log(`   ↳ Target ${targetCount} cards reached (${afterCount} loaded) — stopping early.`);
-      return { loaded: afterCount, total: afterCount, reachedEnd: false };
-    }
-
-    if (afterCount === prevCount) {
-      stableRounds++;
-      if (stableRounds >= 2) {
-        console.log('   ↳ No new cards after 2 stable rounds — all loaded.');
-        return { loaded: afterCount, total: afterCount, reachedEnd: true };
+      let el: HTMLElement | null = feed!.parentElement;
+      while (el && el !== document.documentElement) {
+        const ov = getComputedStyle(el).overflowY;
+        if ((ov === 'scroll' || ov === 'auto') && el.scrollHeight > el.clientHeight) {
+          return el;
+        }
+        el = el.parentElement;
       }
-    } else {
-      stableRounds = 0;
+      return document.documentElement as unknown as HTMLElement;
     }
 
-    prevCount    = afterCount;
-    scrollRound++;
-  }
+    const scroller = findScroller();
+    let previousCount = 0;
+    let retries = 0;
+    const MAX_RETRIES = 30; // 3 s max wait (30 × 100 ms)
 
-  const total: number = await page.evaluate(
-    () => document.querySelectorAll('[role="article"]').length,
-  );
-  return { loaded: total, total, reachedEnd: false };
+    while (true) {
+      const currentCount = document.querySelectorAll('[role="article"]').length;
+
+      if (currentCount === previousCount) {
+        retries++;
+        if (retries >= MAX_RETRIES) break;
+      } else {
+        retries = 0;
+        previousCount = currentCount;
+      }
+
+      scroller.scrollTop = scroller.scrollHeight;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+
+    return document.querySelectorAll('[role="article"]').length;
+  });
+
+  return { loaded: total, total, reachedEnd: true };
 }
+
 
 // ---------------------------------------------------------------------------
 // Main exported search function
@@ -509,6 +478,8 @@ export async function searchPlacesViaPool(
       conn = acquired.conn;
       page = acquired.page;
 
+      await page.setUserAgent(USER_AGENT);
+
       // ── Navigate ──────────────────────────────────────────────────────
       const encodedQuery = encodeURIComponent(query);
       await page.goto(
@@ -516,13 +487,9 @@ export async function searchPlacesViaPool(
         { waitUntil: 'domcontentloaded', timeout: 30_000 },
       );
 
-      // Wait for the feed panel to appear
       await page
         .waitForSelector('[role="feed"]', { timeout: 15_000 })
         .catch(() => { /* proceed even if it times out */ });
-
-      // Short settle
-      await new Promise<void>((r) => setTimeout(r, 1_500));
 
       // ── Captcha check ─────────────────────────────────────────────────
       const hasCaptcha: boolean = await page.evaluate(() =>
@@ -535,7 +502,7 @@ export async function searchPlacesViaPool(
       // browser worker isn't held for 50s just to serve page 1.
       // Pass Infinity when deep-scraping so all handles are available.
       const neededCards = deepScrape ? Infinity : pageNumber * PAGE_SIZE;
-      const scrollResult = await scrollFeedForMore(page, neededCards);
+      const scrollResult = await scrollFeedForMore(page);
       console.log(`📋 Places: loaded ${scrollResult.total} cards for "${query}" (needed ≥${neededCards})`);
 
       // ── Extract cards ─────────────────────────────────────────────────
@@ -543,9 +510,9 @@ export async function searchPlacesViaPool(
         const allCardData = await page.evaluate(extractAllCards);
 
         // Slice logical page window
-        const start       = (pageNumber - 1) * PAGE_SIZE;
-        const end         = start + PAGE_SIZE;
-        const pageSlice   = allCardData.slice(start, end);
+        const start = (pageNumber - 1) * PAGE_SIZE;
+        const end = start + PAGE_SIZE;
+        const pageSlice = allCardData.slice(start, end);
         const hasNextPage = allCardData.length > end;
 
         const results: PlaceResult[] = pageSlice.map(
@@ -574,8 +541,8 @@ export async function searchPlacesViaPool(
 
       // ── Deep scrape: click into each card ────────────────────────────
       const allHandles: any[] = await page.$$('[role="article"]');
-      const start       = (pageNumber - 1) * PAGE_SIZE;
-      const handles     = allHandles.slice(start, start + PAGE_SIZE);
+      const start = (pageNumber - 1) * PAGE_SIZE;
+      const handles = allHandles.slice(start, start + PAGE_SIZE);
       const hasNextPage = allHandles.length > start + PAGE_SIZE;
       const results: PlaceResult[] = [];
 
@@ -660,12 +627,13 @@ export async function searchPlacesViaPool(
 }
 
 /**
- * Streaming variant of searchPlacesViaPool.
- * Calls `onEvent` with batches of PlaceResult as each scroll round completes,
- * then emits a final `done` event when all cards are loaded.
+ * Streaming variant: emits PlaceResult batches in real-time as each scroll
+ * round loads new cards.
  *
- * Designed for SSE endpoints — the caller writes each event to the HTTP
- * response as it arrives, so the dashboard sees results in real-time.
+ * Uses the SAME scroll logic as test-places-search.ts — one scroll per round,
+ * wait SCROLL_WAIT_MS, check afterCount vs prevCount. After each round that
+ * reveals new cards, extract them and emit a 'batch' event immediately.
+ * Terminates on 2 consecutive stable rounds or MAX_SCROLL_ROUNDS.
  */
 export async function searchPlacesStream(
   query: string,
@@ -685,6 +653,8 @@ export async function searchPlacesStream(
       conn = acquired.conn;
       page = acquired.page;
 
+      await page.setUserAgent(USER_AGENT);
+
       // ── Navigate ──────────────────────────────────────────────────────
       const encodedQuery = encodeURIComponent(query);
       await page.goto(
@@ -696,23 +666,71 @@ export async function searchPlacesStream(
         .waitForSelector('[role="feed"]', { timeout: 15_000 })
         .catch(() => { /* proceed anyway */ });
 
-      await new Promise<void>((r) => setTimeout(r, 1_500));
-
       const hasCaptcha: boolean = await page.evaluate(() =>
         !!document.querySelector('form[action="/sorry/index"], #captcha, .g-recaptcha'),
       );
       if (hasCaptcha) throw new Error('CAPTCHA_DETECTED');
 
-      // ── Scroll and stream batches ─────────────────────────────────────
-      const scrollResult = await scrollFeedForMore(
-        page,
-        Infinity,
-        (newCards, total, round) => {
-          onEvent({ type: 'batch', cards: newCards, total, round });
-        },
-      );
+      // ── Scroll entirely in-browser (scratch-test technique) ───────────
+      // Single evaluate call: 100 ms polling, dynamic scroller, MAX_RETRIES=30
+      const seenNames = new Set<string>();
 
-      onEvent({ type: 'done', total: scrollResult.total, reachedEnd: scrollResult.reachedEnd });
+      await page.evaluate(async () => {
+        const feed = document.querySelector<HTMLElement>('[role="feed"]');
+        if (!feed) return;
+
+        function findScroller(): HTMLElement {
+          feed!.scrollTop = feed!.scrollHeight + 9999;
+          if (feed!.scrollTop > 0) return feed!;
+          let el: HTMLElement | null = feed!.parentElement;
+          while (el && el !== document.documentElement) {
+            const ov = getComputedStyle(el).overflowY;
+            if ((ov === 'scroll' || ov === 'auto') && el.scrollHeight > el.clientHeight) return el;
+            el = el.parentElement;
+          }
+          return document.documentElement as unknown as HTMLElement;
+        }
+
+        const scroller = findScroller();
+        let previousCount = 0;
+        let retries = 0;
+        const MAX_RETRIES = 30;
+
+        while (true) {
+          const currentCount = document.querySelectorAll('[role="article"]').length;
+          if (currentCount === previousCount) {
+            retries++;
+            if (retries >= MAX_RETRIES) break;
+          } else {
+            retries = 0;
+            previousCount = currentCount;
+          }
+          scroller.scrollTop = scroller.scrollHeight;
+          await new Promise((r) => setTimeout(r, 100));
+        }
+      });
+
+      // ── Extract all cards and emit as a single batch ──────────────────
+      const allCards: ReturnType<typeof extractAllCards> = await page.evaluate(extractAllCards);
+      const newCards: PlaceResult[] = allCards
+        .filter((c) => !seenNames.has(c.name))
+        .map((c) => ({
+          ...c,
+          phone: null,
+          website: null,
+          weeklyHours: null,
+          photosCount: null,
+          hasPopularTimes: false,
+          isClaimed: null,
+          amenities: [],
+          relatedPlaces: [],
+        }));
+      newCards.forEach((c) => seenNames.add(c.name));
+      if (newCards.length > 0) {
+        onEvent({ type: 'batch', cards: newCards, total: seenNames.size, round: 1 });
+      }
+
+      onEvent({ type: 'done', total: seenNames.size, reachedEnd: true });
       workerCdpFailures.delete(browser.workerId);
       return;
 
@@ -738,7 +756,6 @@ export async function searchPlacesStream(
         }
       }
 
-      // On error, try the next worker instead of aborting
       if (attempt < maxAttempts - 1) continue;
 
     } finally {

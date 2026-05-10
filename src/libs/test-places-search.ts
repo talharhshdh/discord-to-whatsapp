@@ -20,8 +20,8 @@ import type { Browser, Page } from 'puppeteer-core';
 // Config
 // ---------------------------------------------------------------------------
 
-const CLOUDFLARE_BASE = process.env.BROWSER_BASE_URL ?? 'https://dense-physically-delivering-associates.trycloudflare.com';
-const TEST_QUERY = process.env.TEST_QUERY ?? 'iron shops in pakistan';
+const CLOUDFLARE_BASE = process.env.BROWSER_BASE_URL ?? 'https://journey-heating-wives-awareness.trycloudflare.com';
+const TEST_QUERY = process.env.TEST_QUERY ?? 'pizza places in NY';
 const MAX_SCROLL_ROUNDS = 20;
 const SCROLL_WAIT_MS = 2_500;
 
@@ -239,10 +239,10 @@ async function main() {
   await page.goto(mapsUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
 
   // Wait for first results
-  // console.log('⌛ Waiting for results panel...');
-  // await page.waitForSelector('[role="feed"]', { timeout: 15_000 }).catch(() => {
-  //   console.warn('⚠️  [role="feed"] not found within 15s — proceeding anyway');
-  // });
+  console.log('⌛ Waiting for results panel...');
+  await page.waitForSelector('[role="feed"]', { timeout: 15_000 }).catch(() => {
+    console.warn('⚠️  [role="feed"] not found within 15s — proceeding anyway');
+  });
 
   // Short settle wait
   await new Promise((r) => setTimeout(r, 1_500));

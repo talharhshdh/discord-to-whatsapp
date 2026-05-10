@@ -243,6 +243,116 @@ function StreamProgress({ round, total, done }: { round: number; total: number; 
   );
 }
 
+// ── Mode toggle ───────────────────────────────────────────────────────────────
+
+type Mode = 'stream' | 'paginated';
+
+// ── Paginated panel ───────────────────────────────────────────────────────────
+
+function PaginatedPanel() {
+  const [query, setQuery]         = useState('');
+  const [deepScrape, setDeepScrape] = useState(false);
+  const [loading, setLoading]     = useState(false);
+  const [error, setError]         = useState('');
+  const [page, setPage]           = useState(1);
+  const [result, setResult]       = useState<import('../api').PlacesSearchResult | null>(null);
+
+  const runSearch = async (pageNum: number) => {
+    if (!query.trim() || loading) return;
+    setLoading(true);
+    setError('');
+    try {
+      const res = await api.placesSearch(query.trim(), pageNum, deepScrape);
+      setResult(res);
+      setPage(pageNum);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmit = (e?: React.FormEvent) => { e?.preventDefault(); runSearch(1); };
+
+  return (
+    <div className="space-y-6">
+      <div className="glass p-6 rounded-2xl border border-white/[0.07] shadow-xl">
+        <div className="flex items-start justify-between mb-1">
+          <h3 className="text-lg font-bold text-white">Paginated Places Search</h3>
+          <span className="text-xs text-white/30 bg-white/[0.04] border border-white/[0.07] px-2 py-0.5 rounded-full">pool · page {page}</span>
+        </div>
+        <p className="text-sm text-white/45 mb-5">Fetches one page (20 results) at a time via the browser pool.</p>
+
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <input
+              id="places-pool-query"
+              type="text"
+              className="flex-1 bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-[#6c63ff]/50 transition-colors"
+              placeholder='e.g. "coffee shops in Chicago"'
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              disabled={loading}
+            />
+            <button
+              type="submit"
+              disabled={!query.trim() || loading}
+              className="px-6 py-2.5 bg-gradient-to-r from-[#6c63ff] to-[#00d4aa] rounded-xl text-white font-medium hover:opacity-90 disabled:opacity-50 transition-all shadow-lg shadow-[#6c63ff]/20 whitespace-nowrap"
+            >
+              {loading ? '⏳ Searching…' : '🔍 Search'}
+            </button>
+          </div>
+
+          <label className="flex items-center gap-2 cursor-pointer select-none w-fit">
+            <div
+              onClick={() => setDeepScrape(v => !v)}
+              className={`relative w-9 h-5 rounded-full transition-colors ${deepScrape ? 'bg-[#6c63ff]' : 'bg-white/10'}`}
+            >
+              <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${deepScrape ? 'translate-x-4' : ''}`} />
+            </div>
+            <span className="text-xs text-white/50">Deep scrape (phone, website, hours)</span>
+          </label>
+        </form>
+
+        {error && (
+          <div className="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{error}</div>
+        )}
+      </div>
+
+      {result && (
+        <>
+          <div className="flex items-center justify-between">
+            <span className="text-white/60 text-sm">{result.totalResultsText ?? `${result.results.length} results`}</span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => runSearch(page - 1)}
+                disabled={page <= 1 || loading}
+                className="px-3 py-1.5 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white/60 text-sm hover:bg-white/[0.09] disabled:opacity-30 transition-all"
+              >← Prev</button>
+              <span className="text-white/40 text-xs px-2">Page {page}</span>
+              <button
+                onClick={() => runSearch(page + 1)}
+                disabled={!result.hasNextPage || loading}
+                className="px-3 py-1.5 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white/60 text-sm hover:bg-white/[0.09] disabled:opacity-30 transition-all"
+              >Next →</button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {result.results.map((place, idx) => (
+              <PlaceCard key={`${place.name}-${idx}`} place={place} isNew={false} />
+            ))}
+          </div>
+
+          {result.results.length === 0 && (
+            <p className="text-center text-white/30 py-12 text-sm">No results found for this page.</p>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Main panel ────────────────────────────────────────────────────────────────
 
 interface PlaceEntry {
@@ -251,6 +361,7 @@ interface PlaceEntry {
 }
 
 export default function PlacesPanel() {
+  const [mode, setMode]         = useState<Mode>('stream');
   const [query, setQuery]       = useState('');
   const [streaming, setStreaming] = useState(false);
   const [done, setDone]         = useState(false);
@@ -333,6 +444,27 @@ export default function PlacesPanel() {
 
   return (
     <div className="space-y-6">
+      {/* Mode toggle */}
+      <div className="flex gap-1 p-1 bg-white/[0.04] border border-white/[0.07] rounded-xl w-fit">
+        {(['stream', 'paginated'] as Mode[]).map((m) => (
+          <button
+            key={m}
+            onClick={() => setMode(m)}
+            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
+              mode === m
+                ? 'bg-[#6c63ff] text-white shadow shadow-[#6c63ff]/30'
+                : 'text-white/40 hover:text-white/70'
+            }`}
+          >
+            {m === 'stream' ? '📡 Live Stream' : '📄 Paginated'}
+          </button>
+        ))}
+      </div>
+
+      {mode === 'paginated' && <PaginatedPanel />}
+
+      {mode === 'stream' && (
+      <>
       {/* Search card */}
       <div className="glass p-6 rounded-2xl border border-white/[0.07] shadow-xl">
         <div className="flex items-start justify-between mb-1">
@@ -344,6 +476,7 @@ export default function PlacesPanel() {
         <p className="text-sm text-white/45 mb-5">
           Results appear in real-time as the browser scrolls through Google Maps.
         </p>
+
 
         <form onSubmit={handleSearch} className="space-y-3">
           <div className="flex flex-col sm:flex-row gap-3">
@@ -424,6 +557,8 @@ export default function PlacesPanel() {
           </div>
           <p className="text-white/40 text-sm">Navigating to Google Maps…</p>
         </div>
+      )}
+      </>
       )}
     </div>
   );
