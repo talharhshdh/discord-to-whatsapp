@@ -772,14 +772,17 @@ export async function searchPlacesStream(
 
     } catch (e) {
       const msg = (e as Error).message;
+      const isTransportError = [
+        'CDP_UNREACHABLE', 'NO_WS_URL', 'Protocol error', 'WebSocket',
+        'Connection closed', 'Detached Frame', 'Target closed', 'Session closed',
+      ].some((k) => msg.includes(k));
+
       console.error(
-        `❌ Places stream failed via ${browser.workerId} (attempt ${attempt + 1}/${maxAttempts}):`,
-        msg,
+        `❌ Places stream failed via ${browser.workerId} (attempt ${attempt + 1}/${maxAttempts}): ${msg}`,
       );
-      onEvent({ type: 'error', message: msg });
       browserPool.recordFailure();
 
-      if (['CDP_UNREACHABLE', 'NO_WS_URL', 'Protocol error', 'WebSocket'].some((k) => msg.includes(k))) {
+      if (isTransportError) {
         invalidateWorkerConnection(browser.workerId);
         page = null;
 
@@ -787,9 +790,15 @@ export async function searchPlacesStream(
         workerCdpFailures.set(browser.workerId, cdpFails);
 
         if (cdpFails >= MAX_WORKER_CDP_FAILURES) {
+          console.warn(`🔥 Worker ${browser.workerId} hit ${cdpFails} consecutive transport failures — evicting.`);
           workerCdpFailures.delete(browser.workerId);
           browserPool.deregister(browser.workerId);
         }
+      }
+
+      // Only emit error to API on final attempt
+      if (attempt >= maxAttempts - 1) {
+        onEvent({ type: 'error', message: msg });
       }
 
       if (attempt < maxAttempts - 1) continue;
@@ -1082,16 +1091,19 @@ export async function searchViaGoogleSearchUrl(
         totalResultsText: `${rawCards.length} results on page ${pageNumber}`,
       };
 
-
     } catch (e) {
       const msg = (e as Error).message;
+      const isTransportError = [
+        'CDP_UNREACHABLE', 'NO_WS_URL', 'Protocol error', 'WebSocket',
+        'Connection closed', 'Detached Frame', 'Target closed', 'Session closed',
+      ].some((k) => msg.includes(k));
+
       console.error(
-        `❌ Google Search scrape failed via ${browser.workerId} (attempt ${attempt + 1}/${maxAttempts}):`,
-        msg,
+        `❌ Google Search scrape failed via ${browser.workerId} (attempt ${attempt + 1}/${maxAttempts}): ${msg}`,
       );
       browserPool.recordFailure();
 
-      if (['CDP_UNREACHABLE', 'NO_WS_URL', 'Protocol error', 'WebSocket'].some((k) => msg.includes(k))) {
+      if (isTransportError) {
         invalidateWorkerConnection(browser.workerId);
         page = null;
 
@@ -1141,12 +1153,29 @@ export async function searchViaGoogleSearchStream(
   let totalEmitted = 0;
 
   for (let pageNumber = 1; pageNumber <= maxPages; pageNumber++) {
-    const maxAttempts = Math.max(1, browserPool.getActive().length);
     let pageSuccess = false;
 
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    // Fixed 5 attempts per page; re-query pool each time so newly-registered
+    // workers (after a restart) are picked up automatically.
+    const MAX_PAGE_ATTEMPTS = 5;
+
+    for (let attempt = 0; attempt < MAX_PAGE_ATTEMPTS; attempt++) {
+      // If the pool is empty, wait up to 60 s for workers to come back
+      if (browserPool.getActive().length === 0) {
+        console.warn(`⏳ No active workers for page ${pageNumber} attempt ${attempt + 1} — waiting 10 s…`);
+        await new Promise((r) => setTimeout(r, 10_000));
+        if (browserPool.getActive().length === 0) {
+          browserPool.restartWorkers();
+          await new Promise((r) => setTimeout(r, 15_000));
+        }
+        if (browserPool.getActive().length === 0) continue;
+      }
+
       const browser = browserPool.getNext();
-      if (!browser) break;
+      if (!browser) {
+        await new Promise((r) => setTimeout(r, 2_000));
+        continue;
+      }
 
       let conn: WorkerConnection | null = null;
       let page: any = null;
@@ -1244,14 +1273,18 @@ export async function searchViaGoogleSearchStream(
 
       } catch (e) {
         const msg = (e as Error).message;
-        console.error(
-          `❌ Google Search stream page ${pageNumber} failed via ${browser.workerId} (attempt ${attempt + 1}/${maxAttempts}):`,
-          msg,
-        );
-        onEvent({ type: 'error', message: `Page ${pageNumber}: ${msg}` });
-        browserPool.recordFailure();
 
-        if (['CDP_UNREACHABLE', 'NO_WS_URL', 'Protocol error', 'WebSocket'].some((k) => msg.includes(k))) {
+        // Treat ALL transport/connection errors uniformly
+        const isTransportError = [
+          'CDP_UNREACHABLE', 'NO_WS_URL', 'Protocol error', 'WebSocket',
+          'Connection closed', 'Detached Frame', 'Target closed', 'Session closed',
+        ].some((k) => msg.includes(k));
+
+        console.error(
+          `❌ Google Search stream page ${pageNumber} failed via ${browser.workerId} (attempt ${attempt + 1}/${MAX_PAGE_ATTEMPTS}): ${msg}`,
+        );
+
+        if (isTransportError) {
           invalidateWorkerConnection(browser.workerId);
           page = null;
 
@@ -1259,12 +1292,22 @@ export async function searchViaGoogleSearchStream(
           workerCdpFailures.set(browser.workerId, cdpFails);
 
           if (cdpFails >= MAX_WORKER_CDP_FAILURES) {
+            console.warn(`🔥 Worker ${browser.workerId} hit ${cdpFails} consecutive transport failures — evicting.`);
             workerCdpFailures.delete(browser.workerId);
             browserPool.deregister(browser.workerId);
           }
         }
 
-        if (attempt < maxAttempts - 1) continue;
+        browserPool.recordFailure();
+
+        // Only surface error to API on the final attempt — not every retry
+        if (attempt === MAX_PAGE_ATTEMPTS - 1) {
+          onEvent({ type: 'error', message: `Page ${pageNumber}: all ${MAX_PAGE_ATTEMPTS} attempts failed — ${msg}` });
+        }
+
+        // Exponential backoff before next retry (1s, 2s, 4s, 8s, 15s max)
+        const backoffMs = Math.min(1_000 * 2 ** attempt, 15_000);
+        await new Promise((r) => setTimeout(r, backoffMs));
 
       } finally {
         if (conn && page) {
@@ -1274,7 +1317,6 @@ export async function searchViaGoogleSearchStream(
     }
 
     if (!pageSuccess) {
-      // All workers failed for this page — abort the stream
       console.error(`🚨 Google Search stream: all workers failed on page ${pageNumber}, aborting.`);
       if (browserPool.getActive().length === 0) {
         browserPool.restartWorkers();
@@ -1285,4 +1327,3 @@ export async function searchViaGoogleSearchStream(
 
   onEvent({ type: 'done', total: totalEmitted, reachedEnd: false });
 }
-
