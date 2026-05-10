@@ -827,9 +827,20 @@ export async function searchPlacesStream(
 
 /**
  * Extract all visible place cards from a Google Search `udm=1` result page.
- * Identical card structure to the Maps feed view — reuses the same selectors.
  *
- * NOTE: Runs inside page.evaluate — no Node.js APIs.
+ * Selectors derived from verified HTML (2026-05-10):
+ *   - Card container: .w7Dbne  (stable class — no dynamic tsuid_* IDs used)
+ *   - Details block:  .rllt__details
+ *   - Name:           .OSrXXb span (or .dbg0pd fallback)
+ *   - Rating:         .yi40Hd  e.g. "3.8"
+ *   - Reviews:        .RDApEe  e.g. "(34)"
+ *   - Category:       text after "·" in 2nd child of .rllt__details
+ *   - Addr + Phone:   3rd child of .rllt__details — "addr · phone"
+ *   - Open status:    4th child — span[style*="color"], green=open
+ *   - Amenities:      .BI0Dve > span:first-child
+ *   - Place ID:       [role="button"][id^="pv-"] → strip "pv-" prefix
+ *
+ * NOTE: Runs inside page.evaluate — no Node.js APIs allowed.
  */
 function extractGoogleSearchCards(): Array<{
   name: string;
@@ -838,6 +849,7 @@ function extractGoogleSearchCards(): Array<{
   priceLevel: string | null;
   category: string | null;
   address: string | null;
+  phone: string | null;
   description: string | null;
   openNow: boolean | null;
   todaysHours: string | null;
@@ -846,97 +858,120 @@ function extractGoogleSearchCards(): Array<{
   lat: number | null;
   lng: number | null;
   placeId: string | null;
+  amenities: string[];
 }> {
   const results: ReturnType<typeof extractGoogleSearchCards> = [];
   const seen = new Set<string>();
 
-  document.querySelectorAll<HTMLElement>('[role="article"]').forEach((card) => {
-    // ── Name ────────────────────────────────────────────────────────────
-    const name = card.querySelector<HTMLElement>('.qBF1Pd')?.innerText?.trim();
+  document.querySelectorAll<HTMLElement>('.w7Dbne').forEach((card) => {
+    const details = card.querySelector<HTMLElement>('.rllt__details');
+    if (!details) return;
+
+    // ── Name (.OSrXXb is the visible name span inside the .dbg0pd heading) ─
+    const name = (
+      details.querySelector<HTMLElement>('.OSrXXb')?.innerText?.trim() ||
+      details.querySelector<HTMLElement>('.dbg0pd')?.innerText?.trim()
+    );
     if (!name || seen.has(name)) return;
     seen.add(name);
 
-    // ── Link → lat / lng / placeId ──────────────────────────────────────
-    const linkEl = card.querySelector<HTMLAnchorElement>('a.hfpxzc, a[href*="maps/place"]');
-    const mapsUrl = linkEl?.href || null;
-
-    const latM = mapsUrl?.match(/!3d(-?\d+\.\d+)/);
-    const lngM = mapsUrl?.match(/!4d(-?\d+\.\d+)/);
-    const lat = latM ? parseFloat(latM[1]) : null;
-    const lng = lngM ? parseFloat(lngM[1]) : null;
-
-    const pidM = mapsUrl?.match(/0x[0-9a-f]+:0x[0-9a-f]+/i);
-    const placeId = pidM ? pidM[0] : null;
-
-    // ── Rating row ────────────────────────────────────────────────────
-    // .MW4etd holds the numeric rating; .UY7F9 holds "(25,367)"
-    const ratingEl = card.querySelector<HTMLElement>('.MW4etd');
+    // ── Rating (.yi40Hd) and review count (.RDApEe "( 34 )") ─────────────
+    const ratingEl = details.querySelector<HTMLElement>('.yi40Hd');
     const rating = ratingEl ? parseFloat(ratingEl.innerText.trim()) : null;
 
-    const reviewEl = card.querySelector<HTMLElement>('.UY7F9');
+    const reviewEl = details.querySelector<HTMLElement>('.RDApEe');
     const reviewRaw = reviewEl?.innerText?.replace(/[^0-9,]/g, '') ?? '';
     const reviewCount = reviewRaw ? parseInt(reviewRaw.replace(/,/g, ''), 10) : null;
 
-    // Price level lives in .AJB7ye after the last "·"
-    const ratingRowText = card.querySelector<HTMLElement>('.AJB7ye')?.innerText?.trim() ?? '';
-    const priceM = ratingRowText.match(/·\s*(\$[^\s·]+)/);
-    const priceLevel = priceM ? priceM[1] : null;
+    // ── Children of .rllt__details (by index, not by class) ──────────────
+    // [0] .dbg0pd   — name heading
+    // [1] div       — "3.8 (34) · Category"
+    // [2] div       — "Address · (phone)"
+    // [3] div       — "Open · Closes 8 pm"  (optional)
+    // [4] .pJ3Ci    — amenities row          (optional)
+    const children = Array.from(details.children) as HTMLElement[];
 
-    // ── Info rows ──────────────────────────────────────────────────────
-    let outerW4: HTMLElement | null = null;
-    card.querySelectorAll<HTMLElement>('.W4Efsd').forEach((el) => {
-      if (!outerW4 && el.querySelector('.W4Efsd')) {
-        outerW4 = el;
-      }
-    });
+    // Category — last segment after "·" in the rating/category row
+    let category: string | null = null;
+    const catRow = children[1];
+    if (catRow) {
+      const parts = (catRow.innerText?.trim() ?? '').split('·').map((s: string) => s.trim()).filter(Boolean);
+      const last = parts[parts.length - 1] ?? '';
+      // Exclude if it's just a number (rating leaked)
+      if (last && !/^\d/.test(last)) category = last;
+    }
 
-    const infoRows = outerW4
-      ? Array.from((outerW4 as HTMLElement).querySelectorAll<HTMLElement>(':scope > .W4Efsd'))
-      : [];
-
-    // Row 0: "Category · ♿ · Address"
-    const row0Text = infoRows[0]?.innerText?.trim() ?? '';
-    const row0Parts = row0Text.split('·').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
-    const category = row0Parts[0] || null;
-    const address = row0Parts.length > 1 ? row0Parts[row0Parts.length - 1] || null : null;
-
-    let description: string | null = null;
-    let openStatus: string | null = null;
-    let openNow: boolean | null = null;
-
-    for (let i = 1; i < infoRows.length; i++) {
-      const rowText = infoRows[i]?.innerText?.trim() ?? '';
-      const coloredSpan = infoRows[i]?.querySelector<HTMLElement>('span[style*="color"]');
-      const colorStyle = coloredSpan?.getAttribute('style') ?? '';
-
-      if (coloredSpan && (colorStyle.includes('25,134,57') || colorStyle.includes('220,54,46'))) {
-        openStatus = rowText;
-        openNow = colorStyle.includes('25,134,57');
-      } else if (rowText && !description) {
-        description = rowText;
+    // Address and phone — split by "·"
+    let address: string | null = null;
+    let phone: string | null = null;
+    const addrRow = children[2];
+    if (addrRow) {
+      const parts = (addrRow.innerText?.trim() ?? '').split('·').map((s: string) => s.trim());
+      if (parts.length >= 2) {
+        address = parts[0] || null;
+        const last = parts[parts.length - 1];
+        // Phone numbers start with (, +, or a digit
+        phone = /^[(+\d]/.test(last) ? last : null;
+      } else {
+        address = parts[0] || null;
       }
     }
+
+    // Open status — look for the first child that has a colored span
+    let openStatus: string | null = null;
+    let openNow: boolean | null = null;
+    // Scan from index 3 onward (open status can occasionally shift)
+    for (let i = 3; i < Math.min(children.length, 5); i++) {
+      const row = children[i];
+      const colorSpan = row?.querySelector<HTMLElement>('span[style*="color"]');
+      if (!colorSpan) continue;
+      openStatus = row.innerText?.trim() || null;
+      const style = colorSpan.getAttribute('style') ?? '';
+      // Green = rgba(109,213,140,...) or rgba(25,134,57,...) = open
+      openNow = style.includes('109,213,140') || style.includes('25,134,57');
+      break;
+    }
+
+    // Place ID — from [role="button"][id^="pv-"]
+    // "pv-/g/12mkwhmk2" → placeId = "/g/12mkwhmk2"
+    // Uses role attribute (semantic, stable), never tsuid_* IDs
+    const btnEl = card.querySelector<HTMLElement>('[role="button"][id^="pv-"]');
+    const rawId = btnEl?.id ?? '';
+    const placeId = rawId.startsWith('pv-') ? rawId.slice(3) : null;
+    const mapsUrl = placeId
+      ? `https://www.google.com/maps/place/?q=place_id:${encodeURIComponent(placeId)}`
+      : null;
+
+    // Amenities — each .BI0Dve contains label + separator dot
+    const amenities: string[] = [];
+    card.querySelectorAll<HTMLElement>('.BI0Dve').forEach((el) => {
+      const label = el.querySelector<HTMLElement>('span:first-child')?.innerText?.trim();
+      if (label) amenities.push(label);
+    });
 
     results.push({
       name,
       rating,
       reviewCount,
-      priceLevel,
+      priceLevel: null,
       category,
       address,
-      description,
+      phone,
+      description: null,
       openNow,
       todaysHours: openStatus,
       openStatus,
       mapsUrl,
-      lat,
-      lng,
+      lat: null,
+      lng: null,
       placeId,
+      amenities,
     });
   });
 
   return results;
 }
+
 
 /**
  * Build the Google Search `udm=1` URL for the given query and page.
@@ -990,9 +1025,9 @@ export async function searchViaGoogleSearchUrl(
 
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
 
-      // Wait for at least one result card
+      // Wait for at least one result card (.w7Dbne is the stable card container)
       await page
-        .waitForSelector('[role="article"].Nv2PK', { timeout: 15_000 })
+        .waitForSelector('.w7Dbne', { timeout: 15_000 })
         .catch(() => { /* proceed even if it times out */ });
 
       // ── Captcha check ─────────────────────────────────────────────────
@@ -1008,15 +1043,28 @@ export async function searchViaGoogleSearchUrl(
 
       const results: PlaceResult[] = rawCards.map(
         (c: ReturnType<typeof extractGoogleSearchCards>[number]) => ({
-          ...c,
-          phone: null,
+          name: c.name,
+          rating: c.rating,
+          reviewCount: c.reviewCount,
+          priceLevel: c.priceLevel,
+          category: c.category,
+          address: c.address,
+          phone: c.phone,
           website: null,
           weeklyHours: null,
           photosCount: null,
           hasPopularTimes: false,
           isClaimed: null,
-          amenities: [],
+          amenities: c.amenities,
           relatedPlaces: [],
+          description: c.description,
+          openNow: c.openNow,
+          todaysHours: c.todaysHours,
+          openStatus: c.openStatus,
+          mapsUrl: c.mapsUrl,
+          lat: c.lat,
+          lng: c.lng,
+          placeId: c.placeId,
         }),
       );
 
@@ -1125,8 +1173,9 @@ export async function searchViaGoogleSearchStream(
 
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
 
+        // Wait for at least one card (.w7Dbne is the stable card container)
         await page
-          .waitForSelector('[role="article"].Nv2PK', { timeout: 15_000 })
+          .waitForSelector('.w7Dbne', { timeout: 15_000 })
           .catch(() => { /* proceed anyway */ });
 
         // ── Captcha check ─────────────────────────────────────────────────
@@ -1141,15 +1190,28 @@ export async function searchViaGoogleSearchStream(
         const newCards: PlaceResult[] = rawCards
           .filter((c: ReturnType<typeof extractGoogleSearchCards>[number]) => !seenNames.has(c.name))
           .map((c: ReturnType<typeof extractGoogleSearchCards>[number]) => ({
-            ...c,
-            phone: null,
+            name: c.name,
+            rating: c.rating,
+            reviewCount: c.reviewCount,
+            priceLevel: c.priceLevel,
+            category: c.category,
+            address: c.address,
+            phone: c.phone,
             website: null,
             weeklyHours: null,
             photosCount: null,
             hasPopularTimes: false,
             isClaimed: null,
-            amenities: [],
+            amenities: c.amenities,
             relatedPlaces: [],
+            description: c.description,
+            openNow: c.openNow,
+            todaysHours: c.todaysHours,
+            openStatus: c.openStatus,
+            mapsUrl: c.mapsUrl,
+            lat: c.lat,
+            lng: c.lng,
+            placeId: c.placeId,
           }));
 
         newCards.forEach((c) => seenNames.add(c.name));
