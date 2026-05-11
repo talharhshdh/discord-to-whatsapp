@@ -141,7 +141,8 @@ export function invalidateWorkerConnection(workerId: string): void {
     }
   }
   try {
-    conn.browserConn.disconnect();
+    const res = conn.browserConn.disconnect();
+    if (res && res.catch) res.catch(() => {});
   } catch {
     /* ignore */
   }
