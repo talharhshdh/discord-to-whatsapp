@@ -449,31 +449,14 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       if (!videoUrl) return err(res, 'url is required', 400);
       const quality = body['quality'] as YouTubeQualityOption | undefined;
 
-      const formatStr = quality?.formatId || 'best[ext=mp4]/best';
+      // More universal fallback: try pre-merged mp4, then best available
+      const formatStr = quality?.formatId || 'bestvideo[ext=mp4]+bestaudio/best[ext=mp4]/best';
       const isAudioOnly = quality?.audioOnly || false;
       const ext = isAudioOnly ? 'm4a' : 'mp4';
       const mimeType = isAudioOnly ? 'audio/mp4' : 'video/mp4';
-      
-      const { spawn } = require('child_process');
+
       const { getYouTubeCookiesPath } = require('./browser');
       const cookiesPath = getYouTubeCookiesPath();
-      
-      const args = [
-        videoUrl,
-        '-f', formatStr,
-        '--no-warnings',
-        '--no-check-certificates',
-        '-o', '-', // Output to stdout
-      ];
-      if (cookiesPath) {
-        args.push('--cookies', cookiesPath);
-      }
-
-      res.writeHead(200, {
-        'Content-Type': mimeType,
-        'Content-Disposition': `attachment; filename="youtube_download.${ext}"`,
-        'Access-Control-Allow-Origin': '*',
-      });
 
       const youtubedl = require('youtube-dl-exec');
       const yt = youtubedl.exec(videoUrl, {
@@ -481,22 +464,49 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         noWarnings: true,
         noCheckCertificates: true,
         o: '-',
-        ...(cookiesPath ? { cookies: cookiesPath } : {})
+        ...(cookiesPath ? { cookies: cookiesPath } : {}),
       });
-      
-      yt.stdout.pipe(res);
-      
-      yt.stderr.on('data', (data: Buffer) => {
+
+      // Collect stderr for error reporting before headers are sent
+      const stderrChunks: Buffer[] = [];
+      yt.stderr?.on('data', (data: Buffer) => {
+        stderrChunks.push(data);
         console.log('[yt-dlp]', data.toString().trim());
       });
 
-      req.on('close', () => {
-        yt.kill();
+      // Process-level spawn errors (e.g. binary missing)
+      yt.on('error', (spawnErr: Error) => {
+        console.error('[yt-dlp] spawn error:', spawnErr);
+        if (!res.headersSent) err(res, `yt-dlp spawn error: ${spawnErr.message}`);
+        else if (!res.writableEnded) res.end();
       });
 
-    } catch (e) { 
+      // Non-zero exit: yt-dlp failed (format unavailable, bot-check, etc.)
+      yt.on('close', (code: number | null) => {
+        if (code && code !== 0) {
+          const stderrMsg = Buffer.concat(stderrChunks).toString().trim();
+          console.error(`[yt-dlp] exited with code ${code}: ${stderrMsg}`);
+          if (!res.headersSent) {
+            err(res, `yt-dlp failed (exit ${code}): ${stderrMsg.split('\n').pop() ?? 'unknown error'}`);
+          } else if (!res.writableEnded) {
+            res.end();
+          }
+        }
+      });
+
+      res.writeHead(200, {
+        'Content-Type': mimeType,
+        'Content-Disposition': `attachment; filename="youtube_download.${ext}"`,
+        'Access-Control-Allow-Origin': '*',
+      });
+
+      yt.stdout?.pipe(res);
+
+      req.on('close', () => { try { yt.kill(); } catch { /* ignore */ } });
+
+    } catch (e) {
       if (!res.headersSent) err(res, (e as Error).message);
-      else res.end();
+      else if (!res.writableEnded) res.end();
     }
     return;
   }
