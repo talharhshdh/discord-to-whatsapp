@@ -245,78 +245,36 @@ export async function getYouTubeInfo(url: string): Promise<YouTubeVideoInfo> {
     ...buildYtdlpBaseFlags(),
     dumpSingleJson: true,
     preferFreeFormats: false,
+    format: 'all',
   });
 
   const formats = info.formats ?? [];
 
-  // ── Pick best audio format ──────────────────────────────────────────────
-  // Prefer m4a (aac) for widest WhatsApp compatibility; fall back to webm/opus
-  const audioFormats = formats.filter(
-    (f) => f.vcodec === 'none' && f.acodec !== 'none' && f.url && !f.url.includes('manifest'),
-  );
-  const bestAudio =
-    audioFormats
-      .filter((f) => f.audio_ext === 'm4a' || f.ext === 'm4a')
-      .sort((a, b) => (b.abr ?? 0) - (a.abr ?? 0))[0] ??
-    audioFormats.sort((a, b) => (b.abr ?? 0) - (a.abr ?? 0))[0];
+  const bestAudio = formats.find(f => f.acodec !== 'none' && f.vcodec === 'none');
 
-  // ── Build video quality options ─────────────────────────────────────────
-  // Only include mp4 video-only DASH streams with a direct URL (not m3u8)
-  const videoFormats = formats.filter(
-    (f) =>
-      f.vcodec !== 'none' &&
-      (f.acodec === 'none' || !f.acodec) &&
-      f.height &&
-      f.url &&
-      !f.url.includes('manifest') &&
-      (f.video_ext === 'mp4' || f.ext === 'mp4'),
-  );
-
-  // Deduplicate by height, keeping highest vbr per height
-  const byHeight = new Map<number, YtDlpFormat>();
-  for (const f of videoFormats) {
-    const h = f.height!;
-    const existing = byHeight.get(h);
-    if (!existing || (f.vbr ?? f.tbr ?? 0) > (existing.vbr ?? existing.tbr ?? 0)) {
-      byHeight.set(h, f);
-    }
-  }
-
-  // Sort descending by height (1080 → 144)
-  const sortedVideo = Array.from(byHeight.entries())
-    .sort(([a], [b]) => b - a)
-    .map(([, f]) => f);
-
-  const qualities: YouTubeQualityOption[] = [];
-
-  // Video qualities (video + audio merged during download)
-  for (const f of sortedVideo) {
-    const label_p = `${f.height}p`;
-    const videoBytes = f.filesize ?? f.filesize_approx ?? null;
-    const audioBytes = bestAudio ? (bestAudio.filesize ?? bestAudio.filesize_approx ?? null) : null;
-    const totalBytes = videoBytes && audioBytes ? videoBytes + audioBytes : videoBytes ?? audioBytes;
-
-    qualities.push({
-      key:           `${f.height}p`,
-      label:         `🎬 ${label_p} · ${fmtBytes(totalBytes)} · mp4`,
-      sizeBytes:     totalBytes,
-      audioOnly:     false,
-      formatId:      f.format_id,
-      audioFormatId: bestAudio?.format_id,
-    });
-  }
-
-  // Audio-only option
-  if (bestAudio) {
-    const audioBytes = bestAudio.filesize ?? bestAudio.filesize_approx ?? null;
-    qualities.push({
-      key:       'audio',
-      label:     `🎵 Audio only · ${fmtBytes(audioBytes)} · m4a`,
-      sizeBytes: audioBytes,
+  const qualities: YouTubeQualityOption[] = [
+    {
+      key: 'audio-video',
+      label: '🎬 Audio + Video (Best Pre-merged)',
+      sizeBytes: null,
+      audioOnly: false,
+      formatId: 'best[ext=mp4]/best'
+    },
+    {
+      key: 'video-only',
+      label: '📹 Video Only (Highest Quality)',
+      sizeBytes: null,
+      audioOnly: false,
+      formatId: 'bestvideo[ext=mp4]/bestvideo'
+    },
+    {
+      key: 'audio-only',
+      label: '🎵 Audio Only (m4a)',
+      sizeBytes: bestAudio?.filesize ?? bestAudio?.filesize_approx ?? null,
       audioOnly: true,
-      formatId:  bestAudio.format_id,
-    });
-  }
+      formatId: 'bestaudio[ext=m4a]/bestaudio'
+    }
+  ];
 
   return {
     videoId:         info.id,

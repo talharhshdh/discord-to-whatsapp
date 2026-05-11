@@ -448,14 +448,56 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       const videoUrl = body['url'] as string;
       if (!videoUrl) return err(res, 'url is required', 400);
       const quality = body['quality'] as YouTubeQualityOption | undefined;
-      let result;
-      if (quality) {
-        result = await downloadYouTubeVideo(videoUrl, quality);
-      } else {
-        result = await downloadYouTubeVideoFallback(videoUrl);
+
+      const formatStr = quality?.formatId || 'best[ext=mp4]/best';
+      const isAudioOnly = quality?.audioOnly || false;
+      const ext = isAudioOnly ? 'm4a' : 'mp4';
+      const mimeType = isAudioOnly ? 'audio/mp4' : 'video/mp4';
+      
+      const { spawn } = require('child_process');
+      const { getYouTubeCookiesPath } = require('./browser');
+      const cookiesPath = getYouTubeCookiesPath();
+      
+      const args = [
+        videoUrl,
+        '-f', formatStr,
+        '--no-warnings',
+        '--no-check-certificates',
+        '-o', '-', // Output to stdout
+      ];
+      if (cookiesPath) {
+        args.push('--cookies', cookiesPath);
       }
-      binary(res, result.buffer, result.mimetype, result.filename);
-    } catch (e) { err(res, (e as Error).message); }
+
+      res.writeHead(200, {
+        'Content-Type': mimeType,
+        'Content-Disposition': `attachment; filename="youtube_download.${ext}"`,
+        'Access-Control-Allow-Origin': '*',
+      });
+
+      const youtubedl = require('youtube-dl-exec');
+      const yt = youtubedl.exec(videoUrl, {
+        f: formatStr,
+        noWarnings: true,
+        noCheckCertificates: true,
+        o: '-',
+        ...(cookiesPath ? { cookies: cookiesPath } : {})
+      });
+      
+      yt.stdout.pipe(res);
+      
+      yt.stderr.on('data', (data: Buffer) => {
+        console.log('[yt-dlp]', data.toString().trim());
+      });
+
+      req.on('close', () => {
+        yt.kill();
+      });
+
+    } catch (e) { 
+      if (!res.headersSent) err(res, (e as Error).message);
+      else res.end();
+    }
     return;
   }
 
