@@ -831,6 +831,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       if (!text) return err(res, 'text is required', 400);
       const pageNumber = Number(body['pageNumber']) || 1;
       const engine = (body['engine'] as string) || 'auto';
+      const includeAI = Boolean(body['includeAI']);
 
       // ── CDP / Puppeteer search ──────────────────────────────────────────
       const tryCdpSearch = async (): Promise<any | null> => {
@@ -851,28 +852,31 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         await page.goto(`https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}`, { waitUntil: 'domcontentloaded' });
         await new Promise(r => setTimeout(r, 3000));
 
-        // Click all "Show more" buttons to expand AI overview
-        try {
-          await page.evaluate(() => {
-            const btns = document.querySelectorAll('[jsname="VwDHjd"], [aria-label="Show more"], .LGOjhe, .cUnQKe');
-            btns.forEach(b => (b as HTMLElement).click());
-          });
-          await new Promise(r => setTimeout(r, 1500));
-        } catch { }
+        // Click "Show more" buttons only when AI response is requested
+        if (includeAI) {
+          try {
+            await page.evaluate(() => {
+              const btns = document.querySelectorAll('[jsname="VwDHjd"], [aria-label="Show more"], .LGOjhe, .cUnQKe');
+              btns.forEach(b => (b as HTMLElement).click());
+            });
+            await new Promise(r => setTimeout(r, 1500));
+          } catch { }
+        }
 
-        const results = await page.evaluate(() => {
+        const results = await page.evaluate((fetchAI: boolean) => {
           const organic: any[] = [];
           let aiResponse: string | null = null;
           const seen = new Set<string>();
 
-          // AI overview — grab the entire container's HTML for rich rendering
-          const aiSelectors = ['.M8OgIe', '.LLtROe', '.IZ6rdc', '[data-attrid="wa:/description"]', '.wDYxhc[data-md]', '.kp-blk'];
-          for (const sel of aiSelectors) {
-            const el = document.querySelector(sel);
-            if (el && (el as HTMLElement).innerText?.trim().length > 20) {
-              // Get innerHTML for rich formatting, fall back to innerText
-              aiResponse = (el as HTMLElement).innerHTML || (el as HTMLElement).innerText.trim();
-              break;
+          if (fetchAI) {
+            // AI overview — grab the entire container's HTML for rich rendering
+            const aiSelectors = ['.M8OgIe', '.LLtROe', '.IZ6rdc', '[data-attrid="wa:/description"]', '.wDYxhc[data-md]', '.kp-blk'];
+            for (const sel of aiSelectors) {
+              const el = document.querySelector(sel);
+              if (el && (el as HTMLElement).innerText?.trim().length > 20) {
+                aiResponse = (el as HTMLElement).innerHTML || (el as HTMLElement).innerText.trim();
+                break;
+              }
             }
           }
 
@@ -905,7 +909,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
           }
 
           return { organic, aiResponse };
-        });
+        }, includeAI);
 
         await page.close();
         browser.disconnect();
@@ -917,7 +921,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         const resp = await fetch(`${PYTHON_API}/search`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, pageNumber }),
+          body: JSON.stringify({ text, pageNumber, includeAI }),
         });
         if (!resp.ok) throw new Error(`Python API /search → HTTP ${resp.status}`);
         return resp.json();

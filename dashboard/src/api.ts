@@ -225,8 +225,8 @@ export const api = {
   exportYtCookies: () =>
     post<{ success: boolean; message: string; cookiesPath?: string }>('/api/browser/export-cookies', {}),
 
-  browserSearch: (text: string, pageNumber: number, engine: 'auto' | 'cdp' | 'selenium' = 'auto') =>
-    post<BrowserSearchResult>('/api/browser/search', { text, pageNumber, engine }),
+  browserSearch: (text: string, pageNumber: number, engine: 'auto' | 'cdp' | 'selenium' = 'auto', includeAI = false) =>
+    post<BrowserSearchResult>('/api/browser/search', { text, pageNumber, engine, includeAI }),
   restartBrowsers: () =>
     post<{ ok: boolean; message: string }>('/api/browsers/restart', {}),
   placesSearch: (query: string, pageNumber = 1, deepScrape = false) =>

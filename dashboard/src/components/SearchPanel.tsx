@@ -11,6 +11,7 @@ export default function SearchPanel() {
   const [result, setResult] = useState<BrowserSearchResult | null>(null);
   const [engine, setEngine] = useState<SearchEngine>('auto');
   const [usedEngine, setUsedEngine] = useState<string>('');
+  const [includeAI, setIncludeAI] = useState(false);
   const aiRef = useRef<HTMLDivElement>(null);
 
   const handleSearch = async (e?: React.FormEvent, customPage?: number) => {
@@ -22,7 +23,7 @@ export default function SearchPanel() {
     const targetPage = customPage ?? page;
 
     try {
-      const res = await api.browserSearch(query, targetPage, engine);
+      const res = await api.browserSearch(query, targetPage, engine, includeAI);
       setResult(res);
       setPage(targetPage);
       setUsedEngine(engine);
@@ -59,7 +60,7 @@ export default function SearchPanel() {
         </p>
 
         {/* Engine selector */}
-        <div className="flex flex-wrap items-center gap-2 mb-4">
+        <div className="flex flex-wrap items-center gap-2 mb-3">
           <span className="text-xs text-white/40">Engine:</span>
           {(['auto', 'cdp', 'selenium'] as SearchEngine[]).map(eng => (
             <button
@@ -74,6 +75,24 @@ export default function SearchPanel() {
               {eng === 'auto' ? '⚡ Auto' : eng === 'cdp' ? '🔌 CDP' : '🐍 Selenium'}
             </button>
           ))}
+        </div>
+
+        {/* AI response toggle */}
+        <div className="flex items-center gap-3 mb-4">
+          <button
+            onClick={() => setIncludeAI(v => !v)}
+            className={`flex items-center gap-2 px-3 py-1 rounded-lg text-xs font-medium transition-all border ${
+              includeAI
+                ? 'bg-[#00d4aa]/20 border-[#00d4aa]/40 text-[#00d4aa]'
+                : 'bg-white/[0.03] border-white/10 text-white/40 hover:text-white/60 hover:bg-white/[0.06]'
+            }`}
+          >
+            <span>{includeAI ? '✨' : '○'}</span>
+            <span>AI Overview</span>
+          </button>
+          <span className="text-[10px] text-white/30">
+            {includeAI ? 'Slower — fetches AI summary' : 'Faster — organic results only'}
+          </span>
         </div>
 
         <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-3">
