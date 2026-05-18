@@ -273,14 +273,17 @@ export async function searchViaPool(
         "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)"
       );
       await page.setRequestInterception(true);
-      page.on('request', (req: any) => {
+      page.removeAllListeners('request');
+      const requestHandler = (req: any) => {
+        if (req.isInterceptResolutionHandled()) return;
         const resourceType = req.resourceType();
         if (['image', 'media', 'font', 'stylesheet'].includes(resourceType)) {
           req.abort();
         } else {
           req.continue();
         }
-      });
+      };
+      page.on('request', requestHandler);
       await page.goto(
         `https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}&num=10&gbv=1`,
         { waitUntil: 'domcontentloaded', timeout: 3_000 },
