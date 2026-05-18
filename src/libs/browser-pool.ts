@@ -283,7 +283,7 @@ export async function searchViaPool(
       });
       await page.goto(
         `https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}&num=10&gbv=1`,
-        { waitUntil: 'commit', timeout: 3_000 },
+        { waitUntil: 'domcontentloaded', timeout: 3_000 },
       );
 
       await page.waitForTimeout(300);
