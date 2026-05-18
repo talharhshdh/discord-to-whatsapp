@@ -266,31 +266,28 @@ export async function searchViaPool(
       const acquired = await acquirePage(browser);
       conn = acquired.conn;
       page = acquired.page;
-      await page.route("**/*", (route: any) => {
-        const type = route.request().resourceType();
-
-        if (
-          type === "image" ||
-          type === "font" ||
-          type === "media" ||
-          type === "stylesheet"
-        ) {
-          return route.abort();
-        }
-
-        route.continue();
-      });
+   
       const startParam = (pageNumber - 1) * 10;
+
       await page.setUserAgent(
         "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)"
       );
+      await page.setRequestInterception(true);
+      page.on('request', (req: any) => {
+        const resourceType = req.resourceType();
+        if (['image', 'media', 'font', 'stylesheet'].includes(resourceType)) {
+          req.abort();
+        } else {
+          req.continue();
+        }
+      });
       await page.goto(
         `https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}&num=10&gbv=1`,
         { waitUntil: 'commit', timeout: 3_000 },
       );
 
       await page.waitForTimeout(300);
-
+     
       const results = await page.evaluate((fetchAI: boolean) => {
         if (document.querySelector('form[action="/sorry/index"], #captcha, .g-recaptcha')) {
           return { captcha: true, organic: [], aiResponse: null };
