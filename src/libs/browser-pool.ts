@@ -18,6 +18,8 @@ import {
   MAX_WORKER_CDP_FAILURES,
 } from './page-pool';
 import type { WorkerConnection } from './page-pool';
+const USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -264,19 +266,30 @@ export async function searchViaPool(
       const acquired = await acquirePage(browser);
       conn = acquired.conn;
       page = acquired.page;
+      await page.route("**/*", (route: any) => {
+        const type = route.request().resourceType();
 
+        if (
+          type === "image" ||
+          type === "font" ||
+          type === "media" ||
+          type === "stylesheet"
+        ) {
+          return route.abort();
+        }
+
+        route.continue();
+      });
       const startParam = (pageNumber - 1) * 10;
-
+      await page.setUserAgent(
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)"
+      );
       await page.goto(
-        `https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}&num=10`,
-        { waitUntil: 'domcontentloaded', timeout: 20_000 },
+        `https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}&num=10&gbv=1`,
+        { waitUntil: 'commit', timeout: 3_000 },
       );
 
-      await page
-        .waitForSelector('#search .g, #rso .g, .MjjYud .g, form[action="/sorry/index"]', {
-          timeout: 5_000,
-        })
-        .catch(() => { /* timeout is fine */ });
+      await page.waitForTimeout(300);
 
       const results = await page.evaluate((fetchAI: boolean) => {
         if (document.querySelector('form[action="/sorry/index"], #captcha, .g-recaptcha')) {
