@@ -201,11 +201,11 @@ jobs:
             echo "✅ Next workflow triggered!") &
 
           # Run the bot for 5 hours (18000 seconds) then stop gracefully
-          timeout 18000 npm start || code=$?
+          timeout 18000 npm start; code=$?
 
           if [ "$code" -eq 124 ]; then
             echo "⏱️ Process cleanly stopped after 5 hours."
-          elif [ -z "$code" ]; then
+          elif [ "$code" -eq 0 ]; then
             echo "✅ Process completed normally."
           else
             echo "❌ Process failed with exit code $code"

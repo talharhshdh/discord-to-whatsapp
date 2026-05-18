@@ -171,7 +171,7 @@ class DiscordWhatsAppBridge {
 
   /**
    * Maps WhatsApp LIDs ("192861614141583@lid") to standard phone JIDs
-   * ("923185853847@s.whatsapp.net").
+
    *
    * WhatsApp multi-device routes messages via LIDs internally. Baileys
    * populates this via the contacts.upsert / contacts.update events.
