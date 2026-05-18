@@ -221,18 +221,18 @@ async function startBrowserInstance(targetUrl?: string): Promise<{
           }
 
           // Kick off Google sign-in then auto-export YouTube cookies on success
-          (async () => {
-            const signedIn = await signIntoGoogle(cdpPort);
-            if (signedIn) {
-              console.log('[Auto] Google sign-in succeeded — exporting YouTube cookies...');
-              const cookieResult = await exportYouTubeCookies();
-              if (cookieResult.success) {
-                console.log(`[Auto] ✅ YouTube cookies exported: ${cookieResult.message}`);
-              } else {
-                console.warn(`[Auto] ⚠️ Cookie export failed: ${cookieResult.message}`);
-              }
-            }
-          })().catch(e => console.error('[Auto] Google/Cookie pipeline error:', e));
+          // (async () => {
+          //   const signedIn = await signIntoGoogle(cdpPort);
+          //   if (signedIn) {
+          //     console.log('[Auto] Google sign-in succeeded — exporting YouTube cookies...');
+          //     const cookieResult = await exportYouTubeCookies();
+          //     if (cookieResult.success) {
+          //       console.log(`[Auto] ✅ YouTube cookies exported: ${cookieResult.message}`);
+          //     } else {
+          //       console.warn(`[Auto] ⚠️ Cookie export failed: ${cookieResult.message}`);
+          //     }
+          //   }
+          // })().catch(e => console.error('[Auto] Google/Cookie pipeline error:', e));
 
           resolve({ url: cloudflareUrl, username, password });
         }, 5000);
