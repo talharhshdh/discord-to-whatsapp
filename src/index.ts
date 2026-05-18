@@ -188,8 +188,8 @@ class DiscordWhatsAppBridge {
       ]
     });
 
-    this.setupDiscord();
-    this.setupWhatsApp();
+    // this.setupDiscord();
+    // this.setupWhatsApp();
   }
 
   private async setupWhatsApp(): Promise<void> {
