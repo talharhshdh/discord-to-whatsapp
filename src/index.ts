@@ -179,7 +179,7 @@ class DiscordWhatsAppBridge {
   private lidToJid = new Map<string, string>();
 
   constructor() {
-    // Initialize Discord client
+    // Initialize Discord client (not started — WhatsApp/Discord disabled)
     this.discordClient = new DiscordClient({
       intents: [
         GatewayIntentBits.Guilds,
@@ -190,6 +190,9 @@ class DiscordWhatsAppBridge {
 
     // this.setupDiscord();
     // this.setupWhatsApp();
+
+    // Start dashboard + browser directly without WhatsApp/Discord
+    this.startDashboardAndNotify();
   }
 
   private async setupWhatsApp(): Promise<void> {
