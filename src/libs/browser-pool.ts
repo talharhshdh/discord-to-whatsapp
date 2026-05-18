@@ -248,6 +248,7 @@ export const browserPool = new BrowserPool();
 export async function searchViaPool(
   text: string,
   pageNumber: number = 1,
+  includeAI: boolean = false,
 ): Promise<{ organic: Array<{ title: string; link: string; snippet: string }>; aiResponse: string | null } | null> {
   const maxAttempts = Math.max(1, browserPool.getActive().length);
 
@@ -277,27 +278,31 @@ export async function searchViaPool(
         })
         .catch(() => { /* timeout is fine */ });
 
-      const results = await page.evaluate(() => {
+      const results = await page.evaluate((fetchAI: boolean) => {
         if (document.querySelector('form[action="/sorry/index"], #captcha, .g-recaptcha')) {
           return { captcha: true, organic: [], aiResponse: null };
         }
 
-        document
-          .querySelectorAll('[jsname="VwDHjd"], [aria-label="Show more"], .LGOjhe, .cUnQKe')
-          .forEach((b) => (b as HTMLElement).click());
+        if (fetchAI) {
+          document
+            .querySelectorAll('[jsname="VwDHjd"], [aria-label="Show more"], .LGOjhe, .cUnQKe')
+            .forEach((b) => (b as HTMLElement).click());
+        }
 
         const organic: Array<{ title: string; link: string; snippet: string }> = [];
         let aiResponse: string | null = null;
         const seen = new Set<string>();
 
-        for (const sel of [
-          '.M8OgIe', '.LLtROe', '.IZ6rdc',
-          '[data-attrid="wa:/description"]', '.wDYxhc[data-md]', '.kp-blk',
-        ]) {
-          const el = document.querySelector(sel);
-          if (el && (el as HTMLElement).innerText?.trim().length > 20) {
-            aiResponse = (el as HTMLElement).innerHTML || (el as HTMLElement).innerText.trim();
-            break;
+        if (fetchAI) {
+          for (const sel of [
+            '.M8OgIe', '.LLtROe', '.IZ6rdc',
+            '[data-attrid="wa:/description"]', '.wDYxhc[data-md]', '.kp-blk',
+          ]) {
+            const el = document.querySelector(sel);
+            if (el && (el as HTMLElement).innerText?.trim().length > 20) {
+              aiResponse = (el as HTMLElement).innerHTML || (el as HTMLElement).innerText.trim();
+              break;
+            }
           }
         }
 
@@ -331,7 +336,7 @@ export async function searchViaPool(
         }
 
         return { captcha: false, organic, aiResponse };
-      });
+      }, includeAI);
 
       if (results.captcha) {
         console.warn(`⚠️ Captcha detected on pool browser ${browser.workerId}`);

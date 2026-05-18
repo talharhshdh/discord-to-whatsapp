@@ -935,12 +935,12 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       } else if (engine === 'selenium') {
         results = await trySeleniumSearch();
       } else if (engine === 'pool') {
-        results = await searchViaPool(text, pageNumber);
+        results = await searchViaPool(text, pageNumber, includeAI);
         if (!results) return err(res, 'No browsers available in pool', 503);
       } else {
         // auto: try pool first → local CDP → selenium fallback
         try {
-          results = await searchViaPool(text, pageNumber);
+          results = await searchViaPool(text, pageNumber, includeAI);
         } catch { results = null; }
         if (!results) {
           try {
