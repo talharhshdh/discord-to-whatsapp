@@ -329,7 +329,7 @@ export async function searchViaPool(
 
       await page
         .waitForSelector('#search .g, #rso .g, .MjjYud .g, form[action="/sorry/index"]', {
-          timeout: 5_000,
+          timeout: 100,
         })
         .catch(() => { /* timeout is fine */ });
 
