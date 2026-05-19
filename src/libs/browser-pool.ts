@@ -86,11 +86,6 @@ class BrowserPool {
       });
       console.log(`✅ Browser worker registered: ${workerId} → ${cdpUrl}  (pool size: ${this.browsers.size})`);
     }
-    // Pre-warm: establish WebSocket connection and open one idle page in the background
-    const registered = this.browsers.get(workerId)!;
-    acquirePage(registered)
-      .then(({ conn, page }) => releasePage(conn, page, false))
-      .catch(() => { /* warmup failure is non-fatal */ });
   }
 
   /** Update heartbeat timestamp for a known worker. Returns false if unknown. */
