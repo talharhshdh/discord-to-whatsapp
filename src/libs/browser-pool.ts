@@ -270,7 +270,10 @@ export async function searchViaPool(
       await page.setRequestInterception(true);
       page.on('request', (req: any) => {
         if (req.isInterceptResolutionHandled()) return;
-        if (['image', 'font', 'media'].includes(req.resourceType())) {
+        const type = req.resourceType();
+        if (['image', 'font', 'media', 'stylesheet'].includes(type)) {
+          req.abort();
+        } else if (!includeAI && ['script', 'xhr', 'fetch'].includes(type)) {
           req.abort();
         } else {
           req.continue();
@@ -280,7 +283,7 @@ export async function searchViaPool(
       const startParam = (pageNumber - 1) * 10;
 
       await page.goto(
-        `https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}&num=10`,
+        `https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}&num=10&hl=en&udm=web&gbv=2&pws=0`,
         { waitUntil: 'domcontentloaded', timeout: 30_000 }
       );
 

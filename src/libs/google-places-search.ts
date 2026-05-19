@@ -1009,7 +1009,7 @@ function extractGoogleSearchCards(): Array<{
  */
 function buildGoogleSearchUrl(query: string, pageNumber: number): string {
   const start = (pageNumber - 1) * PAGE_SIZE;
-  return `https://www.google.com/search?q=${encodeURIComponent(query)}&udm=1&start=${start}`;
+  return `https://www.google.com/search?q=${encodeURIComponent(query)}&udm=1&start=${start}&hl=en`;
 }
 
 /**
@@ -1043,7 +1043,8 @@ export async function searchViaGoogleSearchUrl(
       await page.setRequestInterception(true);
       page.on('request', (req: any) => {
         if (req.isInterceptResolutionHandled()) return;
-        if (['image', 'font', 'media'].includes(req.resourceType())) {
+        const type = req.resourceType();
+        if (['image', 'font', 'media', 'stylesheet', 'script', 'xhr', 'fetch'].includes(type)) {
           req.abort();
         } else {
           req.continue();
@@ -1225,7 +1226,8 @@ export async function searchViaGoogleSearchStream(
         await page.setRequestInterception(true);
         page.on('request', (req: any) => {
           if (req.isInterceptResolutionHandled()) return;
-          if (['image', 'font', 'media'].includes(req.resourceType())) {
+          const type = req.resourceType();
+          if (['image', 'font', 'media', 'stylesheet', 'script', 'xhr', 'fetch'].includes(type)) {
             req.abort();
           } else {
             req.continue();
