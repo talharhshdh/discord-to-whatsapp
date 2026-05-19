@@ -28,6 +28,9 @@ export interface WorkerConnection {
 /** Keyed by workerId. Populated lazily on first use, invalidated on error. */
 const workerConnections = new Map<string, WorkerConnection>();
 
+/** In-flight connection attempts keyed by workerId — prevents duplicate connects when warmup and search race. */
+const pendingConnections = new Map<string, Promise<WorkerConnection>>();
+
 /** Per-worker consecutive CDP_UNREACHABLE counter. Reset on success or reconnect. */
 export const workerCdpFailures = new Map<string, number>();
 
@@ -55,27 +58,36 @@ export async function acquirePage(
   let conn = workerConnections.get(browser.workerId);
 
   if (!conn) {
-    const versionResp = await fetch(`${browser.cdpUrl}/json/version`, {
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!versionResp.ok) throw new Error('CDP_UNREACHABLE');
-    const versionInfo = (await versionResp.json()) as {
-      webSocketDebuggerUrl?: string;
-    };
-    const rawWsUrl = versionInfo.webSocketDebuggerUrl;
-    if (!rawWsUrl) throw new Error('NO_WS_URL');
+    let pending = pendingConnections.get(browser.workerId);
+    if (!pending) {
+      pending = (async (): Promise<WorkerConnection> => {
+        const versionResp = await fetch(`${browser.cdpUrl}/json/version`, {
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (!versionResp.ok) throw new Error('CDP_UNREACHABLE');
+        const versionInfo = (await versionResp.json()) as {
+          webSocketDebuggerUrl?: string;
+        };
+        const rawWsUrl = versionInfo.webSocketDebuggerUrl;
+        if (!rawWsUrl) throw new Error('NO_WS_URL');
 
-    const tunnelHost = new URL(browser.cdpUrl).host;
-    const wsUrl = rawWsUrl.replace(/^ws:\/\/[^/]+/, `wss://${tunnelHost}`);
+        const tunnelHost = new URL(browser.cdpUrl).host;
+        const wsUrl = rawWsUrl.replace(/^ws:\/\/[^/]+/, `wss://${tunnelHost}`);
 
-    const browserConn = await puppeteer.connect({
-      browserWSEndpoint: wsUrl,
-      defaultViewport: null,
-    });
+        const browserConn = await puppeteer.connect({
+          browserWSEndpoint: wsUrl,
+          defaultViewport: null,
+        });
 
-    conn = { browserConn, wsUrl, freePages: [], busyPages: new Set() };
-    workerConnections.set(browser.workerId, conn);
-    console.log(`🔗 New puppeteer connection cached for ${browser.workerId}`);
+        const newConn: WorkerConnection = { browserConn, wsUrl, freePages: [], busyPages: new Set() };
+        workerConnections.set(browser.workerId, newConn);
+        pendingConnections.delete(browser.workerId);
+        console.log(`🔗 New puppeteer connection cached for ${browser.workerId}`);
+        return newConn;
+      })();
+      pendingConnections.set(browser.workerId, pending);
+    }
+    conn = await pending;
   }
 
   // Re-use idle page or open a new one
@@ -117,19 +129,29 @@ export async function releasePage(
   discard = false,
 ): Promise<void> {
   conn.busyPages.delete(page);
-  if (discard || conn.freePages.length >= MAX_IDLE_PAGES) {
+  if (conn.freePages.length >= MAX_IDLE_PAGES) {
     try {
       await page.close();
     } catch {
       /* ignore */
     }
-  } else {
-    conn.freePages.push(page);
+    return;
   }
+  if (discard) {
+    // Navigate to about:blank to clear Google's iframes/frame state before recycling
+    try {
+      await page.goto('about:blank', { timeout: 3000 });
+    } catch {
+      try { await page.close(); } catch { /* ignore */ }
+      return;
+    }
+  }
+  conn.freePages.push(page);
 }
 
 /** Invalidate and disconnect a cached worker connection (called on fatal errors). */
 export function invalidateWorkerConnection(workerId: string): void {
+  pendingConnections.delete(workerId);
   const conn = workerConnections.get(workerId);
   if (!conn) return;
   workerConnections.delete(workerId);

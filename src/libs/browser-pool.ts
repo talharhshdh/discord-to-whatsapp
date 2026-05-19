@@ -86,6 +86,11 @@ class BrowserPool {
       });
       console.log(`✅ Browser worker registered: ${workerId} → ${cdpUrl}  (pool size: ${this.browsers.size})`);
     }
+    // Pre-warm: establish WebSocket connection and open one idle page in the background
+    const registered = this.browsers.get(workerId)!;
+    acquirePage(registered)
+      .then(({ conn, page }) => releasePage(conn, page, false))
+      .catch(() => { /* warmup failure is non-fatal */ });
   }
 
   /** Update heartbeat timestamp for a known worker. Returns false if unknown. */
@@ -322,10 +327,12 @@ export async function searchViaPool(
 
       const startParam = (pageNumber - 1) * 10;
 
-      await page.goto(
-        `https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}&num=10&hl=en&udm=web&gbv=2&pws=0`,
-        { waitUntil: 'domcontentloaded', timeout: 30_000 }
-      );
+      // await page.goto(
+      //   `https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}&num=10&hl=en&udm=web&gbv=2&pws=0`,
+      //   { waitUntil: 'domcontentloaded', timeout: 30_000 }
+      // );
+      const client = await page.target().createCDPSession();
+      await client.send('Page.navigate', { url:  `https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}&num=10&hl=en&udm=web&gbv=2&pws=0`, timeout: 30_000});
 
       await page
         .waitForSelector('#search .g, #rso .g, .MjjYud .g, form[action="/sorry/index"]', {
