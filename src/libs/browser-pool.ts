@@ -274,6 +274,11 @@ export async function searchViaPool(
         const type = req.resourceType();
         const url = req.url();
 
+        // Never block the main document navigation
+        if (type === 'document') {
+          return req.continue();
+        }
+
         // Block unnecessary resource types
         if (
           [
