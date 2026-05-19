@@ -593,7 +593,18 @@ export async function searchPlacesViaPool(
       );
       browserPool.recordFailure();
 
-      if (['CDP_UNREACHABLE', 'NO_WS_URL', 'Protocol error', 'WebSocket'].some((k) => msg.includes(k))) {
+      if (msg.includes('CAPTCHA_DETECTED')) {
+        if (page) {
+          try {
+            const client = await page.target().createCDPSession();
+            await client.send('Network.clearBrowserCookies');
+            await client.detach();
+          } catch { /* ignore */ }
+        }
+        console.warn(`⏳ Temporarily evicting ${browser.workerId} for IP cooldown.`);
+        browserPool.deregister(browser.workerId);
+        page = null;
+      } else if (['CDP_UNREACHABLE', 'NO_WS_URL', 'Protocol error', 'WebSocket'].some((k) => msg.includes(k))) {
         invalidateWorkerConnection(browser.workerId);
         page = null;
 
@@ -782,7 +793,18 @@ export async function searchPlacesStream(
       );
       browserPool.recordFailure();
 
-      if (isTransportError) {
+      if (msg.includes('CAPTCHA_DETECTED')) {
+        if (page) {
+          try {
+            const client = await page.target().createCDPSession();
+            await client.send('Network.clearBrowserCookies');
+            await client.detach();
+          } catch { /* ignore */ }
+        }
+        console.warn(`⏳ Temporarily evicting ${browser.workerId} for IP cooldown.`);
+        browserPool.deregister(browser.workerId);
+        page = null;
+      } else if (isTransportError) {
         invalidateWorkerConnection(browser.workerId);
         page = null;
 
@@ -1103,7 +1125,18 @@ export async function searchViaGoogleSearchUrl(
       );
       browserPool.recordFailure();
 
-      if (isTransportError) {
+      if (msg.includes('CAPTCHA_DETECTED')) {
+        if (page) {
+          try {
+            const client = await page.target().createCDPSession();
+            await client.send('Network.clearBrowserCookies');
+            await client.detach();
+          } catch { /* ignore */ }
+        }
+        console.warn(`⏳ Temporarily evicting ${browser.workerId} for IP cooldown.`);
+        browserPool.deregister(browser.workerId);
+        page = null;
+      } else if (isTransportError) {
         invalidateWorkerConnection(browser.workerId);
         page = null;
 

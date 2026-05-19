@@ -269,8 +269,8 @@ export async function searchViaPool(
 
       await page.goto(
         `https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}&num=10`,
-        { waitUntil: 'domcontentloaded', timeout: 20_000 },
-      );
+        { waitUntil: 'domcontentloaded', timeout: 30_000 },
+      ).catch(() => { /* proceed even if it times out */ });
 
       await page
         .waitForSelector('#search .g, #rso .g, .MjjYud .g, form[action="/sorry/index"]', {
@@ -348,7 +348,18 @@ export async function searchViaPool(
       console.error(`❌ Pool search failed via ${browser.workerId} (attempt ${attempt + 1}/${maxAttempts}):`, msg);
       browserPool.recordFailure();
 
-      if (['CDP_UNREACHABLE', 'NO_WS_URL', 'Protocol error', 'WebSocket'].some((k) => msg.includes(k))) {
+      if (msg.includes('CAPTCHA_DETECTED')) {
+        if (page) {
+          try {
+            const client = await page.target().createCDPSession();
+            await client.send('Network.clearBrowserCookies');
+            await client.detach();
+          } catch { /* ignore */ }
+        }
+        console.warn(`⏳ Temporarily evicting ${browser.workerId} for IP cooldown.`);
+        browserPool.deregister(browser.workerId);
+        page = null;
+      } else if (['CDP_UNREACHABLE', 'NO_WS_URL', 'Protocol error', 'WebSocket'].some((k) => msg.includes(k))) {
         invalidateWorkerConnection(browser.workerId);
         page = null;
 
