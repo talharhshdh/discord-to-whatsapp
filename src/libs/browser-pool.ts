@@ -265,12 +265,24 @@ export async function searchViaPool(
       conn = acquired.conn;
       page = acquired.page;
 
+      // ── Request interception: block heavy assets ───────────────────────
+      page.removeAllListeners('request');
+      await page.setRequestInterception(true);
+      page.on('request', (req: any) => {
+        if (req.isInterceptResolutionHandled()) return;
+        if (['image', 'font', 'media'].includes(req.resourceType())) {
+          req.abort();
+        } else {
+          req.continue();
+        }
+      });
+
       const startParam = (pageNumber - 1) * 10;
 
       await page.goto(
         `https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}&num=10`,
-        { waitUntil: 'domcontentloaded', timeout: 30_000 },
-      ).catch(() => { /* proceed even if it times out */ });
+        { waitUntil: 'domcontentloaded', timeout: 30_000 }
+      );
 
       await page
         .waitForSelector('#search .g, #rso .g, .MjjYud .g, form[action="/sorry/index"]', {
@@ -359,7 +371,10 @@ export async function searchViaPool(
         console.warn(`⏳ Temporarily evicting ${browser.workerId} for IP cooldown.`);
         browserPool.deregister(browser.workerId);
         page = null;
-      } else if (['CDP_UNREACHABLE', 'NO_WS_URL', 'Protocol error', 'WebSocket'].some((k) => msg.includes(k))) {
+      } else if ([
+        'CDP_UNREACHABLE', 'NO_WS_URL', 'Protocol error', 'WebSocket',
+        'Connection closed', 'Detached Frame', 'Target closed', 'Session closed'
+      ].some((k) => msg.includes(k))) {
         invalidateWorkerConnection(browser.workerId);
         page = null;
 
@@ -376,7 +391,9 @@ export async function searchViaPool(
       }
     } finally {
       if (conn && page) {
-        await releasePage(conn, page, pageErrored);
+        // Always discard pages used for Search — Google navigation leaves
+        // the page in a state that can cause "Detached Frame" errors on reuse.
+        await releasePage(conn, page, true);
       }
     }
   }
