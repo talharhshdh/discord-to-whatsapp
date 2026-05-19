@@ -77,6 +77,11 @@ google-chrome-stable \
   --no-sandbox \
   --disable-dev-shm-usage \
   --disable-gpu \
+  --disable-dbus \
+  --disable-breakpad \
+  --disable-component-update \
+  --no-pings \
+  --disable-features=MediaRouter,DialMediaRouteProvider \
   --remote-debugging-port=${CDP_PORT} \
   --remote-debugging-address=0.0.0.0 \
   --remote-allow-origins=* \
@@ -86,6 +91,7 @@ google-chrome-stable \
   --disable-sync \
   --no-first-run \
   --disable-default-apps \
+  --about:blank \
   &
 
 CHROME_PID=$!
@@ -132,9 +138,78 @@ for i in $(seq 1 30); do
   sleep 1
 done
 
-# Pre-warm: open google.com so DNS + TCP are warm for the first real request
-echo "🔥 Pre-warming browser on google.com..."
-curl -s "http://127.0.0.1:${CDP_PORT}/json/new?https://www.google.com" > /dev/null || true
+# ---------------------------------------------------------------------------
+# 2.5 Test Google Search (Check for CAPTCHA)
+# ---------------------------------------------------------------------------
+echo "🔥 Running test Google Search..."
+
+npm install puppeteer-core --no-save > /dev/null 2>&1
+
+cat << 'EOF' > test-search.js
+const puppeteer = require('puppeteer-core');
+
+async function test() {
+  let browser;
+  try {
+    browser = await puppeteer.connect({ browserURL: 'http://127.0.0.1:9222' });
+    const page = await browser.newPage();
+    
+    await page.setRequestInterception(true);
+    page.on('request', (req) => {
+      if (['image', 'font', 'media'].includes(req.resourceType())) {
+        req.abort();
+      } else {
+        req.continue();
+      }
+    });
+
+    await page.goto('https://www.google.com/search?q=hello+world', { waitUntil: 'domcontentloaded', timeout: 30000 });
+    
+    const captcha = await page.$('form[action="/sorry/index"], #captcha, .g-recaptcha');
+    if (captcha) {
+      console.error('CAPTCHA_DETECTED');
+      process.exit(1);
+    }
+    
+    const results = await page.$$('.g');
+    if (results.length === 0) {
+      console.error('NO_RESULTS');
+      process.exit(1);
+    }
+    
+    console.log('SUCCESS');
+    process.exit(0);
+  } catch (e) {
+    console.error(e);
+    process.exit(1);
+  } finally {
+    if (browser) {
+      browser.disconnect();
+    }
+  }
+}
+test();
+EOF
+
+if ! node test-search.js; then
+  echo "❌ Test search failed (CAPTCHA or no results). IP is likely blocked."
+  
+  echo "🔄 Triggering a replacement worker..."
+  if [ -n "${PAT_TOKEN:-}" ]; then
+    curl -s -X POST \
+      -H "Accept: application/vnd.github+json" \
+      -H "Authorization: Bearer ${PAT_TOKEN}" \
+      -H "X-GitHub-Api-Version: 2022-11-28" \
+      "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/browser-worker.yml/dispatches" \
+      -d "{\"ref\":\"${GITHUB_REF_NAME:-main}\"}" || true
+  else
+    echo "⚠️ PAT_TOKEN not set, cannot trigger replacement worker."
+  fi
+  
+  exit 1
+fi
+
+echo "✅ Test search successful. Proceeding to register with dashboard."
 
 # ---------------------------------------------------------------------------
 # 3. Register with main dashboard
