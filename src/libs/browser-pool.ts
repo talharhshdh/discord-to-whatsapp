@@ -248,7 +248,7 @@ export const browserPool = new BrowserPool();
 export async function searchViaPool(
   text: string,
   pageNumber: number = 1,
-  includeAI:boolean = false,
+  includeAI: boolean = false,
 ): Promise<{ organic: Array<{ title: string; link: string; snippet: string }>; aiResponse: string | null } | null> {
   const maxAttempts = Math.max(1, browserPool.getActive().length);
   console.warn(includeAI)
@@ -270,14 +270,49 @@ export async function searchViaPool(
       await page.setRequestInterception(true);
       page.on('request', (req: any) => {
         if (req.isInterceptResolutionHandled()) return;
+
         const type = req.resourceType();
-        if (['image', 'font', 'media', 'stylesheet'].includes(type)) {
-          req.abort();
-        } else if (!includeAI && ['script', 'xhr', 'fetch'].includes(type)) {
-          req.abort();
-        } else {
-          req.continue();
+        const url = req.url();
+
+        // Block unnecessary resource types
+        if (
+          [
+            'image',
+            'media',
+            'font',
+            'stylesheet',
+            'websocket',
+            'manifest',
+            'other',
+          ].includes(type)
+        ) {
+          return req.abort();
         }
+
+        // Block telemetry / tracking / analytics
+        if (
+          url.includes('gen_204') ||
+          url.includes('/log?') ||
+          url.includes('sodar') ||
+          url.includes('batchexecute') ||
+          url.includes('xjs=s') ||
+          url.includes('m=') ||
+          url.includes('async=') ||
+          url.includes('google-analytics') ||
+          url.includes('play.google.com/log') ||
+          url.includes('/gen_204') ||
+          url.includes('gws-wiz') ||
+          url.includes('clients1.google.com')
+        ) {
+          return req.abort();
+        }
+
+        // Block JS entirely for maximum speed
+        if (['script', 'xhr', 'fetch'].includes(type)) {
+          return req.abort();
+        }
+
+        req.continue();
       });
 
       const startParam = (pageNumber - 1) * 10;

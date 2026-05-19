@@ -58,16 +58,12 @@ jobs:
           echo "✅ cloudflared installed"
 
       - name: Run browser worker
-        env:
-          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
           source .env
           export DASHBOARD_DOMAIN="${DASHBOARD_DOMAIN}"
           export WORKER_ID="browser-worker-${{ matrix.worker }}-$(hostname | cut -c1-6)-$(head -c4 /dev/urandom | xxd -p)"
           export MAX_RUNTIME=18000
           export HEARTBEAT_INTERVAL=60
-          export GITHUB_REPOSITORY="${{ github.repository }}"
-          export GITHUB_REF_NAME="${{ github.ref_name }}"
 
           echo "🏷️ Worker ID: ${WORKER_ID}"
           echo "🌍 Dashboard: https://${DASHBOARD_DOMAIN}"
