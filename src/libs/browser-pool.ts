@@ -289,7 +289,7 @@ export async function searchViaPool(
         { waitUntil: 'domcontentloaded', timeout: 3_000 },
       );
 
-      await page.waitForTimeout(300);
+      // await page.waitForTimeout(300);
      
       const results = await page.evaluate((fetchAI: boolean) => {
         if (document.querySelector('form[action="/sorry/index"], #captcha, .g-recaptcha')) {
