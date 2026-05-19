@@ -251,7 +251,6 @@ export async function searchViaPool(
   includeAI: boolean = false,
 ): Promise<{ organic: Array<{ title: string; link: string; snippet: string }>; aiResponse: string | null } | null> {
   const maxAttempts = Math.max(1, browserPool.getActive().length);
-  console.warn(includeAI)
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const browser = browserPool.getNext();
     if (!browser) break;
@@ -327,15 +326,15 @@ export async function searchViaPool(
       //   { waitUntil: 'domcontentloaded', timeout: 30_000 }
       // );
       const client = await page.target().createCDPSession();
-      await client.send('Page.navigate', { url:  `https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}&num=10&hl=en&udm=web&gbv=2&pws=0`, timeout: 30_000});
+      await client.send('Page.navigate', { url:  `https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}&num=10&hl=en&udm=web&gbv=2&pws=0`});
 
       await page
-        .waitForSelector('#search .g, #rso .g, .MjjYud .g, form[action="/sorry/index"]', {
+        .waitForSelector('#search', {
           timeout: 100,
         })
         .catch(() => { /* timeout is fine */ });
 
-      const results = await page.evaluate(() => {
+      const extractResults = async () => page.evaluate(() => {
         if (document.querySelector('form[action="/sorry/index"], #captcha, .g-recaptcha')) {
           return { captcha: true, organic: [], aiResponse: null };
         }
@@ -390,6 +389,28 @@ export async function searchViaPool(
 
         return { captcha: false, organic, aiResponse };
       });
+
+      let results = await extractResults();
+
+      if (!results.captcha && results.organic.length === 0) {
+        await page
+          .waitForSelector('#search .g, #rso .g, .MjjYud .g, a[href^="http"]', {
+            timeout: 15_000,
+          })
+          .catch(() => { /* timeout is fine */ });
+
+        results = await extractResults();
+
+        if (!results.captcha && results.organic.length === 0) {
+          await page
+            .waitForSelector('form[action="/sorry/index"], #captcha, .g-recaptcha', {
+              timeout: 5_000,
+            })
+            .catch(() => { /* timeout is fine */ });
+
+          results = await extractResults();
+        }
+      }
 
       if (results.captcha) {
         console.warn(`⚠️ Captcha detected on pool browser ${browser.workerId}`);
