@@ -269,9 +269,7 @@ export async function searchViaPool(
    
       const startParam = (pageNumber - 1) * 10;
 
-      await page.setUserAgent(
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)"
-      );
+    
       await page.setRequestInterception(true);
       page.removeAllListeners('request');
       const requestHandler = (req: any) => {
