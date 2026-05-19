@@ -18,8 +18,6 @@ import {
   MAX_WORKER_CDP_FAILURES,
 } from './page-pool';
 import type { WorkerConnection } from './page-pool';
-const USER_AGENT =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -250,10 +248,10 @@ export const browserPool = new BrowserPool();
 export async function searchViaPool(
   text: string,
   pageNumber: number = 1,
-  includeAI: boolean = false,
+  includeAI:boolean = false,
 ): Promise<{ organic: Array<{ title: string; link: string; snippet: string }>; aiResponse: string | null } | null> {
   const maxAttempts = Math.max(1, browserPool.getActive().length);
-
+  console.warn(includeAI)
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const browser = browserPool.getNext();
     if (!browser) break;
@@ -266,54 +264,41 @@ export async function searchViaPool(
       const acquired = await acquirePage(browser);
       conn = acquired.conn;
       page = acquired.page;
-   
+
       const startParam = (pageNumber - 1) * 10;
 
-    
-      await page.setRequestInterception(true);
-      page.removeAllListeners('request');
-      const requestHandler = (req: any) => {
-        if (req.isInterceptResolutionHandled()) return;
-        const resourceType = req.resourceType();
-        if (['image', 'media', 'font', 'stylesheet'].includes(resourceType)) {
-          req.abort();
-        } else {
-          req.continue();
-        }
-      };
-      page.on('request', requestHandler);
       await page.goto(
-        `https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}&num=10&gbv=1`,
-        { waitUntil: 'domcontentloaded', timeout: 3_000 },
+        `https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}&num=10`,
+        { waitUntil: 'domcontentloaded', timeout: 20_000 },
       );
 
-      // await page.waitForTimeout(300);
-     
-      const results = await page.evaluate((fetchAI: boolean) => {
+      await page
+        .waitForSelector('#search .g, #rso .g, .MjjYud .g, form[action="/sorry/index"]', {
+          timeout: 5_000,
+        })
+        .catch(() => { /* timeout is fine */ });
+
+      const results = await page.evaluate(() => {
         if (document.querySelector('form[action="/sorry/index"], #captcha, .g-recaptcha')) {
           return { captcha: true, organic: [], aiResponse: null };
         }
 
-        if (fetchAI) {
-          document
-            .querySelectorAll('[jsname="VwDHjd"], [aria-label="Show more"], .LGOjhe, .cUnQKe')
-            .forEach((b) => (b as HTMLElement).click());
-        }
+        document
+          .querySelectorAll('[jsname="VwDHjd"], [aria-label="Show more"], .LGOjhe, .cUnQKe')
+          .forEach((b) => (b as HTMLElement).click());
 
         const organic: Array<{ title: string; link: string; snippet: string }> = [];
         let aiResponse: string | null = null;
         const seen = new Set<string>();
 
-        if (fetchAI) {
-          for (const sel of [
-            '.M8OgIe', '.LLtROe', '.IZ6rdc',
-            '[data-attrid="wa:/description"]', '.wDYxhc[data-md]', '.kp-blk',
-          ]) {
-            const el = document.querySelector(sel);
-            if (el && (el as HTMLElement).innerText?.trim().length > 20) {
-              aiResponse = (el as HTMLElement).innerHTML || (el as HTMLElement).innerText.trim();
-              break;
-            }
+        for (const sel of [
+          '.M8OgIe', '.LLtROe', '.IZ6rdc',
+          '[data-attrid="wa:/description"]', '.wDYxhc[data-md]', '.kp-blk',
+        ]) {
+          const el = document.querySelector(sel);
+          if (el && (el as HTMLElement).innerText?.trim().length > 20) {
+            aiResponse = (el as HTMLElement).innerHTML || (el as HTMLElement).innerText.trim();
+            break;
           }
         }
 
@@ -347,7 +332,7 @@ export async function searchViaPool(
         }
 
         return { captcha: false, organic, aiResponse };
-      }, includeAI);
+      });
 
       if (results.captcha) {
         console.warn(`⚠️ Captcha detected on pool browser ${browser.workerId}`);
