@@ -134,7 +134,7 @@ async function startBrowserInstance(targetUrl?: string): Promise<{
       '--shm-size=1gb',
       '-p', `${port}:3000`,
       '-p', `${cdpPort}:9223`,
-      '-v', `${process.cwd()}/browser_data:/config`,
+      '-v', `${path.join(path.resolve(__dirname, '..', '..'), 'browser_data').replace(/\\/g, '/')}:/config`,
       '-e', 'TZ=Etc/UTC',
       '-e', `CUSTOM_USER=${username}`,
       '-e', `PASSWORD=${password}`,
@@ -341,7 +341,7 @@ export async function exportYouTubeCookies(
   }
 
   const { containerName } = instance;
-  const cookiesPath = path.join(process.cwd(), 'browser_data', 'youtube-cookies.txt');
+  const cookiesPath = path.join(path.resolve(__dirname, '..', '..'), 'browser_data', 'youtube-cookies.txt');
 
   // Inline Python script executed inside the container.
   // Connects to Chrome CDP on 127.0.0.1:9222 (loopback — always reachable from inside).
@@ -441,7 +441,7 @@ export async function exportYouTubeCookies(
   ].join('\n');
 
   // Write script to the bind-mounted volume so docker exec can read it
-  const scriptPath = path.join(process.cwd(), 'browser_data', '_cdp_cookies.py');
+  const scriptPath = path.join(path.resolve(__dirname, '..', '..'), 'browser_data', '_cdp_cookies.py');
   fs.writeFileSync(scriptPath, pyScript, 'utf-8');
 
   try {
@@ -476,7 +476,7 @@ export async function exportYouTubeCookies(
  * Returns the path to the YouTube cookies file if it exists, otherwise undefined.
  */
 export function getYouTubeCookiesPath(): string | undefined {
-  const p = path.join(process.cwd(), 'browser_data', 'youtube-cookies.txt');
+  const p = path.join(path.resolve(__dirname, '..', '..'), 'browser_data', 'youtube-cookies.txt');
   return fs.existsSync(p) ? p : undefined;
 }
 

@@ -38,7 +38,7 @@ export async function signIntoGoogle(cdpPort: number): Promise<boolean> {
 
     // Wait for navigation after submit
     console.log('[Google Sign-In] Waiting for sign-in to complete...');
-    await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 }).catch(() => {});
+    await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 20000 }).catch(() => { });
 
     // Confirm we are no longer on an accounts.google.com/signin page
     const finalUrl = page.url();

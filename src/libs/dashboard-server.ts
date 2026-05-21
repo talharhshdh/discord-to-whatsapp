@@ -36,7 +36,7 @@ import { startVSCode } from './vscode';
 import { startBrowser } from './browser';
 import { exportYouTubeCookies } from './browser';
 import { detectAndDownload } from './downloader';
-import { searchYouTube, getYouTubeInfo, downloadYouTubeVideo, downloadYouTubeVideoFallback } from './youtube-dl';
+import { searchYouTube, getYouTubeInfo, downloadYouTubeVideo } from './youtube-dl';
 import { searchMovies } from './movie-search';
 import type { YouTubeQualityOption } from './youtube-dl';
 import { browserPool, searchViaPool } from './browser-pool';

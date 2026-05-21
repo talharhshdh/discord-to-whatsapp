@@ -94,15 +94,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: "pip"
 
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          # [DISABLED] Heavy ML/AI deps — uncomment to re-enable
-          # pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
-          # pip install "llama-cpp-python" huggingface_hub accelerate
-          # pip install qwen-tts soundfile edge-tts
-          # pip install git+https://github.com/myshell-ai/MeloTTS.git
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
           pip install seleniumbase fastapi uvicorn pydantic rembg onnxruntime python-multipart openai-whisper easyocr
           seleniumbase install chromedriver
 
