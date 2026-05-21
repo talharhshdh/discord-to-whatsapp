@@ -68,15 +68,15 @@ jobs:
           aws configure set aws_secret_access_key ${R2_SECRET_ACCESS_KEY}
           aws configure set default.region auto
 
-      - name: Load State from Cloudflare R2
-        run: |
-          source .env
-          echo "📥 Downloading latest state..."
-          aws s3 cp s3://${R2_BUCKET_NAME}/state.tar.gz state.tar.gz --endpoint-url https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com || echo "No previous state found."
-          if [ -f "state.tar.gz" ]; then
-            echo "📦 Extracting state..."
-            tar -xzf state.tar.gz -C $(pwd) --overwrite || echo "Failed to extract state"
-          fi
+      # - name: Load State from Cloudflare R2
+      #   run: |
+      #     source .env
+      #     echo "📥 Downloading latest state..."
+      #     aws s3 cp s3://${R2_BUCKET_NAME}/state.tar.gz state.tar.gz --endpoint-url https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com || echo "No previous state found."
+      #     if [ -f "state.tar.gz" ]; then
+      #       echo "📦 Extracting state..."
+      #       tar -xzf state.tar.gz -C $(pwd) --overwrite || echo "Failed to extract state"
+      #     fi
 
       - name: Install dependencies
         run: npm install
