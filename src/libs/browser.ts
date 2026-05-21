@@ -159,7 +159,7 @@ async function startBrowserInstance(targetUrl?: string): Promise<{
     const socatName = `${containerName}-cdp-proxy`;
     try {
       // Remove any leftover socat container
-      await execAsync(`docker rm -f ${socatName}`).catch(() => {});
+      await execAsync(`docker rm -f ${socatName}`).catch(() => { });
       await execFileAsync('docker', [
         'run', '-d', '--rm',
         '--name', socatName,
@@ -221,18 +221,18 @@ async function startBrowserInstance(targetUrl?: string): Promise<{
           }
 
           // Kick off Google sign-in then auto-export YouTube cookies on success
-          // (async () => {
-          //   const signedIn = await signIntoGoogle(cdpPort);
-          //   if (signedIn) {
-          //     console.log('[Auto] Google sign-in succeeded — exporting YouTube cookies...');
-          //     const cookieResult = await exportYouTubeCookies();
-          //     if (cookieResult.success) {
-          //       console.log(`[Auto] ✅ YouTube cookies exported: ${cookieResult.message}`);
-          //     } else {
-          //       console.warn(`[Auto] ⚠️ Cookie export failed: ${cookieResult.message}`);
-          //     }
-          //   }
-          // })().catch(e => console.error('[Auto] Google/Cookie pipeline error:', e));
+          (async () => {
+            const signedIn = await signIntoGoogle(cdpPort);
+            if (signedIn) {
+              console.log('[Auto] Google sign-in succeeded — exporting YouTube cookies...');
+              const cookieResult = await exportYouTubeCookies();
+              if (cookieResult.success) {
+                console.log(`[Auto] ✅ YouTube cookies exported: ${cookieResult.message}`);
+              } else {
+                console.warn(`[Auto] ⚠️ Cookie export failed: ${cookieResult.message}`);
+              }
+            }
+          })().catch(e => console.error('[Auto] Google/Cookie pipeline error:', e));
 
           resolve({ url: cloudflareUrl, username, password });
         }, 5000);
@@ -495,7 +495,7 @@ export async function stopBrowser(sessionId?: string): Promise<{ success: boolea
       const instance = browserInstances.get(session.metadata?.targetUrl || '');
       if (instance) {
         instance.tunnelProcess.kill();
-        await execAsync(`docker rm -f ${instance.containerName}-cdp-proxy`).catch(() => {});
+        await execAsync(`docker rm -f ${instance.containerName}-cdp-proxy`).catch(() => { });
         await execAsync(`docker stop ${instance.containerName}`);
         browserInstances.delete(session.metadata?.targetUrl || '');
       }
@@ -510,7 +510,7 @@ export async function stopBrowser(sessionId?: string): Promise<{ success: boolea
       }
 
       general.tunnelProcess.kill();
-      await execAsync(`docker rm -f ${general.containerName}-cdp-proxy`).catch(() => {});
+      await execAsync(`docker rm -f ${general.containerName}-cdp-proxy`).catch(() => { });
       await execAsync(`docker stop ${general.containerName}`);
       browserInstances.delete('general');
       return { success: true, message: 'General browser stopped' };
