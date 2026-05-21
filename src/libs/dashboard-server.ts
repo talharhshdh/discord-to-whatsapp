@@ -23,7 +23,7 @@
  */
 
 import { createServer, IncomingMessage, ServerResponse } from 'http';
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { spawn, ChildProcess } from 'child_process';
 import { startTerminal } from './terminal';
@@ -68,6 +68,49 @@ export function registerUrl(
 
 export function getAllUrls(): Record<string, ToolUrlEntry> {
   return { ...urlRegistry };
+}
+
+// ── YouTube Download Jobs ───────────────────────────────────────────────────
+
+export interface DownloadJob {
+  id: string;
+  url: string;
+  qualityKey: string;
+  status: 'pending' | 'downloading' | 'completed' | 'failed';
+  progress: number;
+  message: string;
+  downloadUrl?: string;
+  error?: string;
+  title?: string;
+  createdAt: number;
+}
+
+const downloadJobs: Record<string, DownloadJob> = {};
+
+function cleanupOldJobs(): void {
+  const now = Date.now();
+  const ONE_HOUR = 60 * 60 * 1000;
+  const downloadsDir = join(__dirname, '..', '..', 'downloads');
+  
+  for (const [id, job] of Object.entries(downloadJobs)) {
+    if (now - job.createdAt > ONE_HOUR) {
+      delete downloadJobs[id];
+      if (job.downloadUrl) {
+        try {
+          const name = new URL(job.downloadUrl, 'http://localhost').searchParams.get('name');
+          if (name) {
+            const filePath = join(downloadsDir, name);
+            if (existsSync(filePath)) {
+              const { unlinkSync } = require('fs');
+              unlinkSync(filePath);
+            }
+          }
+        } catch (e) {
+          console.error('Failed to delete old download file:', e);
+        }
+      }
+    }
+  }
 }
 
 // ── Multipart body parser (no external deps) ──────────────────────────────────
@@ -508,6 +551,122 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       if (!res.headersSent) err(res, (e as Error).message);
       else if (!res.writableEnded) res.end();
     }
+    return;
+  }
+
+  // ── POST /api/youtube/download-job ─────────────────────────────────────────
+  if (method === 'POST' && url === '/api/youtube/download-job') {
+    try {
+      const body = await parseJsonBody(req);
+      const videoUrl = body['url'] as string;
+      if (!videoUrl) return err(res, 'url is required', 400);
+      const quality = body['quality'] as YouTubeQualityOption | undefined;
+
+      cleanupOldJobs();
+
+      const jobId = Math.random().toString(36).substring(2, 15);
+      const job: DownloadJob = {
+        id: jobId,
+        url: videoUrl,
+        qualityKey: quality?.key || 'default',
+        status: 'pending',
+        progress: 0,
+        message: 'Job initialized',
+        createdAt: Date.now(),
+      };
+      downloadJobs[jobId] = job;
+
+      // Start download in background
+      (async () => {
+        try {
+          job.status = 'downloading';
+          job.message = 'Starting download...';
+
+          const qOption = quality || {
+            key: 'audio-video',
+            label: '🎬 Audio + Video (Best Pre-merged)',
+            sizeBytes: null,
+            audioOnly: false,
+            formatId: 'best[ext=mp4]/best'
+          };
+
+          const result = await downloadYouTubeVideo(videoUrl, qOption, async (statusStr) => {
+            job.message = statusStr;
+            const pctMatch = statusStr.match(/(\d+)%/);
+            if (pctMatch) {
+              job.progress = parseInt(pctMatch[1], 10);
+            }
+          });
+
+          const downloadsDir = join(__dirname, '..', '..', 'downloads');
+          if (!existsSync(downloadsDir)) {
+            mkdirSync(downloadsDir, { recursive: true });
+          }
+
+          const safeFilename = `${jobId}_${result.filename.replace(/[^a-zA-Z0-9_.-]/g, '_')}`;
+          const filePath = join(downloadsDir, safeFilename);
+          writeFileSync(filePath, result.buffer);
+
+          job.status = 'completed';
+          job.progress = 100;
+          job.message = 'Download complete!';
+          job.title = result.filename;
+          job.downloadUrl = `/api/youtube/files?name=${encodeURIComponent(safeFilename)}`;
+        } catch (jobErr) {
+          console.error(`[Download Job ${jobId}] error:`, jobErr);
+          job.status = 'failed';
+          job.message = `Failed: ${(jobErr as Error).message}`;
+          job.error = (jobErr as Error).message;
+        }
+      })();
+
+      json(res, { jobId });
+    } catch (e) {
+      err(res, (e as Error).message);
+    }
+    return;
+  }
+
+  // ── GET /api/youtube/job-status ────────────────────────────────────────────
+  if (method === 'GET' && url.startsWith('/api/youtube/job-status')) {
+    const params = new URL(url, 'http://localhost').searchParams;
+    const jobId = params.get('id');
+    if (!jobId) return err(res, 'id is required', 400);
+
+    const job = downloadJobs[jobId];
+    if (!job) return err(res, 'Job not found', 404);
+
+    json(res, job);
+    return;
+  }
+
+  // ── GET /api/youtube/files ─────────────────────────────────────────────────
+  if (method === 'GET' && url.startsWith('/api/youtube/files')) {
+    const params = new URL(url, 'http://localhost').searchParams;
+    const name = params.get('name');
+    if (!name) return err(res, 'name is required', 400);
+
+    if (name.includes('..') || name.includes('/') || name.includes('\\')) {
+      return err(res, 'Invalid file name', 400);
+    }
+
+    const downloadsDir = join(__dirname, '..', '..', 'downloads');
+    const filePath = join(downloadsDir, name);
+    if (!existsSync(filePath)) {
+      return err(res, 'File not found', 404);
+    }
+
+    const ext = name.split('.').pop() || '';
+    const mimeType = ext === 'm4a' ? 'audio/mp4' : 'video/mp4';
+
+    res.writeHead(200, {
+      'Content-Type': mimeType,
+      'Content-Disposition': `attachment; filename="${encodeURIComponent(name.replace(/^\w+_/, ''))}"`,
+      'Access-Control-Allow-Origin': '*',
+    });
+    
+    const { createReadStream } = require('fs');
+    createReadStream(filePath).pipe(res);
     return;
   }
 

@@ -73,6 +73,17 @@ export interface YtVideoInfo {
   videoId: string; url: string; title: string; thumbnail: string;
   durationSeconds: number; uploader: string; viewCount: number; qualities: YtQuality[];
 }
+export interface YtDownloadJob {
+  id: string;
+  url: string;
+  qualityKey: string;
+  status: 'pending' | 'downloading' | 'completed' | 'failed';
+  progress: number;
+  message: string;
+  downloadUrl?: string;
+  error?: string;
+  title?: string;
+}
 // ── TTS Types ───────────────────────────────────────────────────────────────
 
 export interface TTSVoice {
@@ -214,6 +225,13 @@ export const api = {
     post<YtVideoInfo>('/api/youtube/info', { url }),
   ytDownload: (url: string, quality?: YtQuality) =>
     postBinary('/api/youtube/download', { url, quality }),
+  ytDownloadJob: (url: string, quality?: YtQuality) =>
+    post<{ jobId: string }>('/api/youtube/download-job', { url, quality }),
+  ytJobStatus: (jobId: string) =>
+    fetch(`${BASE}/api/youtube/job-status?id=${encodeURIComponent(jobId)}`).then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json() as Promise<YtDownloadJob>;
+    }),
 
   movieSearch: (query: string) =>
     post<{ results: MovieResult[] }>('/api/movies/search', { query }),

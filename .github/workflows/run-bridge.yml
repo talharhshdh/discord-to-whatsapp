@@ -186,14 +186,15 @@ jobs:
           # Trigger next workflow 15 minutes BEFORE timeout (runner takes ~12 min to start)
           # IMPORTANT: Backup state FIRST, then trigger — so the new runner always gets fresh data
           (sleep 17100 && \
-            echo "📦 Pre-trigger backup: archiving state before handoff..." && \
-            sudo tar -czf /tmp/state_pretrigger.tar.gz -C $(pwd) auth_info browser_data && \
-            sudo chmod 666 /tmp/state_pretrigger.tar.gz && \
-            source .env && \
-            echo "📤 Uploading pre-trigger backup to R2..." && \
-            aws s3 cp /tmp/state_pretrigger.tar.gz s3://${R2_BUCKET_NAME}/state.tar.gz \
-              --endpoint-url https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com && \
-            echo "✅ Pre-trigger backup uploaded! New runner will get fresh state." && \
+            # [DISABLED Cloudflare Backup]
+            # echo "📦 Pre-trigger backup: archiving state before handoff..." && \
+            # sudo tar -czf /tmp/state_pretrigger.tar.gz -C $(pwd) auth_info browser_data && \
+            # sudo chmod 666 /tmp/state_pretrigger.tar.gz && \
+            # source .env && \
+            # echo "📤 Uploading pre-trigger backup to R2..." && \
+            # aws s3 cp /tmp/state_pretrigger.tar.gz s3://${R2_BUCKET_NAME}/state.tar.gz \
+            #   --endpoint-url https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com && \
+            # echo "✅ Pre-trigger backup uploaded! New runner will get fresh state." && \
             echo "⏰ Triggering next workflow run (15 min early for graceful handoff)..." && \
             curl -X POST \
               -H "Accept: application/vnd.github+json" \
@@ -227,17 +228,18 @@ jobs:
       #       -d '{"ref":"${{ github.ref_name }}"}'
       #     echo "✅ Next workflow triggered!"
 
-      - name: Save State to Cloudflare R2
-        if: always()
-        run: |
-          # Safety net: captures the final ~15 minutes of state that ran after the pre-trigger backup.
-          # The pre-trigger backup (inside "Run bridge") already uploaded a fresh snapshot before
-          # triggering the next runner, so this step ensures nothing is lost at teardown.
-          echo "📦 Archiving final state (safety net backup)..."
-          sudo tar -czf state.tar.gz -C $(pwd) auth_info browser_data || echo "Tar completed with warnings"
-          sudo chmod 666 state.tar.gz
-
-          source .env
-          echo "📤 Uploading final state to R2 (overwrites pre-trigger snapshot)..."
-          aws s3 cp state.tar.gz s3://${R2_BUCKET_NAME}/state.tar.gz --endpoint-url https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com
-          echo "✅ Final state successfully synced to R2."
+      # [DISABLED Cloudflare Backup]
+      # - name: Save State to Cloudflare R2
+      #   if: always()
+      #   run: |
+      #     # Safety net: captures the final ~15 minutes of state that ran after the pre-trigger backup.
+      #     # The pre-trigger backup (inside "Run bridge") already uploaded a fresh snapshot before
+      #     # triggering the next runner, so this step ensures nothing is lost at teardown.
+      #     echo "📦 Archiving final state (safety net backup)..."
+      #     sudo tar -czf state.tar.gz -C $(pwd) auth_info browser_data || echo "Tar completed with warnings"
+      #     sudo chmod 666 state.tar.gz
+      # 
+      #     source .env
+      #     echo "📤 Uploading final state to R2 (overwrites pre-trigger snapshot)..."
+      #     aws s3 cp state.tar.gz s3://${R2_BUCKET_NAME}/state.tar.gz --endpoint-url https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com
+      #     echo "✅ Final state successfully synced to R2."

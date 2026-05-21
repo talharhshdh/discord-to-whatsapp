@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { api, YtSearchResult, YtVideoInfo, YtQuality } from '../api';
+import React, { useState, useEffect, useRef } from 'react';
+import { api, YtSearchResult, YtVideoInfo, YtQuality, YtDownloadJob } from '../api';
 
 function fmtViews(n: number) {
   if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
@@ -7,19 +7,55 @@ function fmtViews(n: number) {
   return String(n);
 }
 
+const standardQualities: YtQuality[] = [
+  {
+    key: 'audio-video',
+    label: '🎬 Audio + Video (Best Pre-merged)',
+    sizeBytes: null,
+    audioOnly: false,
+    formatId: 'best[ext=mp4]/best'
+  },
+  {
+    key: 'video-only',
+    label: '📹 Video Only (Highest Quality)',
+    sizeBytes: null,
+    audioOnly: false,
+    formatId: 'bestvideo[ext=mp4]/bestvideo'
+  },
+  {
+    key: 'audio-only',
+    label: '🎵 Audio Only (m4a)',
+    sizeBytes: null,
+    audioOnly: true,
+    formatId: 'bestaudio[ext=m4a]/bestaudio'
+  }
+];
+
 export default function YoutubePanel() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<YtSearchResult[]>([]);
   const [info, setInfo] = useState<YtVideoInfo | null>(null);
   const [searching, setSearching] = useState(false);
   const [loadingInfo, setLoadingInfo] = useState(false);
-  const [downloading, setDownloading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [directUrl, setDirectUrl] = useState('');
+  const [selectedQuality, setSelectedQuality] = useState<YtQuality>(standardQualities[0]);
+
+  // Job states
+  const [activeJob, setActiveJob] = useState<YtDownloadJob | null>(null);
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Cookie export state
   const [cookieExporting, setCookieExporting] = useState(false);
   const [cookieResult, setCookieResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+    };
+  }, []);
 
   const exportCookies = async () => {
     setCookieExporting(true);
@@ -49,18 +85,64 @@ export default function YoutubePanel() {
     finally { setLoadingInfo(false); }
   };
 
-  const download = async (q?: YtQuality) => {
-    const url = info?.url || directUrl;
-    if (!url) return;
-    setDownloading(q?.key ?? 'fallback');
+  const selectSearchResult = (v: YtSearchResult) => {
+    setInfo({
+      videoId: v.videoId,
+      url: v.url,
+      title: v.title,
+      thumbnail: v.thumbnail,
+      durationSeconds: 0,
+      uploader: v.author,
+      viewCount: v.views,
+      qualities: standardQualities,
+    });
+    setDirectUrl(v.url);
+  };
+
+  const startDownloadJob = async (url: string, quality: YtQuality) => {
+    setError(null);
+    setActiveJob(null);
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+    }
     try {
-      const blob = await api.ytDownload(url, q);
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `youtube_${Date.now()}.${q?.audioOnly ? 'm4a' : 'mp4'}`;
-      a.click();
-    } catch (e) { setError((e as Error).message); }
-    finally { setDownloading(null); }
+      const { jobId } = await api.ytDownloadJob(url, quality);
+      setActiveJob({
+        id: jobId,
+        url,
+        qualityKey: quality.key,
+        status: 'pending',
+        progress: 0,
+        message: 'Initializing job...',
+      });
+
+      pollIntervalRef.current = setInterval(async () => {
+        try {
+          const status = await api.ytJobStatus(jobId);
+          setActiveJob(status);
+
+          if (status.status === 'completed' || status.status === 'failed') {
+            if (pollIntervalRef.current) {
+              clearInterval(pollIntervalRef.current);
+              pollIntervalRef.current = null;
+            }
+            if (status.status === 'completed' && status.downloadUrl) {
+              // Trigger auto download
+              const a = document.createElement('a');
+              a.href = status.downloadUrl;
+              a.download = status.title || `youtube_${Date.now()}.${quality.audioOnly ? 'm4a' : 'mp4'}`;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+            }
+          }
+        } catch (pollErr) {
+          console.error('Error polling job status:', pollErr);
+        }
+      }, 1000);
+    } catch (e) {
+      setError((e as Error).message);
+    }
   };
 
   return (
@@ -83,11 +165,10 @@ export default function YoutubePanel() {
           </button>
         </div>
         {cookieResult && (
-          <div className={`text-xs px-3 py-2 rounded-lg border ${
-            cookieResult.success
+          <div className={`text-xs px-3 py-2 rounded-lg border ${cookieResult.success
               ? 'bg-green-500/10 border-green-500/20 text-green-400'
               : 'bg-red-500/10 border-red-500/20 text-red-400'
-          }`}>
+            }`}>
             {cookieResult.success ? '✅' : '❌'} {cookieResult.message}
           </div>
         )}
@@ -112,32 +193,98 @@ export default function YoutubePanel() {
       </div>
 
       {/* Direct URL */}
-      <div className="glass rounded-2xl p-5 space-y-3">
+      <div className="glass rounded-2xl p-5 space-y-4">
         <h3 className="font-semibold text-white text-sm">🔗 Direct URL Download</h3>
         <div className="flex flex-col sm:flex-row gap-2">
-          <input value={directUrl} onChange={e => setDirectUrl(e.target.value)}
+          <input value={directUrl} onChange={e => {
+            setDirectUrl(e.target.value);
+            setInfo(null);
+          }}
             placeholder="https://youtube.com/watch?v=…"
             className="flex-1 bg-black/30 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white font-mono placeholder-white/30 outline-none focus:border-white/30" />
           <div className="flex gap-2">
             <button onClick={() => loadInfo(directUrl)} disabled={loadingInfo || !directUrl}
-              className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] border border-white/10 text-sm font-medium transition-all disabled:opacity-50">
-              {loadingInfo ? '…' : 'Get Info'}
-            </button>
-            <button onClick={() => download()} disabled={!!downloading || !directUrl}
-              className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-teal-600/30 hover:bg-teal-600/50 border border-teal-500/30 text-teal-300 text-sm font-medium transition-all disabled:opacity-50">
-              Quick DL
+              className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] border border-white/10 text-sm font-medium transition-all disabled:opacity-50 whitespace-nowrap">
+              {loadingInfo ? '…' : 'Get Info (Optional)'}
             </button>
           </div>
         </div>
+
+        {directUrl && !info && (
+          <div className="space-y-3 border-t border-white/5 pt-3">
+            <p className="text-xs text-white/50">Select Quality:</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {standardQualities.map(q => (
+                <button
+                  key={q.key}
+                  onClick={() => setSelectedQuality(q)}
+                  className={`py-2 px-3 rounded-xl border text-xs font-medium transition-all text-left ${selectedQuality.key === q.key
+                      ? 'bg-teal-500/20 border-teal-500/50 text-teal-300'
+                      : 'bg-white/[0.04] border-white/10 hover:bg-white/[0.08] text-white/70'
+                    }`}
+                >
+                  {q.label}
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => startDownloadJob(directUrl, selectedQuality)}
+              disabled={!directUrl || activeJob?.status === 'pending' || activeJob?.status === 'downloading'}
+              className="w-full py-2.5 rounded-xl bg-teal-600/30 hover:bg-teal-600/50 border border-teal-500/30 text-teal-300 text-sm font-semibold transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              🚀 Start Download Job
+            </button>
+          </div>
+        )}
       </div>
 
       {error && <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">❌ {error}</p>}
+
+      {/* Active Job Progress */}
+      {activeJob && (
+        <div className="glass rounded-2xl p-5 space-y-3 border border-white/10">
+          <div className="flex items-center justify-between">
+            <h4 className="font-semibold text-white text-sm flex items-center gap-2">
+              📥 Download Job: <span className="capitalize text-teal-300 font-bold">{activeJob.status}</span>
+            </h4>
+            {activeJob.status === 'downloading' && (
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-teal-500"></span>
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-white/70 font-mono truncate">{activeJob.message || 'Waiting...'}</p>
+
+          {/* Progress Bar */}
+          <div className="w-full bg-black/30 rounded-full h-2.5 overflow-hidden">
+            <div
+              className={`h-full transition-all duration-300 ${activeJob.status === 'failed' ? 'bg-red-500' : 'bg-teal-500'
+                }`}
+              style={{ width: `${activeJob.progress}%` }}
+            ></div>
+          </div>
+          <div className="flex justify-between items-center text-xs text-white/40">
+            <span>Progress: {activeJob.progress}%</span>
+            {activeJob.status === 'completed' && activeJob.downloadUrl && (
+              <a
+                href={activeJob.downloadUrl}
+                download={activeJob.title || 'video.mp4'}
+                className="text-teal-400 hover:underline font-semibold flex items-center gap-1"
+              >
+                💾 Click to download manually
+              </a>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Search results */}
       {results.length > 0 && !info && (
         <div className="space-y-2">
           {results.map(v => (
-            <div key={v.videoId} className="glass glass-hover rounded-xl p-4 flex gap-3 cursor-pointer" onClick={() => loadInfo(v.url)}>
+            <div key={v.videoId} className="glass glass-hover rounded-xl p-4 flex gap-3 cursor-pointer" onClick={() => selectSearchResult(v)}>
               <img src={v.thumbnail} alt="" className="w-20 h-14 rounded-lg object-cover flex-shrink-0 bg-black/30" />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-white truncate">{v.title}</p>
@@ -156,16 +303,19 @@ export default function YoutubePanel() {
             <img src={info.thumbnail} alt="" className="w-24 h-16 rounded-lg object-cover bg-black/30 flex-shrink-0" />
             <div>
               <p className="font-semibold text-white text-sm">{info.title}</p>
-              <p className="text-xs text-white/40">{info.uploader} · {fmtViews(info.viewCount)} views</p>
+              <p className="text-xs text-white/40">{info.uploader} {info.viewCount ? `· ${fmtViews(info.viewCount)} views` : ''}</p>
             </div>
           </div>
-          <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 gap-2">
-            {info.qualities.map(q => (
-              <button key={q.key} onClick={() => download(q)} disabled={!!downloading}
-                className="py-2.5 px-3 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 hover:border-white/20 text-xs font-medium transition-all disabled:opacity-50 text-left">
-                {downloading === q.key ? '⏳ Downloading…' : q.label}
-              </button>
-            ))}
+          <div className="space-y-2">
+            <p className="text-xs text-white/50">Select Quality:</p>
+            <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 gap-2">
+              {info.qualities.map(q => (
+                <button key={q.key} onClick={() => startDownloadJob(info.url, q)} disabled={activeJob?.status === 'pending' || activeJob?.status === 'downloading'}
+                  className="py-2.5 px-3 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 hover:border-white/20 text-xs font-medium transition-all disabled:opacity-50 text-left">
+                  {q.label}
+                </button>
+              ))}
+            </div>
           </div>
           <button onClick={() => setInfo(null)} className="text-xs text-white/30 hover:text-white/60">← Back to results</button>
         </div>
