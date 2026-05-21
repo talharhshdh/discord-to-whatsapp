@@ -241,9 +241,16 @@ export async function getYouTubeInfo(url: string): Promise<YouTubeVideoInfo> {
 
   const formats = info.formats ?? [];
 
-  const bestAudio = formats.find(f => f.acodec !== 'none' && f.vcodec === 'none');
+  // Find best audio-only format for merging with video-only formats
+  const audioOnlyFormats = formats.filter(f => (f.vcodec || 'none') === 'none' && (f.acodec || 'none') !== 'none');
+  const bestAudioFormat = [...audioOnlyFormats].sort((a, b) => {
+    const aBr = a.tbr ?? a.abr ?? 0;
+    const bBr = b.tbr ?? b.abr ?? 0;
+    return bBr - aBr;
+  })[0];
+  const bestAudioId = bestAudioFormat?.format_id || 'bestaudio';
 
-  const qualities: YouTubeQualityOption[] = [
+  const standardQualities: YouTubeQualityOption[] = [
     {
       key: 'audio-video',
       label: '🎬 Audio + Video (Best Pre-merged)',
@@ -261,10 +268,89 @@ export async function getYouTubeInfo(url: string): Promise<YouTubeVideoInfo> {
     {
       key: 'audio-only',
       label: '🎵 Audio Only (m4a)',
-      sizeBytes: bestAudio?.filesize ?? bestAudio?.filesize_approx ?? null,
+      sizeBytes: bestAudioFormat?.filesize ?? bestAudioFormat?.filesize_approx ?? null,
       audioOnly: true,
       formatId: 'bestaudio[ext=m4a]/bestaudio'
     }
+  ];
+
+  const specificQualities: YouTubeQualityOption[] = [];
+
+  formats.forEach((f) => {
+    if (!f.format_id) return;
+
+    const vcodec = f.vcodec || 'none';
+    const acodec = f.acodec || 'none';
+
+    const isAudio = vcodec === 'none' && acodec !== 'none';
+    const isVideoOnly = vcodec !== 'none' && acodec === 'none';
+    const isPreMerged = vcodec !== 'none' && acodec !== 'none';
+
+    if (!isAudio && !isVideoOnly && !isPreMerged) return;
+
+    let label = '';
+    const ext = f.ext || 'unknown';
+    const size = f.filesize ?? f.filesize_approx ?? null;
+    const sizeStr = size ? ` · ${fmtBytes(size)}` : '';
+
+    if (isAudio) {
+      const abr = f.abr ?? f.tbr ?? null;
+      const abrStr = abr ? `${abr.toFixed(0)}kbps` : 'unknown bitrate';
+      label = `🎵 Audio: ${abrStr} (${ext})${sizeStr} [ID: ${f.format_id}]`;
+    } else if (isVideoOnly) {
+      const res = f.height ? `${f.height}p` : f.resolution || 'unknown res';
+      const fps = f.fps ? ` @ ${f.fps}fps` : '';
+      label = `📹 Video: ${res}${fps} (${ext})${sizeStr} [ID: ${f.format_id}]`;
+    } else {
+      const res = f.height ? `${f.height}p` : f.resolution || 'unknown res';
+      const fps = f.fps ? ` @ ${f.fps}fps` : '';
+      label = `🎬 Video+Audio: ${res}${fps} (${ext})${sizeStr} [ID: ${f.format_id}]`;
+    }
+
+    specificQualities.push({
+      key: `format-${f.format_id}`,
+      label,
+      sizeBytes: size,
+      audioOnly: isAudio,
+      formatId: f.format_id,
+      audioFormatId: isVideoOnly ? bestAudioId : undefined,
+    });
+  });
+
+  const videoQualities = specificQualities.filter(q => !q.audioOnly);
+  const audioQualities = specificQualities.filter(q => q.audioOnly);
+
+  const formatMap = new Map(formats.map(f => [f.format_id, f]));
+
+  videoQualities.sort((a, b) => {
+    const fa = formatMap.get(a.formatId);
+    const fb = formatMap.get(b.formatId);
+    const ha = fa?.height ?? 0;
+    const hb = fb?.height ?? 0;
+    if (hb !== ha) return hb - ha;
+    const fpsa = fa?.fps ?? 0;
+    const fpsb = fb?.fps ?? 0;
+    if (fpsb !== fpsa) return fpsb - fpsa;
+    const sizea = a.sizeBytes ?? 0;
+    const sizeb = b.sizeBytes ?? 0;
+    return sizeb - sizea;
+  });
+
+  audioQualities.sort((a, b) => {
+    const fa = formatMap.get(a.formatId);
+    const fb = formatMap.get(b.formatId);
+    const bra = fa?.abr ?? fa?.tbr ?? 0;
+    const brb = fb?.abr ?? fb?.tbr ?? 0;
+    if (brb !== bra) return brb - bra;
+    const sizea = a.sizeBytes ?? 0;
+    const sizeb = b.sizeBytes ?? 0;
+    return sizeb - sizea;
+  });
+
+  const qualities = [
+    ...standardQualities,
+    ...videoQualities,
+    ...audioQualities,
   ];
 
   return {

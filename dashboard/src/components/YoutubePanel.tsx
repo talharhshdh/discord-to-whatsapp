@@ -297,29 +297,76 @@ export default function YoutubePanel() {
       )}
 
       {/* Quality picker */}
-      {info && (
-        <div className="glass rounded-2xl p-5 space-y-4">
-          <div className="flex gap-3 items-start">
-            <img src={info.thumbnail} alt="" className="w-24 h-16 rounded-lg object-cover bg-black/30 flex-shrink-0" />
-            <div>
-              <p className="font-semibold text-white text-sm">{info.title}</p>
-              <p className="text-xs text-white/40">{info.uploader} {info.viewCount ? `· ${fmtViews(info.viewCount)} views` : ''}</p>
+      {info && (() => {
+        const standard = info.qualities.filter(q => ['audio-video', 'video-only', 'audio-only'].includes(q.key));
+        const specificVideo = info.qualities.filter(q => q.key.startsWith('format-') && !q.audioOnly);
+        const specificAudio = info.qualities.filter(q => q.key.startsWith('format-') && q.audioOnly);
+
+        return (
+          <div className="glass rounded-2xl p-5 space-y-4">
+            <div className="flex gap-3 items-start border-b border-white/5 pb-4">
+              <img src={info.thumbnail} alt="" className="w-24 h-16 rounded-lg object-cover bg-black/30 flex-shrink-0 border border-white/10" />
+              <div className="min-w-0">
+                <p className="font-semibold text-white text-sm truncate">{info.title}</p>
+                <p className="text-xs text-white/40 mt-1">{info.uploader} {info.viewCount ? `· ${fmtViews(info.viewCount)} views` : ''}</p>
+              </div>
+            </div>
+
+            <div className="space-y-5">
+              {/* Standard Options */}
+              {standard.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-bold text-teal-400">⚡ Standard Pre-merged Options</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {standard.map(q => (
+                      <button key={q.key} onClick={() => startDownloadJob(info.url, q)} disabled={activeJob?.status === 'pending' || activeJob?.status === 'downloading'}
+                        className="py-2.5 px-3 rounded-xl bg-teal-500/10 hover:bg-teal-500/20 border border-teal-500/20 text-xs font-semibold text-teal-300 transition-all disabled:opacity-50 text-left">
+                        {q.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Specific Video Formats */}
+              {specificVideo.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-bold text-white/50">📹 Specific Video Formats</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-60 overflow-y-auto pr-1">
+                    {specificVideo.map(q => (
+                      <button key={q.key} onClick={() => startDownloadJob(info.url, q)} disabled={activeJob?.status === 'pending' || activeJob?.status === 'downloading'}
+                        className="py-2.5 px-3 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-xs text-white/80 hover:text-white transition-all disabled:opacity-50 text-left truncate"
+                        title={q.label}>
+                        {q.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Specific Audio Formats */}
+              {specificAudio.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-bold text-white/50">🎵 Specific Audio Formats</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-1">
+                    {specificAudio.map(q => (
+                      <button key={q.key} onClick={() => startDownloadJob(info.url, q)} disabled={activeJob?.status === 'pending' || activeJob?.status === 'downloading'}
+                        className="py-2.5 px-3 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-xs text-white/80 hover:text-white transition-all disabled:opacity-50 text-left truncate"
+                        title={q.label}>
+                        {q.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-white/5 pt-3">
+              <button onClick={() => setInfo(null)} className="text-xs text-white/30 hover:text-white/60 font-medium">← Back to results</button>
             </div>
           </div>
-          <div className="space-y-2">
-            <p className="text-xs text-white/50">Select Quality:</p>
-            <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 gap-2">
-              {info.qualities.map(q => (
-                <button key={q.key} onClick={() => startDownloadJob(info.url, q)} disabled={activeJob?.status === 'pending' || activeJob?.status === 'downloading'}
-                  className="py-2.5 px-3 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 hover:border-white/20 text-xs font-medium transition-all disabled:opacity-50 text-left">
-                  {q.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <button onClick={() => setInfo(null)} className="text-xs text-white/30 hover:text-white/60">← Back to results</button>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
