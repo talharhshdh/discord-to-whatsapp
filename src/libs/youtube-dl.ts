@@ -235,12 +235,30 @@ function buildYtdlpBaseFlags(): Record<string, unknown> {
  * @param url  YouTube watch URL or youtu.be shortlink
  */
 export async function getYouTubeInfo(url: string): Promise<YouTubeVideoInfo> {
-  const info = await youtubedl(url, {
-    ...buildYtdlpBaseFlags(),
-    dumpSingleJson: true,
-    preferFreeFormats: false,
-    format: 'all',
-  });
+  let info: YtDlpInfo;
+  const baseFlags = buildYtdlpBaseFlags();
+  try {
+    info = await youtubedl(url, {
+      ...baseFlags,
+      dumpSingleJson: true,
+      preferFreeFormats: false,
+      format: 'all',
+    });
+  } catch (err: any) {
+    if (baseFlags.cookies) {
+      console.warn(`[youtube-dl] Fetch metadata with cookies failed: ${err.message || err}. Retrying cookieless...`);
+      const noCookieFlags = { ...baseFlags };
+      delete noCookieFlags.cookies;
+      info = await youtubedl(url, {
+        ...noCookieFlags,
+        dumpSingleJson: true,
+        preferFreeFormats: false,
+        format: 'all',
+      });
+    } else {
+      throw err;
+    }
+  }
 
   const formats = info.formats ?? [];
 
@@ -401,11 +419,31 @@ export async function downloadYouTubeVideo(
       : quality.formatId;
 
   // Get fresh metadata first using dumpSingleJson
-  const info = await youtubedl(url, {
-    ...buildYtdlpBaseFlags(),
-    dumpSingleJson: true,
-    format: formatStr,
-  });
+  let info: YtDlpInfo;
+  const baseFlags = buildYtdlpBaseFlags();
+  let useCookies = !!baseFlags.cookies;
+
+  try {
+    info = await youtubedl(url, {
+      ...baseFlags,
+      dumpSingleJson: true,
+      format: formatStr,
+    });
+  } catch (err: any) {
+    if (baseFlags.cookies) {
+      console.warn(`[youtube-dl] Download metadata fetch with cookies failed: ${err.message || err}. Retrying cookieless...`);
+      useCookies = false;
+      const noCookieFlags = { ...baseFlags };
+      delete noCookieFlags.cookies;
+      info = await youtubedl(url, {
+        ...noCookieFlags,
+        dumpSingleJson: true,
+        format: formatStr,
+      });
+    } else {
+      throw err;
+    }
+  }
 
   const tempId = `ytdl_${Math.random().toString(36).substring(2, 15)}`;
   const tmpDir = os.tmpdir();
@@ -418,6 +456,10 @@ export async function downloadYouTubeVideo(
     format: formatStr,
     output: outputPath,
   };
+
+  if (!useCookies) {
+    delete flags.cookies;
+  }
 
   // Run the download process
   const yt = youtubedl.exec(url, flags);
