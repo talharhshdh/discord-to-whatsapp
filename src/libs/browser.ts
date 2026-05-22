@@ -476,9 +476,24 @@ export async function exportYouTubeCookies(
  * Returns the path to the YouTube cookies file if it exists, otherwise undefined.
  */
 export function getYouTubeCookiesPath(): string | undefined {
-  const p = path.join(path.resolve(__dirname, '..', '..'), 'browser_data', 'youtube-cookies.txt');
+  const dir = path.join(path.resolve(__dirname, '..', '..'), 'browser_data');
+  const p = path.join(dir, 'youtube-cookies.txt');
+
+  if (process.env.YOUTUBE_COOKIES) {
+    try {
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      fs.writeFileSync(p, process.env.YOUTUBE_COOKIES.trim(), 'utf8');
+      console.log(`[Cookies] Successfully wrote YOUTUBE_COOKIES from environment variable to: ${p}`);
+    } catch (e) {
+      console.error('[Cookies] Failed to write YOUTUBE_COOKIES from env:', e);
+    }
+  }
+
   return fs.existsSync(p) ? p : undefined;
 }
+
 
 /**
  * Stop a browser instance

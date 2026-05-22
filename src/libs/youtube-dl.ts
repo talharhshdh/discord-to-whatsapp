@@ -212,7 +212,10 @@ function buildYtdlpBaseFlags(): Record<string, unknown> {
   const flags: Record<string, unknown> = {
     noCheckCertificates: true,
     noWarnings: true,
-    addHeader: ['referer:youtube.com', 'user-agent:googlebot'],
+    addHeader: [
+      'referer:youtube.com',
+      'user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+    ],
   };
   const cookiesPath = getYouTubeCookiesPath();
   if (cookiesPath) {

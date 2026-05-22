@@ -1,0 +1,2 @@
+# Netscape HTTP Cookie File
+.youtube.com	TRUE	/	FALSE	1800000000	TEST_COOKIE	test_value
