@@ -220,15 +220,11 @@ async function main() {
     const probeCFlags = {
       noCheckCertificates: true,
       noWarnings: true,
-      addHeader: [
-        `user-agent:${desktopUA}`,
-        'referer:youtube.com'
-      ],
       cookies: cookiesPath,
       dumpSingleJson: true,
       preferFreeFormats: false
     };
-    console.log(`   Running: youtubedl("${targetUrl}", { user-agent: "Chrome Desktop", cookies: "${cookiesPath}" })`);
+    console.log(`   Running: youtubedl("${targetUrl}", { cookies: "${cookiesPath}" })`);
     
     const probeCStart = Date.now();
     const probeCRes = await runYtdlpProbe(targetUrl, probeCFlags);
