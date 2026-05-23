@@ -4,9 +4,6 @@ on:
   push:
     branches: [main] # Restart bridge on every push to main
   workflow_dispatch: # Allows manual trigger
-concurrency:
-  group: discord-whatsapp-bridge
-  cancel-in-progress: true
 # schedule:
 #   - cron: "0 */5 * * *" # Fallback every 6h in case the self-trigger fails
 

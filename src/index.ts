@@ -292,6 +292,12 @@ class DiscordWhatsAppBridge {
 
         if (connection === 'close') {
           const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
+          
+          if (statusCode === 440) {
+            lol('⏱️ Conflict detected (another instance connected). Exiting gracefully to avoid reconnection battle.');
+            process.exit(0);
+          }
+
           const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
           lol('\n⚠️ WhatsApp connection closed.');
