@@ -1,0 +1,368 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Google Search & Places API",
+    "description": "High-performance distributed Google Search and Google Maps Places API running via a managed browser pool.",
+    "version": "1.0.0",
+    "contact": {
+      "name": "API Support"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://services.ufone-claim.site",
+      "description": "Production Server"
+    }
+  ],
+  "paths": {
+    "/api/browser/search": {
+      "post": {
+        "summary": "Google Web Search",
+        "description": "Performs a Google web search using either the distributed browser pool, local Chromium CDP connection, or SeleniumBase backup.",
+        "operationId": "googleSearch",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "description": "The search query query string.",
+                    "example": "Google DeepMind"
+                  },
+                  "pageNumber": {
+                    "type": "integer",
+                    "description": "The results page number (multiplies by 10 internally for the start index).",
+                    "default": 1,
+                    "example": 1
+                  },
+                  "engine": {
+                    "type": "string",
+                    "description": "The browser runner/engine mode to execute the search request.",
+                    "enum": ["auto", "pool", "cdp", "selenium"],
+                    "default": "auto",
+                    "example": "auto"
+                  },
+                  "includeAI": {
+                    "type": "boolean",
+                    "description": "Whether to extract and include Google's AI Overview or featured snippets in the response.",
+                    "default": false,
+                    "example": true
+                  }
+                },
+                "required": ["text"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Search completed successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "organic": {
+                      "type": "array",
+                      "description": "The list of standard organic Google search results.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "title": {
+                            "type": "string",
+                            "description": "The title of the search result card.",
+                            "example": "Google DeepMind: A new era of AI"
+                          },
+                          "link": {
+                            "type": "string",
+                            "description": "The absolute URL link of the search result card.",
+                            "example": "https://deepmind.google/"
+                          },
+                          "snippet": {
+                            "type": "string",
+                            "description": "The summary snippet shown on the Google search page.",
+                            "example": "Google DeepMind is a pioneer in artificial intelligence research, developing systems that solve complex scientific and societal challenges."
+                          }
+                        }
+                      }
+                    },
+                    "aiResponse": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "The raw HTML or plain text of the Google AI Overview or featured snippet card.",
+                      "example": "AI Overview: Google DeepMind is an AI research laboratory founded in 2010..."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request. Required fields missing or invalid data.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "text is required"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable. No browsers available in the pool or all search engines failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "No browsers available in pool"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/browser/places": {
+      "post": {
+        "summary": "Google Maps Places Search",
+        "description": "Scrapes business listings from Google Maps Places search using the distributed browser pool.",
+        "operationId": "googlePlacesSearch",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "query": {
+                    "type": "string",
+                    "description": "The keyword or region to search on Google Maps.",
+                    "example": "restaurants in New York"
+                  },
+                  "pageNumber": {
+                    "type": "integer",
+                    "description": "The page number of results.",
+                    "default": 1,
+                    "example": 1
+                  },
+                  "deepScrape": {
+                    "type": "boolean",
+                    "description": "Whether to click on individual listing cards to fetch deep details like weekly hours, secondary phones, websites, and address details.",
+                    "default": false,
+                    "example": true
+                  }
+                },
+                "required": ["query"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Places search completed successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "title": {
+                            "type": "string",
+                            "example": "The Grill NYC"
+                          },
+                          "rating": {
+                            "type": "string",
+                            "nullable": true,
+                            "example": "4.5"
+                          },
+                          "reviews": {
+                            "type": "string",
+                            "nullable": true,
+                            "example": "120"
+                          },
+                          "address": {
+                            "type": "string",
+                            "nullable": true,
+                            "example": "99 E 52nd St, New York, NY 10022"
+                          },
+                          "phone": {
+                            "type": "string",
+                            "nullable": true,
+                            "example": "(212) 375-9001"
+                          },
+                          "website": {
+                            "type": "string",
+                            "nullable": true,
+                            "example": "https://thegrillnewyork.com"
+                          },
+                          "todaysHours": {
+                            "type": "string",
+                            "nullable": true,
+                            "example": "Open · Closes 11 PM"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request. Required fields missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "query is required"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable. No browser workers available in the pool.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "No browsers available in pool"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/browser/places/google-search": {
+      "post": {
+        "summary": "Google Search Local Pack Places",
+        "description": "Scrapes local pack Google search listing cards (udm=1) using the distributed browser pool.",
+        "operationId": "googleSearchPlaces",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "query": {
+                    "type": "string",
+                    "description": "The local pack search query.",
+                    "example": "dentist near me"
+                  },
+                  "pageNumber": {
+                    "type": "integer",
+                    "description": "The search page number.",
+                    "default": 1,
+                    "example": 1
+                  }
+                },
+                "required": ["query"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Local Pack search completed successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "title": {
+                            "type": "string",
+                            "example": "Central Dental Care"
+                          },
+                          "rating": {
+                            "type": "string",
+                            "nullable": true,
+                            "example": "4.8"
+                          },
+                          "address": {
+                            "type": "string",
+                            "nullable": true,
+                            "example": "12 Main St, Suite A"
+                          },
+                          "phone": {
+                            "type": "string",
+                            "nullable": true,
+                            "example": "(555) 019-2834"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request. Required fields missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "query is required"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable. No browser workers available in the pool.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "example": "No browsers available in pool or all attempts failed"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
