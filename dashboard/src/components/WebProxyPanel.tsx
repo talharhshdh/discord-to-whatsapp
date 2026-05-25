@@ -53,6 +53,23 @@ export default function WebProxyPanel() {
   const handleGo = (targetUrl: string) => {
     if (!targetUrl.trim()) return;
     let formattedUrl = targetUrl.trim();
+
+    // Intercept Google search links and route to pool scraping via Google Clone Panel
+    if (formattedUrl.includes('/search?') || formattedUrl.includes('google.com/search')) {
+      try {
+        const absoluteUrl = formattedUrl.startsWith('http') ? formattedUrl : `https://google.com${formattedUrl.startsWith('/') ? '' : '/'}${formattedUrl}`;
+        const urlObj = new URL(absoluteUrl);
+        const query = urlObj.searchParams.get('q');
+        if (query) {
+          window.history.pushState(null, '', `/google?q=${encodeURIComponent(query)}`);
+          window.dispatchEvent(new PopStateEvent('popstate'));
+          return;
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
     if (!/^https?:\/\//i.test(formattedUrl)) {
       if (formattedUrl.includes('.') && !formattedUrl.includes(' ')) {
         formattedUrl = 'https://' + formattedUrl;
@@ -60,6 +77,22 @@ export default function WebProxyPanel() {
         formattedUrl = 'https://www.google.com/search?q=' + encodeURIComponent(formattedUrl);
       }
     }
+
+    // Double check if the rewritten search query matches
+    if (formattedUrl.includes('/search?') || formattedUrl.includes('google.com/search')) {
+      try {
+        const urlObj = new URL(formattedUrl);
+        const query = urlObj.searchParams.get('q');
+        if (query) {
+          window.history.pushState(null, '', `/google?q=${encodeURIComponent(query)}`);
+          window.dispatchEvent(new PopStateEvent('popstate'));
+          return;
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
     setLoading(true);
     setActiveUrl(formattedUrl);
     setUrlInput(formattedUrl);
@@ -75,10 +108,56 @@ export default function WebProxyPanel() {
     if (iframeRef.current && iframeRef.current.contentWindow) {
       try {
         const currentLoc = iframeRef.current.contentWindow.location;
+        const currentPath = currentLoc.pathname + currentLoc.search;
+
+        let targetUrl = '';
+        if (currentPath.startsWith('/api/web-proxy/')) {
+          let encoded = currentPath.substring('/api/web-proxy/'.length);
+          // Strip flags like xhr_/ or similar
+          const flagsMatch = encoded.match(/^([a-z0-9_]+\/)+/i);
+          if (flagsMatch) {
+            encoded = encoded.substring(flagsMatch[0].length);
+          }
+          // Remove trailing slash and leftovers
+          encoded = encoded.split('/')[0].split('?')[0].split('#')[0];
+
+          try {
+            targetUrl = atob(encoded);
+          } catch {
+            const cleanBase64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
+            const pad = cleanBase64.length % 4;
+            const padded = pad ? cleanBase64 + '='.repeat(4 - pad) : cleanBase64;
+            try {
+              targetUrl = atob(padded);
+            } catch (err) {
+              // ignore
+            }
+          }
+        }
+
         const searchParams = new URLSearchParams(currentLoc.search);
         const decodedUrl = searchParams.get('url');
+
+        const checkUrl = targetUrl || decodedUrl || '';
+        if (checkUrl && (checkUrl.includes('/search?') || checkUrl.includes('google.com/search'))) {
+          try {
+            const absoluteUrl = checkUrl.startsWith('http') ? checkUrl : `https://google.com${checkUrl.startsWith('/') ? '' : '/'}${checkUrl}`;
+            const urlObj = new URL(absoluteUrl);
+            const query = urlObj.searchParams.get('q');
+            if (query) {
+              window.history.pushState(null, '', `/google?q=${encodeURIComponent(query)}`);
+              window.dispatchEvent(new PopStateEvent('popstate'));
+              return;
+            }
+          } catch (e) {
+            // ignore
+          }
+        }
+
         if (decodedUrl) {
           setUrlInput(decodedUrl);
+        } else if (targetUrl) {
+          setUrlInput(targetUrl);
         }
       } catch (e) {
         console.warn('CORS or sandbox prevents reading iframe location:', e);

@@ -851,7 +851,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
           } else {
             encoded = Buffer.from(targetUrl).toString('base64');
           }
-          res.writeHead(302, { 'Location': `/api/web-proxy/${encoded}` });
+          const token = params.get('token');
+          res.writeHead(302, {
+            'Location': `/api/web-proxy/${encoded}${token ? `?token=${encodeURIComponent(token)}` : ''}`
+          });
           res.end();
           return;
         }
@@ -894,7 +897,15 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
                 rejectUnauthorized: false,
               },
               (proxyRes: any) => {
-                res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
+                const resHeaders = { ...proxyRes.headers };
+                if (resHeaders.location) {
+                  try {
+                    resHeaders.location = webProxy.url.wrap(resHeaders.location, { base: targetUrlStr });
+                  } catch (wrapErr) {
+                    console.error('Failed to wrap media redirect location:', wrapErr);
+                  }
+                }
+                res.writeHead(proxyRes.statusCode || 200, resHeaders);
                 proxyRes.pipe(res);
               }
             );
