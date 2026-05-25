@@ -338,16 +338,46 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 
   if (url.startsWith('/api/') && url !== '/api/auth/login' && url !== '/api/browser/search' && url !== '/api/browsers/webhook') {
     if (usernameEnv && passwordEnv) {
+      const expectedToken = Buffer.from(`${usernameEnv}:${passwordEnv}`).toString('base64');
+      let providedToken: string | null = null;
+
+      // 1. Check Authorization or x-dashboard-token header
       const authHeader = req.headers['authorization'] || req.headers['x-dashboard-token'];
-      let isAuthorized = false;
       if (authHeader && typeof authHeader === 'string') {
-        const token = authHeader.startsWith('Basic ') ? authHeader.substring(6) : authHeader;
-        const expectedToken = Buffer.from(`${usernameEnv}:${passwordEnv}`).toString('base64');
-        if (token === expectedToken) {
-          isAuthorized = true;
+        providedToken = authHeader.startsWith('Basic ') ? authHeader.substring(6) : authHeader;
+      }
+
+      // 2. Check token query parameter in the URL
+      if (!providedToken && req.url) {
+        try {
+          const parsedUrl = new URL(req.url, 'http://localhost');
+          const tokenParam = parsedUrl.searchParams.get('token');
+          if (tokenParam) providedToken = tokenParam;
+        } catch {
+          const match = req.url.match(/[?&]token=([^&]+)/);
+          if (match) providedToken = decodeURIComponent(match[1]);
         }
       }
-      if (!isAuthorized) {
+
+      // 3. Check dashboard_token cookie
+      if (!providedToken) {
+        const cookieHeader = req.headers['cookie'] || req.headers['Cookie'];
+        if (cookieHeader && typeof cookieHeader === 'string') {
+          const match = cookieHeader.match(/(?:^|;\s*)dashboard_token=([^;]+)/);
+          if (match) providedToken = match[1];
+        }
+      }
+
+      if (providedToken === expectedToken) {
+        // Correctly authorized!
+        // Ensure the client has the dashboard_token cookie so subresources load successfully
+        const cookieHeader = req.headers['cookie'] || req.headers['Cookie'];
+        const hasMatchingCookie = cookieHeader && typeof cookieHeader === 'string' &&
+          cookieHeader.includes(`dashboard_token=${expectedToken}`);
+        if (!hasMatchingCookie) {
+          res.setHeader('Set-Cookie', `dashboard_token=${expectedToken}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000`);
+        }
+      } else {
         err(res, 'Unauthorized', 401);
         return;
       }
@@ -368,6 +398,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       
       if (username === usernameEnv && password === passwordEnv) {
         const token = Buffer.from(`${username}:${password}`).toString('base64');
+        res.setHeader('Set-Cookie', `dashboard_token=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000`);
         json(res, { success: true, token });
       } else {
         err(res, 'Invalid credentials', 400);

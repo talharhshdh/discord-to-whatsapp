@@ -107,7 +107,8 @@ export default function WebProxyPanel() {
   };
 
   const getProxyUrl = (target: string) => {
-    return `/api/web-proxy?url=${encodeURIComponent(target)}`;
+    const token = localStorage.getItem('dashboard_token') || '';
+    return `/api/web-proxy?url=${encodeURIComponent(target)}${token ? `&token=${encodeURIComponent(token)}` : ''}`;
   };
 
   return (
