@@ -185,6 +185,10 @@ export default function App() {
     );
   }
 
+  if (section === 'google') {
+    return <GoogleClonePanel isStandalone={true} />;
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-[#070b14]">
       {/* Ambient orbs */}
@@ -260,7 +264,7 @@ export default function App() {
               >
                 <span>{n.icon}</span>
                 {n.label}
-                {n.id === 'urls' && data && Object.keys(data.tools).length > 0 && (
+                {n.id === 'urls' && data?.tools && Object.keys(data.tools).length > 0 && (
                   <span className="ml-auto text-xs bg-teal-500/20 text-teal-400 rounded-full px-1.5 py-0.5">
                     {Object.keys(data.tools).length}
                   </span>
@@ -302,7 +306,7 @@ export default function App() {
                     >
                       <span className="text-lg">{n.icon}</span>
                       {n.label}
-                      {n.id === 'urls' && data && Object.keys(data.tools).length > 0 && (
+                      {n.id === 'urls' && data?.tools && Object.keys(data.tools).length > 0 && (
                         <span className="ml-auto text-xs bg-teal-500/20 text-teal-400 rounded-full px-2 py-0.5">
                           {Object.keys(data.tools).length}
                         </span>
@@ -332,7 +336,7 @@ export default function App() {
                   }`}>
                   <span className="text-sm">{n.icon}</span> 
                   {n.label}
-                  {n.id === 'urls' && data && Object.keys(data.tools).length > 0 && (
+                  {n.id === 'urls' && data?.tools && Object.keys(data.tools).length > 0 && (
                     <span className="ml-1 text-[9px] bg-teal-500/20 text-teal-400 rounded-full px-1.5 py-0.5 border border-teal-500/20">
                       {Object.keys(data.tools).length}
                     </span>
@@ -367,7 +371,6 @@ export default function App() {
                 {section === 'search' && <SearchPanel />}
                 {section === 'places' && <PlacesPanel />}
                 {section === 'tts' && <TTSPanel />}
-                {section === 'google' && <GoogleClonePanel />}
 
               </div>
             </div>

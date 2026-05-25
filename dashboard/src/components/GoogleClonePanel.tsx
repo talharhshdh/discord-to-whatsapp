@@ -8,7 +8,11 @@ import {
 
 type SearchTab = 'all' | 'images' | 'videos' | 'news' | 'shopping' | 'maps';
 
-export default function GoogleClonePanel() {
+interface GoogleClonePanelProps {
+  isStandalone?: boolean;
+}
+
+export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePanelProps) {
   const [query, setQuery] = useState('');
   const [activeQuery, setActiveQuery] = useState('');
   const [page, setPage] = useState(1);
@@ -73,10 +77,10 @@ export default function GoogleClonePanel() {
   };
 
   return (
-    <div className={`min-h-[85vh] rounded-3xl overflow-hidden transition-all duration-300 border ${
+    <div className={`${isStandalone ? 'min-h-screen w-full' : 'min-h-[85vh] rounded-3xl border'} transition-all duration-300 ${
       darkMode 
-        ? 'bg-[#0f0f13] border-white/[0.08] text-white' 
-        : 'bg-[#f8f9fa] border-gray-200 text-gray-900'
+        ? `bg-[#0f0f13] text-white ${isStandalone ? '' : 'border-white/[0.08]'}` 
+        : `bg-[#f8f9fa] text-gray-900 ${isStandalone ? '' : 'border-gray-200'}`
     }`}>
       {/* Top Header Actions */}
       <div className={`flex justify-between items-center px-6 py-4 border-b ${

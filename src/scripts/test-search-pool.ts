@@ -131,7 +131,7 @@ async function timedSearchViaPool(
                 const seen = new Set<string>();
 
                 const cleanText = (str: string | null) => str ? str.trim().replace(/\s+/g, ' ') : '';
-                
+
                 const decodeGoogleLink = (href: string | null) => {
                     if (!href) return '';
                     try {
@@ -142,7 +142,7 @@ async function timedSearchViaPool(
                             const urlPart = href.split('/url?url=')[1]?.split('&')[0];
                             if (urlPart) return decodeURIComponent(urlPart);
                         }
-                    } catch (e) {}
+                    } catch (e) { }
                     return href;
                 };
 
@@ -182,7 +182,7 @@ async function timedSearchViaPool(
                     const subtitleEl = kpContainer.querySelector('.wDYxhc.mod, .kno-meta, .bV3FIe');
                     const descEl = kpContainer.querySelector('[data-attrid="kc:/common/topic:description"], .kno-rdesc span');
                     const sourceEl = kpContainer.querySelector('.kno-rdesc a');
-                    
+
                     const attributes: any[] = [];
                     kpContainer.querySelectorAll('.rVusM, .zVnNfc, .Lrzca').forEach(el => {
                         const label = el.querySelector('.wDYxhc, .zVnNfc, .fl');
@@ -225,7 +225,7 @@ async function timedSearchViaPool(
 
                 // 5. EXTRACT DIRECT ANSWERS (WEATHER, TRANSLATION, DICTIONARY, CALCULATOR)
                 let directAnswer: any = null;
-                
+
                 // Calculator
                 const calcResult = document.querySelector('#cwos');
                 if (calcResult) {
@@ -236,12 +236,12 @@ async function timedSearchViaPool(
                         details: calcEq ? cleanText(calcEq.textContent) : undefined
                     };
                 }
-                
+
                 // Weather
                 const weatherTemp = document.querySelector('#wob_tm, .vk_bk.wob-t');
                 if (weatherTemp && !directAnswer) {
                     const tempVal = weatherTemp.textContent ? weatherTemp.textContent.trim() : '';
-                    
+
                     let unit = '°F';
                     const tempUnitEl = document.querySelector('#wob_temp_unit, [aria-selected="true"] .wob_t, .wob_t[style*="inline"]');
                     if (tempUnitEl && tempUnitEl.textContent?.includes('C')) {
@@ -409,7 +409,7 @@ async function timedSearchViaPool(
                     const img = el.querySelector('img');
                     const alt = img ? img.getAttribute('alt') || '' : '';
                     const href = el.getAttribute('href') || '';
-                    
+
                     let sourceUrl = '';
                     let imageUrl = '';
                     try {
@@ -496,9 +496,9 @@ async function timedSearchViaPool(
                 document.querySelectorAll('h3').forEach((h3) => {
                     const headingText = cleanText(h3.textContent);
                     if (
-                        headingText === 'Search Results' || 
-                        headingText === 'Weather Result' || 
-                        headingText === 'Web results' || 
+                        headingText === 'Search Results' ||
+                        headingText === 'Weather Result' ||
+                        headingText === 'Web results' ||
                         headingText === 'Featured snippet' ||
                         headingText.includes('People also ask')
                     ) {
@@ -513,7 +513,7 @@ async function timedSearchViaPool(
 
                     const rawLink = a.getAttribute('href') || '';
                     const link = decodeGoogleLink(rawLink);
-                    
+
                     if (!link || link.includes('google.com') || link.includes('sorry/index') || seen.has(link)) return;
                     seen.add(link);
 

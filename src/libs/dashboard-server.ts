@@ -330,7 +330,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   const usernameEnv = process.env.DASHBOARD_USERNAME;
   const passwordEnv = process.env.DASHBOARD_PASSWORD;
 
-  if (url.startsWith('/api/') && url !== '/api/auth/login' && url !== '/api/browser/search') {
+  if (url.startsWith('/api/') && url !== '/api/auth/login' && url !== '/api/browser/search' && url !== '/api/browsers/webhook') {
     if (usernameEnv && passwordEnv) {
       const authHeader = req.headers['authorization'] || req.headers['x-dashboard-token'];
       let isAuthorized = false;
@@ -1094,7 +1094,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
             if (seen.has(link)) return;
             seen.add(link);
             let snippet = '';
-            for (const s of ['.VwiC3b', '.lEBKkf', '.lyLwlc', '[data-sncf]', '.IsZvec']) {
+            for (const s of ['.VwiC3b', '.lEBKkf', '.lyLwlc', '[data-sncf]', '.IsZvec', '.s3v9rd', '.AP7Wnd', '.BNeawe']) {
               const sn = el.querySelector(s);
               if (sn && (sn as HTMLElement).innerText) { snippet = (sn as HTMLElement).innerText.trim(); break; }
             }
