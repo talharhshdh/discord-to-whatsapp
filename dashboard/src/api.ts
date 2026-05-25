@@ -5,11 +5,28 @@
  * tunnel, so the browser always hits the right origin — no base URL config needed.
  */
 export const BASE = '';
+function getAuthHeaders(): Record<string, string> {
+  const token = localStorage.getItem('dashboard_token');
+  return token ? { 'Authorization': `Basic ${token}` } : {};
+}
+
+function authFetch(url: string, init?: RequestInit): Promise<Response> {
+  return fetch(url, {
+    ...init,
+    headers: {
+      ...init?.headers,
+      ...getAuthHeaders()
+    }
+  });
+}
 
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 
+      'Content-Type': 'application/json',
+      ...getAuthHeaders()
+    },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
@@ -20,7 +37,11 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 }
 
 async function postForm<T>(path: string, form: FormData): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { method: 'POST', body: form });
+  const res = await fetch(`${BASE}${path}`, { 
+    method: 'POST', 
+    headers: getAuthHeaders(),
+    body: form 
+  });
   if (!res.ok) {
     const e = await res.json().catch(() => ({ error: `HTTP ${res.status}` })) as { error: string };
     throw new Error(e.error || `HTTP ${res.status}`);
@@ -31,7 +52,10 @@ async function postForm<T>(path: string, form: FormData): Promise<T> {
 async function postBinary(path: string, body: unknown): Promise<Blob> {
   const res = await fetch(`${BASE}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 
+      'Content-Type': 'application/json',
+      ...getAuthHeaders()
+    },
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -39,10 +63,15 @@ async function postBinary(path: string, body: unknown): Promise<Blob> {
 }
 
 async function postFormBinary(path: string, form: FormData): Promise<Blob> {
-  const res = await fetch(`${BASE}${path}`, { method: 'POST', body: form });
+  const res = await fetch(`${BASE}${path}`, { 
+    method: 'POST', 
+    headers: getAuthHeaders(),
+    body: form 
+  });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.blob();
 }
+
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -58,9 +87,26 @@ export interface SessionResult {
   url?: string; username?: string; password?: string; error?: string;
 }
 export interface BrowserSearchResult {
-  organic: { title: string; link: string; snippet: string }[];
+  organic: { title: string; link: string; snippet: string; displayedLink?: string; favicon?: string }[];
   aiResponse: string | null;
+  featuredSnippet?: { title: string; link: string; snippet: string } | null;
+  knowledgePanel?: {
+    title: string;
+    subtitle?: string;
+    description?: string;
+    sourceUrl?: string;
+    attributes?: { label: string; value: string }[];
+  } | null;
+  peopleAlsoAsk?: { question: string; answer?: string; sourceTitle?: string; sourceUrl?: string }[];
+  directAnswer?: { type: string; answer: string; details?: string } | null;
+  news?: { title: string; source: string; time: string; link: string }[];
+  videos?: { title: string; source: string; duration?: string; uploadedAt?: string; link: string }[];
+  images?: { alt: string; sourceUrl: string; imageUrl?: string }[];
+  shopping?: { title: string; price: string; merchant: string; rating?: string; link: string }[];
+  relatedSearches?: string[];
+  localResults?: { title: string; rating?: string; reviewsCount?: string; address?: string; phone?: string; link?: string }[];
 }
+
 export interface YtSearchResult {
   videoId: string; url: string; title: string; thumbnail: string;
   duration: string; views: number; ago: string; author: string;
@@ -193,7 +239,10 @@ export interface LLMChatResponse {
 // ── API ─────────────────────────────────────────────────────────────────────
 
 export const api = {
-  getUrls: () => fetch(`${BASE}/api/urls`).then(r => r.json()) as Promise<UrlsPayload>,
+  login: (username: string, password: string) =>
+    post<{ success: boolean; token: string }>('/api/auth/login', { username, password }),
+
+  getUrls: () => authFetch(`${BASE}/api/urls`).then(r => r.json()) as Promise<UrlsPayload>,
 
   startTerminal: () => post<SessionResult>('/api/sessions/terminal', {}),
   startVSCode: () => post<SessionResult>('/api/sessions/vscode', {}),
@@ -228,7 +277,7 @@ export const api = {
   ytDownloadJob: (url: string, quality?: YtQuality) =>
     post<{ jobId: string }>('/api/youtube/download-job', { url, quality }),
   ytJobStatus: (jobId: string) =>
-    fetch(`${BASE}/api/youtube/job-status?id=${encodeURIComponent(jobId)}`).then(r => {
+    authFetch(`${BASE}/api/youtube/job-status?id=${encodeURIComponent(jobId)}`).then(r => {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       return r.json() as Promise<YtDownloadJob>;
     }),
@@ -263,7 +312,8 @@ export const api = {
     onDone: (total: number, reachedEnd: boolean) => void,
     onError: (message: string) => void,
   ): EventSource => {
-    const es = new EventSource(`${BASE}/api/browser/places/stream?query=${encodeURIComponent(query)}`);
+    const token = localStorage.getItem('dashboard_token') || '';
+    const es = new EventSource(`${BASE}/api/browser/places/stream?query=${encodeURIComponent(query)}&token=${encodeURIComponent(token)}`);
     es.onmessage = (e) => {
       try {
         const event = JSON.parse(e.data) as PlacesBatchEvent;
@@ -297,8 +347,9 @@ export const api = {
     onError: (message: string) => void,
     maxPages = 10,
   ): EventSource => {
+    const token = localStorage.getItem('dashboard_token') || '';
     const es = new EventSource(
-      `${BASE}/api/browser/places/google-search/stream?query=${encodeURIComponent(query)}&maxPages=${maxPages}`,
+      `${BASE}/api/browser/places/google-search/stream?query=${encodeURIComponent(query)}&maxPages=${maxPages}&token=${encodeURIComponent(token)}`,
     );
     es.onmessage = (e) => {
       try {
@@ -320,15 +371,15 @@ export const api = {
 
 
   // ── LLM ───────────────────────────────────────────────────────────────────
-  llmModels: () => fetch(`${BASE}/api/llm/models`).then(r => {
+  llmModels: () => authFetch(`${BASE}/api/llm/models`).then(r => {
     if (!r.ok) return r.json().then((e: { error: string }) => { throw new Error(e.error); });
     return r.json() as Promise<LLMModelsResponse>;
   }),
-  llmStatus: () => fetch(`${BASE}/api/llm/status`).then(r => r.json()) as Promise<LLMStatus>,
+  llmStatus: () => authFetch(`${BASE}/api/llm/status`).then(r => r.json()) as Promise<LLMStatus>,
   llmDownload: (model_id: string) =>
     post<{ message: string; status: string }>('/api/llm/download', { model_id }),
   llmDownloadStatus: (model_id: string) =>
-    fetch(`${BASE}/api/llm/download/status/${model_id}`).then(r => r.json()) as Promise<{ status: string; downloaded: boolean; error?: string }>,
+    authFetch(`${BASE}/api/llm/download/status/${model_id}`).then(r => r.json()) as Promise<{ status: string; downloaded: boolean; error?: string }>,
   llmLoad: (model_id: string) =>
     post<{ loaded: boolean; model_id: string; label: string }>('/api/llm/load', { model_id }),
   llmUnload: () =>
@@ -336,14 +387,14 @@ export const api = {
   llmChat: (messages: LLMChatMessage[], max_tokens = 512, temperature = 0.7) =>
     post<LLMChatResponse>('/api/llm/chat', { messages, max_tokens, temperature }),
   llmDelete: (model_id: string) =>
-    fetch(`${BASE}/api/llm/models/${model_id}`, { method: 'DELETE' }).then(r => {
+    authFetch(`${BASE}/api/llm/models/${model_id}`, { method: 'DELETE' }).then(r => {
       if (!r.ok) return r.json().then((e: { detail: string }) => { throw new Error(e.detail); });
       return r.json() as Promise<{ deleted: boolean }>;
     }),
 
   // ── TTS ───────────────────────────────────────────────────────────────────
-  ttsStatus: () => fetch(`${BASE}/api/tts/status`).then(r => r.json()) as Promise<TTSStatus>,
-  ttsVoices: () => fetch(`${BASE}/api/tts/voices`).then(r => r.json()) as Promise<{ voices: TTSVoice[] }>,
+  ttsStatus: () => authFetch(`${BASE}/api/tts/status`).then(r => r.json()) as Promise<TTSStatus>,
+  ttsVoices: () => authFetch(`${BASE}/api/tts/voices`).then(r => r.json()) as Promise<{ voices: TTSVoice[] }>,
 
   ttsGenerate: (text: string, voice: string, language: string = 'Auto', instruct: string = '', engine: string = 'qwen') =>
     postBinary('/api/tts/generate', { text, speaker: voice, language, instruct, engine }),

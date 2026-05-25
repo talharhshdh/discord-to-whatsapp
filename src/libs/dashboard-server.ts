@@ -326,6 +326,52 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     return;
   }
 
+  // ── Authentication Check ──────────────────────────────────────────────────
+  const usernameEnv = process.env.DASHBOARD_USERNAME;
+  const passwordEnv = process.env.DASHBOARD_PASSWORD;
+
+  if (url.startsWith('/api/') && url !== '/api/auth/login' && url !== '/api/browser/search') {
+    if (usernameEnv && passwordEnv) {
+      const authHeader = req.headers['authorization'] || req.headers['x-dashboard-token'];
+      let isAuthorized = false;
+      if (authHeader && typeof authHeader === 'string') {
+        const token = authHeader.startsWith('Basic ') ? authHeader.substring(6) : authHeader;
+        const expectedToken = Buffer.from(`${usernameEnv}:${passwordEnv}`).toString('base64');
+        if (token === expectedToken) {
+          isAuthorized = true;
+        }
+      }
+      if (!isAuthorized) {
+        err(res, 'Unauthorized', 401);
+        return;
+      }
+    }
+  }
+
+  // ── POST /api/auth/login ───────────────────────────────────────────────────
+  if (method === 'POST' && url === '/api/auth/login') {
+    try {
+      const body = await parseJsonBody(req);
+      const username = body['username'] as string;
+      const password = body['password'] as string;
+      
+      if (!usernameEnv || !passwordEnv) {
+        json(res, { success: true, token: '' });
+        return;
+      }
+      
+      if (username === usernameEnv && password === passwordEnv) {
+        const token = Buffer.from(`${username}:${password}`).toString('base64');
+        json(res, { success: true, token });
+      } else {
+        err(res, 'Invalid credentials', 400);
+      }
+    } catch (e) {
+      err(res, (e as Error).message);
+    }
+    return;
+  }
+
   // ── GET /api/urls ─────────────────────────────────────────────────────────
   if (method === 'GET' && url.startsWith('/api/urls')) {
     const elapsed = Math.floor((Date.now() - SESSION_START_MS) / 1000);

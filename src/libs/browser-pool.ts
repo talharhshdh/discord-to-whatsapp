@@ -249,7 +249,26 @@ export async function searchViaPool(
   text: string,
   pageNumber: number = 1,
   includeAI: boolean = false,
-): Promise<{ organic: Array<{ title: string; link: string; snippet: string }>; aiResponse: string | null } | null> {
+): Promise<{
+  organic: Array<{ title: string; link: string; snippet: string }>;
+  aiResponse: string | null;
+  featuredSnippet?: { title: string; link: string; snippet: string } | null;
+  knowledgePanel?: {
+    title: string;
+    subtitle?: string;
+    description?: string;
+    sourceUrl?: string;
+    attributes?: Array<{ label: string; value: string }>;
+  } | null;
+  peopleAlsoAsk?: Array<{ question: string; answer?: string; sourceTitle?: string; sourceUrl?: string }>;
+  directAnswer?: { type: string; answer: string; details?: string } | null;
+  news?: Array<{ title: string; source: string; time: string; link: string }>;
+  videos?: Array<{ title: string; source: string; duration?: string; uploadedAt?: string; link: string }>;
+  images?: Array<{ alt: string; sourceUrl: string; imageUrl?: string }>;
+  shopping?: Array<{ title: string; price: string; merchant: string; rating?: string; link: string }>;
+  relatedSearches?: string[];
+  localResults?: Array<{ title: string; rating?: string; reviewsCount?: string; address?: string; phone?: string; link?: string }>;
+} | null> {
   const maxAttempts = Math.max(1, browserPool.getActive().length);
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const browser = browserPool.getNext();
@@ -321,32 +340,45 @@ export async function searchViaPool(
 
       const startParam = (pageNumber - 1) * 10;
 
-      // await page.goto(
-      //   `https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}&num=10&hl=en&udm=web&gbv=2&pws=0`,
-      //   { waitUntil: 'domcontentloaded', timeout: 30_000 }
-      // );
       const client = await page.target().createCDPSession();
-      await client.send('Page.navigate', { url:  `https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}&num=10&hl=en&udm=web&gbv=2&pws=0`});
+      await client.send('Page.navigate', { url:  `https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}&num=10&hl=en&gbv=2&pws=0`});
 
       await page
-        .waitForSelector('#search', {
+        .waitForSelector('#search, .Gx5Zad.xpd, .xpd, h3', {
           timeout: 100,
         })
         .catch(() => { /* timeout is fine */ });
 
       const extractResults = async () => page.evaluate(() => {
         if (document.querySelector('form[action="/sorry/index"], #captcha, .g-recaptcha')) {
-          return { captcha: true, organic: [], aiResponse: null };
+          return { captcha: true, organic: [] as any[], aiResponse: null as string | null };
         }
 
         document
           .querySelectorAll('[jsname="VwDHjd"], [aria-label="Show more"], .LGOjhe, .cUnQKe')
           .forEach((b) => (b as HTMLElement).click());
 
-        const organic: Array<{ title: string; link: string; snippet: string }> = [];
+        const organic: Array<{ title: string; link: string; snippet: string; displayedLink?: string; favicon?: string }> = [];
         let aiResponse: string | null = null;
         const seen = new Set<string>();
 
+        const cleanText = (str: string | null) => str ? str.trim().replace(/\s+/g, ' ') : '';
+        
+        const decodeGoogleLink = (href: string | null) => {
+          if (!href) return '';
+          try {
+            if (href.startsWith('/url?q=')) {
+              const urlPart = href.split('/url?q=')[1]?.split('&')[0];
+              if (urlPart) return decodeURIComponent(urlPart);
+            } else if (href.startsWith('/url?url=')) {
+              const urlPart = href.split('/url?url=')[1]?.split('&')[0];
+              if (urlPart) return decodeURIComponent(urlPart);
+            }
+          } catch (e) {}
+          return href;
+        };
+
+        // 1. EXTRACT AI OVERVIEW / RESPONSE (SGE)
         for (const sel of [
           '.M8OgIe', '.LLtROe', '.IZ6rdc',
           '[data-attrid="wa:/description"]', '.wDYxhc[data-md]', '.kp-blk',
@@ -358,43 +390,425 @@ export async function searchViaPool(
           }
         }
 
-        document.querySelectorAll('#search .g, #rso .g, .MjjYud .g').forEach((el) => {
-          const h3 = el.querySelector('h3');
-          const a = el.querySelector('a[href^="http"]');
-          if (!h3 || !a) return;
-          const link = a.getAttribute('href') || '';
-          if (seen.has(link)) return;
-          seen.add(link);
-          let snippet = '';
-          for (const s of ['.VwiC3b', '.lEBKkf', '.lyLwlc', '[data-sncf]', '.IsZvec']) {
-            const sn = el.querySelector(s);
-            if (sn && (sn as HTMLElement).innerText) {
-              snippet = (sn as HTMLElement).innerText.trim();
-              break;
-            }
+        // 2. EXTRACT FEATURED SNIPPET
+        let featuredSnippet: any = null;
+        const fsContainer = document.querySelector('[data-attrid="wa:/description"], .kp-blk, .hp-xpd, .c2d06b');
+        if (fsContainer) {
+          const titleEl = fsContainer.querySelector('h3, .LC20lb');
+          const aEl = fsContainer.querySelector('a');
+          const snippetEl = fsContainer.querySelector('.YyVvo, .di3YZe, .ilUpNd.H66NU.aSRlid, .H66NU');
+          if (titleEl && aEl && snippetEl) {
+            featuredSnippet = {
+              title: cleanText(titleEl.textContent),
+              link: decodeGoogleLink(aEl.getAttribute('href') || ''),
+              snippet: cleanText(snippetEl.textContent)
+            };
           }
-          organic.push({ title: (h3 as HTMLElement).innerText.trim(), link, snippet });
-        });
-
-        if (organic.length === 0) {
-          document.querySelectorAll('a[href^="http"]').forEach((a) => {
-            const h3 = a.querySelector('h3');
-            if (!h3) return;
-            const link = a.getAttribute('href') || '';
-            if (link.includes('google.com') || seen.has(link)) return;
-            seen.add(link);
-            organic.push({ title: (h3 as HTMLElement).innerText.trim(), link, snippet: '' });
-          });
         }
 
-        return { captcha: false, organic, aiResponse };
+        // 3. EXTRACT KNOWLEDGE PANEL
+        let knowledgePanel: any = null;
+        const kpContainer = document.querySelector('.kp-sidebar, #rhs, .rhs, .kp-blk, .KPDxwd');
+        if (kpContainer) {
+          const titleEl = kpContainer.querySelector('[role="heading"], .HPwZGe, .DU1Mzb, .kno-ecr-pt');
+          const subtitleEl = kpContainer.querySelector('.wDYxhc.mod, .kno-meta, .bV3FIe');
+          const descEl = kpContainer.querySelector('[data-attrid="kc:/common/topic:description"], .kno-rdesc span');
+          const sourceEl = kpContainer.querySelector('.kno-rdesc a');
+          
+          const attributes: any[] = [];
+          kpContainer.querySelectorAll('.rVusM, .zVnNfc, .Lrzca').forEach(el => {
+            const label = el.querySelector('.wDYxhc, .zVnNfc, .fl');
+            const val = el.querySelector('.Lrzca, .kno-fv');
+            if (label && val) {
+              attributes.push({
+                label: cleanText(label.textContent),
+                value: cleanText(val.textContent)
+              });
+            }
+          });
+
+          if (titleEl) {
+            knowledgePanel = {
+              title: cleanText(titleEl.textContent),
+              subtitle: subtitleEl ? cleanText(subtitleEl.textContent) : undefined,
+              description: descEl ? cleanText(descEl.textContent) : undefined,
+              sourceUrl: sourceEl ? decodeGoogleLink(sourceEl.getAttribute('href') || '') : undefined,
+              attributes: attributes.length > 0 ? attributes : undefined
+            };
+          }
+        }
+
+        // 4. EXTRACT PEOPLE ALSO ASK (PAA)
+        const peopleAlsoAsk: any[] = [];
+        document.querySelectorAll('[jsname="N760bc"], [data-init-query], .cb76Od, .E3VR9e').forEach((el) => {
+          const headerText = cleanText(el.textContent);
+          if (headerText.toLowerCase().includes('people also ask') || headerText.toLowerCase().includes('questions')) {
+            const parent = el.parentElement;
+            if (parent) {
+              parent.querySelectorAll('[jsname="j96n9e"], .ask-xpd, .mB12ae').forEach((qEl) => {
+                const qText = cleanText(qEl.textContent);
+                if (qText) {
+                  peopleAlsoAsk.push({ question: qText });
+                }
+              });
+            }
+          }
+        });
+
+        // 5. EXTRACT DIRECT ANSWERS (WEATHER, TRANSLATION, DICTIONARY, CALCULATOR)
+        let directAnswer: any = null;
+        
+        // Calculator
+        const calcResult = document.querySelector('#cwos');
+        if (calcResult) {
+          const calcEq = document.querySelector('.rN17ge, .SwHCTb');
+          directAnswer = {
+            type: 'calculator',
+            answer: cleanText(calcResult.textContent),
+            details: calcEq ? cleanText(calcEq.textContent) : undefined
+          };
+        }
+        
+        // Weather
+        const weatherTemp = document.querySelector('#wob_tm, .vk_bk.wob-t');
+        if (weatherTemp && !directAnswer) {
+          const tempVal = weatherTemp.textContent ? weatherTemp.textContent.trim() : '';
+          
+          let unit = '°F';
+          const tempUnitEl = document.querySelector('#wob_temp_unit, [aria-selected="true"] .wob_t, .wob_t[style*="inline"]');
+          if (tempUnitEl && tempUnitEl.textContent?.includes('C')) {
+            unit = '°C';
+          } else {
+            const weatherContainer = weatherTemp.closest('.Ww4FFb, .vk_c, .card');
+            if (weatherContainer && weatherContainer.textContent?.includes('°C') && !weatherContainer.textContent?.includes('°F')) {
+              unit = '°C';
+            }
+          }
+
+          const locEl = document.querySelector('.BBwThe, #wob_loc, .wob_loc');
+          let location = locEl ? cleanText(locEl.textContent) : 'Tokyo';
+          if (location === 'Weather') {
+            const cityEl = document.querySelector('.BBwThe, .wob_loc');
+            if (cityEl) location = cleanText(cityEl.textContent);
+          }
+
+          const condEl = document.querySelector('#wob_dc, .wob_dc, #wob_dts + span');
+          const condition = condEl ? cleanText(condEl.textContent) : '';
+
+          const precipEl = document.querySelector('#wob_pp');
+          const humidEl = document.querySelector('#wob_hm');
+          const windEl = document.querySelector('#wob_ws');
+
+          let details = `${location} - ${condition}`;
+          if (precipEl || humidEl || windEl) {
+            details += ` (Precipitation: ${precipEl ? precipEl.textContent : 'N/A'}, Humidity: ${humidEl ? humidEl.textContent : 'N/A'}, Wind: ${windEl ? windEl.textContent : 'N/A'})`;
+          }
+
+          directAnswer = {
+            type: 'weather',
+            answer: `${tempVal}${unit}`,
+            details: details
+          };
+        }
+
+        // Time / Timezone
+        const timeVal = document.querySelector('.vk_bk, .gsrt.vk_bk');
+        if (timeVal && timeVal.textContent && timeVal.textContent.includes(':') && !directAnswer) {
+          const timeZone = document.querySelector('.vk_gy, .vk_sh');
+          directAnswer = {
+            type: 'time',
+            answer: cleanText(timeVal.textContent),
+            details: timeZone ? cleanText(timeZone.textContent) : undefined
+          };
+        }
+
+        // Dictionary
+        const dictWord = document.querySelector('.v9i61e, [data-attrid="kc:/common/dictionary:definition"]');
+        if (dictWord && !directAnswer) {
+          const dictMean = document.querySelector('.LT1Tbd, .lr_dct_ent');
+          directAnswer = {
+            type: 'dictionary',
+            answer: cleanText(dictWord.textContent),
+            details: dictMean ? cleanText(dictMean.textContent) : undefined
+          };
+        }
+
+        // Translation
+        const transTarget = document.querySelector('#tw-target-text');
+        if (transTarget && !directAnswer) {
+          const transSource = document.querySelector('#tw-source-text-ta');
+          directAnswer = {
+            type: 'translation',
+            answer: cleanText(transTarget.textContent),
+            details: transSource ? cleanText((transSource as any).value || transSource.textContent) : undefined
+          };
+        }
+
+        // 6. EXTRACT NEWS / STORIES
+        const news: any[] = [];
+        document.querySelectorAll('g-card, .YLwUee, .WlydOe, .MjjYud').forEach((el) => {
+          const a = el.querySelector('a');
+          const isNews = el.querySelector('.OSrXXb, .LfNcr') || el.querySelector('.NUnG9b');
+          if (a && isNews) {
+            const h3 = el.querySelector('[role="heading"], h3, .mCBkyc, .nD1swb');
+            const srcEl = el.querySelector('.NUnG9b, .h1UuCc, .ap3aec');
+            const timeEl = el.querySelector('.OSrXXb, .LfNcr');
+            if (h3 && a.getAttribute('href')) {
+              const link = decodeGoogleLink(a.getAttribute('href'));
+              if (link && !seen.has(link)) {
+                news.push({
+                  title: cleanText(h3.textContent),
+                  source: srcEl ? cleanText(srcEl.textContent) : '',
+                  time: timeEl ? cleanText(timeEl.textContent) : '',
+                  link
+                });
+              }
+            }
+          }
+        });
+
+        // 7. EXTRACT VIDEOS
+        const videos: any[] = [];
+        document.querySelectorAll('g-card, .V2Ew3b, .z3HNeb, .MjjYud').forEach((el) => {
+          const a = el.querySelector('a');
+          if (!a) return;
+          const href = a.getAttribute('href') || '';
+          const link = decodeGoogleLink(href);
+          const isVideo = link.includes('youtube.com') || link.includes('vimeo.com') || el.querySelector('.vP1iyc') || el.querySelector('.J1y2db');
+          if (isVideo && !seen.has(link)) {
+            const h3 = el.querySelector('h3, .mCBkyc, .z3HNeb');
+            const durEl = el.querySelector('.vP1iyc, .J1y2db');
+            const uploadedEl = el.querySelector('.ap3aec, .PCvXJ');
+            if (h3) {
+              videos.push({
+                title: cleanText(h3.textContent),
+                source: link.includes('youtube.com') ? 'YouTube' : 'Video',
+                duration: durEl ? cleanText(durEl.textContent) : undefined,
+                uploadedAt: uploadedEl ? cleanText(uploadedEl.textContent) : undefined,
+                link
+              });
+            }
+          }
+        });
+
+        // 8. EXTRACT IMAGES (both JS-enabled and JS-disabled, inline & traditional)
+        const images: any[] = [];
+        const seenImages = new Set<string>();
+
+        // Method A: CSS class-independent heading-based images block parsing
+        document.querySelectorAll('span, div, h2, h3').forEach((el) => {
+          const text = el.textContent ? el.textContent.trim() : '';
+          if (text === 'Images') {
+            let parent = el.parentElement;
+            while (parent && parent.querySelectorAll('img').length < 3 && parent.tagName !== 'BODY') {
+              parent = parent.parentElement;
+            }
+            if (parent) {
+              parent.querySelectorAll('img').forEach((img) => {
+                const alt = img.getAttribute('alt') || '';
+                const imageUrl = img.getAttribute('src') || '';
+                if (!imageUrl) return;
+
+                let p = img.parentElement;
+                let sourceUrl = '';
+                while (p && p !== parent && p.tagName !== 'BODY') {
+                  const anchor = p.querySelector('a');
+                  if (anchor) {
+                    const href = anchor.getAttribute('href') || '';
+                    if (href) {
+                      sourceUrl = decodeGoogleLink(href);
+                      break;
+                    }
+                  }
+                  p = p.parentElement;
+                }
+
+                if (sourceUrl && !seenImages.has(imageUrl)) {
+                  seenImages.add(imageUrl);
+                  images.push({
+                    alt: cleanText(alt),
+                    sourceUrl,
+                    imageUrl
+                  });
+                }
+              });
+            }
+          }
+        });
+
+        // Method B: Traditional imgres fallback links (e.g. JS-disabled/fallback page)
+        document.querySelectorAll('a[href*="imgres"]').forEach((el) => {
+          const img = el.querySelector('img');
+          const alt = img ? img.getAttribute('alt') || '' : '';
+          const href = el.getAttribute('href') || '';
+          
+          let sourceUrl = '';
+          let imageUrl = '';
+          try {
+            const urlObj = new URL(href, window.location.href);
+            imageUrl = urlObj.searchParams.get('imgurl') || '';
+            sourceUrl = urlObj.searchParams.get('imgrefurl') || '';
+          } catch (e) {
+            const imgMatch = href.match(/[?&]imgurl=([^&]+)/);
+            const refMatch = href.match(/[?&]imgrefurl=([^&]+)/);
+            if (imgMatch) imageUrl = decodeURIComponent(imgMatch[1]);
+            if (refMatch) sourceUrl = decodeURIComponent(refMatch[1]);
+          }
+
+          sourceUrl = decodeGoogleLink(sourceUrl || href);
+          if (sourceUrl && imageUrl && !seenImages.has(imageUrl)) {
+            seenImages.add(imageUrl);
+            images.push({
+              alt: cleanText(alt),
+              sourceUrl,
+              imageUrl: imageUrl || undefined
+            });
+          }
+        });
+
+
+        // 9. EXTRACT SHOPPING RESULTS
+        const shopping: any[] = [];
+        document.querySelectorAll('.sh-dgr__grid-cell, .sh-dlr__list-result, .sh-np__click-target').forEach((el) => {
+          const a = el.querySelector('a');
+          const titleEl = el.querySelector('.Xj73ed, .tAxDx');
+          const priceEl = el.querySelector('.a8c5bc, .h1N1A');
+          const merchantEl = el.querySelector('.I5cFL, .mB12ae');
+          if (a && titleEl && priceEl) {
+            const link = decodeGoogleLink(a.getAttribute('href') || '');
+            shopping.push({
+              title: cleanText(titleEl.textContent),
+              price: cleanText(priceEl.textContent),
+              merchant: merchantEl ? cleanText(merchantEl.textContent) : '',
+              link
+            });
+          }
+        });
+
+        // 10. EXTRACT LOCAL RESULTS
+        const localResults: any[] = [];
+        document.querySelectorAll('.rllt__card, .Vk2fBe').forEach((el) => {
+          const titleEl = el.querySelector('[role="heading"], .dbg0pd');
+          const ratingEl = el.querySelector('.rGhul, .Yw7Nj');
+          const reviewsEl = el.querySelector('.R3Y11e');
+          const addressEl = el.querySelector('.Lrzca');
+          const a = el.querySelector('a');
+          if (titleEl) {
+            localResults.push({
+              title: cleanText(titleEl.textContent),
+              rating: ratingEl ? cleanText(ratingEl.textContent) : undefined,
+              reviewsCount: reviewsEl ? cleanText(reviewsEl.textContent) : undefined,
+              address: addressEl ? cleanText(addressEl.textContent) : undefined,
+              link: a ? decodeGoogleLink(a.getAttribute('href') || '') : undefined
+            });
+          }
+        });
+
+        // 11. EXTRACT RELATED SEARCHES
+        const relatedSearches: string[] = [];
+        document.querySelectorAll('a.title, .s75cqc, .card-section a, .E3VR9e').forEach((el) => {
+          const headerText = cleanText(el.textContent);
+          if (headerText.toLowerCase().includes('people also search') || headerText.toLowerCase().includes('related search')) {
+            let parent = el.parentElement;
+            while (parent && !parent.className.includes('Gx5Zad') && parent.tagName !== 'BODY') {
+              parent = parent.parentElement;
+            }
+            if (parent) {
+              parent.querySelectorAll('a').forEach((aEl) => {
+                const text = cleanText(aEl.textContent);
+                if (text && text !== headerText && !relatedSearches.includes(text)) {
+                  relatedSearches.push(text);
+                }
+              });
+            }
+          }
+        });
+
+        // 12. EXTRACT ORGANIC SEARCH RESULTS
+        document.querySelectorAll('h3').forEach((h3) => {
+          const headingText = cleanText(h3.textContent);
+          if (
+            headingText === 'Search Results' || 
+            headingText === 'Weather Result' || 
+            headingText === 'Web results' || 
+            headingText === 'Featured snippet' ||
+            headingText.includes('People also ask')
+          ) {
+            return;
+          }
+
+          const container = h3.closest('.g, .MjjYud, .xpd, .Gx5Zad') || h3.parentElement;
+          if (!container) return;
+
+          const a = container.tagName === 'A' ? container : container.querySelector('a');
+          if (!a) return;
+
+          const rawLink = a.getAttribute('href') || '';
+          const link = decodeGoogleLink(rawLink);
+          
+          if (!link || link.includes('google.com') || link.includes('sorry/index') || seen.has(link)) return;
+          seen.add(link);
+
+          let snippet = '';
+          for (const s of ['.VwiC3b', '.lEBKkf', '.lyLwlc', '[data-sncf]', '.IsZvec', '.ilUpNd.H66NU.aSRlid', '.H66NU', '.lQigmf']) {
+            const sn = container.querySelector(s);
+            if (sn && sn.textContent && sn.textContent.trim()) {
+              const txt = cleanText(sn.textContent);
+              if (txt !== cleanText(h3.textContent) && !txt.includes('www.') && txt.length > 10) {
+                snippet = txt;
+                break;
+              }
+            }
+          }
+
+          if (!snippet) {
+            container.querySelectorAll('div, span, p').forEach((sub) => {
+              if (!snippet && sub.className && sub.textContent && sub.children.length === 0) {
+                const txt = cleanText(sub.textContent);
+                if (txt.length > 30 && !txt.includes('www.') && txt !== cleanText(h3.textContent)) {
+                  snippet = txt;
+                }
+              }
+            });
+          }
+
+          const dispEl = container.querySelector('.TbwUpd, .byrV5b, .ylgVCe, .BamJPe');
+          const displayedLink = dispEl ? cleanText(dispEl.textContent) : undefined;
+
+          const favEl = container.querySelector('img.H1u2de, img.XNo5Ab, .wb41ae img');
+          const favicon = favEl ? favEl.getAttribute('src') || undefined : undefined;
+
+          organic.push({
+            title: cleanText(h3.textContent),
+            link,
+            snippet,
+            displayedLink,
+            favicon
+          });
+        });
+
+        return {
+          captcha: false,
+          organic,
+          aiResponse,
+          featuredSnippet,
+          knowledgePanel,
+          peopleAlsoAsk: peopleAlsoAsk.length > 0 ? peopleAlsoAsk : undefined,
+          directAnswer,
+          news: news.length > 0 ? news : undefined,
+          videos: videos.length > 0 ? videos : undefined,
+          images: images.length > 0 ? images : undefined,
+          shopping: shopping.length > 0 ? shopping : undefined,
+          relatedSearches: relatedSearches.length > 0 ? relatedSearches : undefined,
+          localResults: localResults.length > 0 ? localResults : undefined
+        };
       });
 
       let results = await extractResults();
 
       if (!results.captcha && results.organic.length === 0) {
         await page
-          .waitForSelector('#search .g, #rso .g, .MjjYud .g, a[href^="http"]', {
+          .waitForSelector('#search .g, #rso .g, .MjjYud .g, .Gx5Zad.xpd, .xpd, h3, a[href^="http"], a[href*="/url?q="]', {
             timeout: 15_000,
           })
           .catch(() => { /* timeout is fine */ });
@@ -419,7 +833,21 @@ export async function searchViaPool(
       }
 
       workerCdpFailures.delete(browser.workerId);
-      return { organic: results.organic, aiResponse: results.aiResponse };
+      
+      return {
+        organic: results.organic,
+        aiResponse: results.aiResponse,
+        featuredSnippet: results.featuredSnippet,
+        knowledgePanel: results.knowledgePanel,
+        peopleAlsoAsk: results.peopleAlsoAsk,
+        directAnswer: results.directAnswer,
+        news: results.news,
+        videos: results.videos,
+        images: results.images,
+        shopping: results.shopping,
+        relatedSearches: results.relatedSearches,
+        localResults: results.localResults
+      };
 
     } catch (e) {
       const msg = (e as Error).message;
