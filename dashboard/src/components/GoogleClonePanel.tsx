@@ -3,7 +3,8 @@ import { api, BrowserSearchResult } from '../api';
 import {
   Search, Mic, Camera, Globe, MapPin, Video, Newspaper, ShoppingBag,
   Clock, CloudSun, Sparkles, BookOpen, Languages, ChevronDown, ChevronUp,
-  ExternalLink, Image, Play, Star, Info, Moon, Sun, ArrowLeft, RefreshCw, X
+  ExternalLink, Image, Play, Star, Info, Moon, Sun, ArrowLeft, RefreshCw, X,
+  Loader2
 } from 'lucide-react';
 
 type SearchTab = 'all' | 'images' | 'videos' | 'news' | 'shopping' | 'maps';
@@ -76,32 +77,99 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
     setOpenPaaIndex(openPaaIndex === index ? null : index);
   };
 
+  const handleAiOverviewClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    const button = target.closest('button, [role="button"], .wDYxhc, a');
+    if (!button) return;
+
+    // If it's a link, let it open normally
+    if (button.tagName === 'A') {
+      const href = button.getAttribute('href');
+      if (href && !href.startsWith('#')) return;
+    }
+
+    e.preventDefault();
+
+    const container = e.currentTarget;
+    const buttonText = button.textContent?.toLowerCase() || '';
+
+    if (
+      buttonText.includes('show more') || 
+      buttonText.includes('show less') || 
+      buttonText.includes('more') || 
+      button.classList.contains('LGOjhe')
+    ) {
+      // Toggle all elements inside this AI Overview that have style with display:none or display: none
+      const hiddenElements = container.querySelectorAll('[style*="display: none"], [style*="display:none"]');
+      let didToggle = false;
+      hiddenElements.forEach(el => {
+        const htmlEl = el as HTMLElement;
+        if (htmlEl.style.display === 'none') {
+          htmlEl.style.setProperty('display', 'block', 'important');
+          didToggle = true;
+        } else {
+          htmlEl.style.setProperty('display', 'none', 'important');
+          didToggle = true;
+        }
+      });
+
+      // Let's also look for elements with height/max-height zero, or collapsed classes, and toggle them
+      const collapsedContainers = container.querySelectorAll('[class*="collapse"], [class*="hidden"], [aria-hidden="true"]');
+      collapsedContainers.forEach(el => {
+        const htmlEl = el as HTMLElement;
+        if (htmlEl.classList.contains('hidden') || htmlEl.getAttribute('aria-hidden') === 'true') {
+          htmlEl.classList.remove('hidden');
+          htmlEl.removeAttribute('aria-hidden');
+          htmlEl.style.setProperty('display', 'block', 'important');
+          didToggle = true;
+        }
+      });
+
+      // Expand all collapsed cards/grid height if no explicit display none is found
+      if (!didToggle) {
+        const cardsList = container.querySelectorAll('[class*="card"], [class*="list"], [class*="grid"]');
+        cardsList.forEach(el => {
+          const htmlEl = el as HTMLElement;
+          if (htmlEl.style.maxHeight || htmlEl.style.height) {
+            htmlEl.style.maxHeight = '';
+            htmlEl.style.height = '';
+          } else {
+            htmlEl.style.maxHeight = 'none';
+          }
+        });
+      }
+
+      // Also toggle text on the button
+      if (button.textContent?.includes('Show more')) {
+        button.textContent = button.textContent.replace('Show more', 'Show less');
+      } else if (button.textContent?.includes('Show less')) {
+        button.textContent = button.textContent.replace('Show less', 'Show more');
+      }
+    }
+  };
+
   return (
-    <div className={`${isStandalone ? 'min-h-screen w-full' : 'min-h-[85vh] rounded-3xl border'} transition-all duration-300 ${
-      darkMode 
-        ? `bg-[#0f0f13] text-white ${isStandalone ? '' : 'border-white/[0.08]'}` 
-        : `bg-[#f8f9fa] text-gray-900 ${isStandalone ? '' : 'border-gray-200'}`
-    }`}>
-      {/* Top Header Actions */}
-      <div className={`flex justify-between items-center px-6 py-4 border-b ${
-        darkMode ? 'border-white/[0.05]' : 'border-gray-200'
+    <div className={`${isStandalone ? 'min-h-screen w-full' : 'min-h-[85vh] rounded-3xl border'} transition-all duration-300 ${darkMode
+      ? `bg-[#0f0f13] text-white ${isStandalone ? '' : 'border-white/[0.08]'}`
+      : `bg-[#f8f9fa] text-gray-900 ${isStandalone ? '' : 'border-gray-200'}`
       }`}>
+      {/* Top Header Actions */}
+      <div className={`flex justify-between items-center px-6 py-4 border-b ${darkMode ? 'border-white/[0.05]' : 'border-gray-200'
+        }`}>
         <div className="flex items-center gap-2">
           {isSearched && (
-            <button 
+            <button
               onClick={handleReset}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border ${
-                darkMode
-                  ? 'bg-white/[0.04] border-white/10 hover:bg-white/[0.08] text-white/70'
-                  : 'bg-gray-100 border-gray-300 hover:bg-gray-200 text-gray-700'
-              }`}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border ${darkMode
+                ? 'bg-white/[0.04] border-white/10 hover:bg-white/[0.08] text-white/70'
+                : 'bg-gray-100 border-gray-300 hover:bg-gray-200 text-gray-700'
+                }`}
             >
               <ArrowLeft className="w-3.5 h-3.5" /> Back Home
             </button>
           )}
-          <span className={`text-[10px] tracking-wider uppercase font-mono px-2 py-0.5 rounded ${
-            darkMode ? 'bg-[#6c63ff]/10 text-[#6c63ff]' : 'bg-blue-100 text-blue-700'
-          }`}>
+          <span className={`text-[10px] tracking-wider uppercase font-mono px-2 py-0.5 rounded ${darkMode ? 'bg-[#6c63ff]/10 text-[#6c63ff]' : 'bg-blue-100 text-blue-700'
+            }`}>
             Google SGE Clone
           </span>
         </div>
@@ -109,11 +177,10 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
         <div className="flex items-center gap-3">
           <button
             onClick={() => setIncludeAI(v => !v)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${
-              includeAI
-                ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-                : darkMode ? 'bg-white/[0.03] border-white/10 text-white/40' : 'bg-gray-100 border-gray-300 text-gray-400'
-            }`}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${includeAI
+              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+              : darkMode ? 'bg-white/[0.03] border-white/10 text-white/40' : 'bg-gray-100 border-gray-300 text-gray-400'
+              }`}
           >
             <Sparkles className="w-3.5 h-3.5" />
             <span>AI Overview: {includeAI ? 'ON' : 'OFF'}</span>
@@ -121,11 +188,10 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
 
           <button
             onClick={() => setDarkMode(!darkMode)}
-            className={`p-2 rounded-full border transition-all ${
-              darkMode 
-                ? 'bg-white/[0.04] border-white/10 hover:bg-white/[0.08] text-yellow-400' 
-                : 'bg-white border-gray-300 hover:bg-gray-100 text-slate-700 shadow-sm'
-            }`}
+            className={`p-2 rounded-full border transition-all ${darkMode
+              ? 'bg-white/[0.04] border-white/10 hover:bg-white/[0.08] text-yellow-400'
+              : 'bg-white border-gray-300 hover:bg-gray-100 text-slate-700 shadow-sm'
+              }`}
             title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
           >
             {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
@@ -151,11 +217,10 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
 
           {/* Search Box */}
           <form onSubmit={handleSearchSubmit} className="w-full max-w-2xl px-2">
-            <div className={`flex items-center rounded-full border px-4 py-3.5 md:px-5 md:py-4 transition-all duration-300 ${
-              darkMode 
-                ? 'bg-[#1b1b22] border-white/10 focus-within:bg-[#202029] focus-within:border-white/20 focus-within:shadow-lg focus-within:shadow-black/40' 
-                : 'bg-white border-gray-200 focus-within:bg-white focus-within:border-blue-400 focus-within:shadow-lg focus-within:shadow-gray-200'
-            }`}>
+            <div className={`flex items-center rounded-full border px-4 py-3.5 md:px-5 md:py-4 transition-all duration-300 ${darkMode
+              ? 'bg-[#1b1b22] border-white/10 focus-within:bg-[#202029] focus-within:border-white/20 focus-within:shadow-lg focus-within:shadow-black/40'
+              : 'bg-white border-gray-200 focus-within:bg-white focus-within:border-blue-400 focus-within:shadow-lg focus-within:shadow-gray-200'
+              }`}>
               <Search className={`w-5 h-5 mr-3 flex-shrink-0 ${darkMode ? 'text-white/30' : 'text-gray-400'}`} />
               <input
                 type="text"
@@ -165,8 +230,8 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                 onChange={(e) => setQuery(e.target.value)}
               />
               {query && (
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={handleClear}
                   className={`p-1 rounded-full mr-2 hover:bg-white/10 ${darkMode ? 'text-white/40' : 'text-gray-400'}`}
                 >
@@ -188,11 +253,10 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
               <button
                 type="submit"
                 disabled={loading || !query.trim()}
-                className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all shadow ${
-                  darkMode
-                    ? 'bg-[#1b1b22] hover:bg-[#23232c] hover:text-white text-white/80 border border-white/5'
-                    : 'bg-gray-100 hover:bg-gray-200 hover:text-gray-900 text-gray-800 border border-gray-300/40'
-                }`}
+                className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all shadow ${darkMode
+                  ? 'bg-[#1b1b22] hover:bg-[#23232c] hover:text-white text-white/80 border border-white/5'
+                  : 'bg-gray-100 hover:bg-gray-200 hover:text-gray-900 text-gray-800 border border-gray-300/40'
+                  }`}
               >
                 Google Search
               </button>
@@ -204,11 +268,10 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                   setQuery(random);
                   executeSearch(random, 1);
                 }}
-                className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all shadow ${
-                  darkMode
-                    ? 'bg-[#1b1b22] hover:bg-[#23232c] hover:text-white text-white/80 border border-white/5'
-                    : 'bg-gray-100 hover:bg-gray-200 hover:text-gray-900 text-gray-800 border border-gray-300/40'
-                }`}
+                className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all shadow ${darkMode
+                  ? 'bg-[#1b1b22] hover:bg-[#23232c] hover:text-white text-white/80 border border-white/5'
+                  : 'bg-gray-100 hover:bg-gray-200 hover:text-gray-900 text-gray-800 border border-gray-300/40'
+                  }`}
               >
                 I'm Feeling Lucky
               </button>
@@ -224,13 +287,12 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
         /* Results Mode Screen */
         <div className="flex flex-col">
           {/* Top Search Bar & Tabs Wrapper */}
-          <div className={`px-4 md:px-8 pt-4 pb-0 border-b shadow-sm sticky top-0 z-20 ${
-            darkMode ? 'bg-[#0f0f13]/95 border-white/[0.05] backdrop-blur-md' : 'bg-white/95 border-gray-200 backdrop-blur-md'
-          }`}>
+          <div className={`px-4 md:px-8 pt-4 pb-0 border-b shadow-sm sticky top-0 z-20 ${darkMode ? 'bg-[#0f0f13]/95 border-white/[0.05] backdrop-blur-md' : 'bg-white/95 border-gray-200 backdrop-blur-md'
+            }`}>
             <div className="flex flex-col md:flex-row items-stretch md:items-center gap-4 mb-4">
               {/* Logo */}
-              <div 
-                onClick={handleReset} 
+              <div
+                onClick={handleReset}
                 className="text-2xl font-bold select-none cursor-pointer tracking-tight flex items-center flex-shrink-0"
               >
                 <span className="text-blue-500">G</span>
@@ -243,11 +305,10 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
 
               {/* Input Box */}
               <form onSubmit={handleSearchSubmit} className="flex-1 max-w-2xl">
-                <div className={`flex items-center rounded-full border px-4 py-2 transition-all ${
-                  darkMode 
-                    ? 'bg-[#1b1b22] border-white/10 focus-within:bg-[#202029] focus-within:border-white/20' 
-                    : 'bg-white border-gray-200 focus-within:border-blue-400 focus-within:shadow-sm'
-                }`}>
+                <div className={`flex items-center rounded-full border px-4 py-2 transition-all ${darkMode
+                  ? 'bg-[#1b1b22] border-white/10 focus-within:bg-[#202029] focus-within:border-white/20'
+                  : 'bg-white border-gray-200 focus-within:border-blue-400 focus-within:shadow-sm'
+                  }`}>
                   <input
                     type="text"
                     className="flex-1 bg-transparent border-none outline-none font-sans text-sm focus:ring-0 p-0"
@@ -255,8 +316,8 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                     onChange={(e) => setQuery(e.target.value)}
                   />
                   {query && (
-                    <button 
-                      type="button" 
+                    <button
+                      type="button"
                       onClick={handleClear}
                       className={`p-1 rounded-full mr-2 hover:bg-white/10 ${darkMode ? 'text-white/40' : 'text-gray-400'}`}
                     >
@@ -264,9 +325,9 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                     </button>
                   )}
                   <div className="flex items-center gap-2 border-l pl-3 ml-1 border-white/10">
-                    <Search 
-                      className="w-4 h-4 text-blue-500 cursor-pointer hover:opacity-85" 
-                      onClick={() => executeSearch(query, 1)} 
+                    <Search
+                      className="w-4 h-4 text-blue-500 cursor-pointer hover:opacity-85"
+                      onClick={() => executeSearch(query, 1)}
                     />
                   </div>
                 </div>
@@ -279,11 +340,10 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
-                  className={`flex items-center gap-1.5 pb-3 pt-1 border-b-2 font-medium capitalize transition-all ${
-                    activeTab === tab
-                      ? (darkMode ? 'border-[#6c63ff] text-white' : 'border-blue-500 text-blue-500')
-                      : 'border-transparent text-white/40 hover:text-white/60'
-                  }`}
+                  className={`flex items-center gap-1.5 pb-3 pt-1 border-b-2 font-medium capitalize transition-all ${activeTab === tab
+                    ? (darkMode ? 'border-[#6c63ff] text-white' : 'border-blue-500 text-blue-500')
+                    : 'border-transparent text-white/40 hover:text-white/60'
+                    }`}
                 >
                   {tab === 'all' && <Globe className="w-4 h-4" />}
                   {tab === 'images' && <Image className="w-4 h-4" />}
@@ -301,7 +361,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
           {loading && (
             <div className="flex flex-col items-center justify-center p-24 gap-3">
               <div className="w-10 h-10 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
-              <p className="text-xs text-white/40 tracking-wider uppercase font-mono animate-pulse">Running live automated browser crawl...</p>
+              <p className="text-xs text-white/40 tracking-wider uppercase font-mono animate-pulse"><Loader2 className='animate-spin h-8 w-8 ' /></p>
             </div>
           )}
 
@@ -311,7 +371,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
               <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-5 rounded-2xl flex flex-col gap-2">
                 <span className="font-bold text-sm">Search Failed</span>
                 <span className="text-xs leading-relaxed">{error}</span>
-                <button 
+                <button
                   onClick={() => executeSearch(activeQuery, page)}
                   className="mt-3 px-4 py-2 bg-red-500 text-white rounded-lg text-xs font-semibold self-start hover:bg-red-600 transition-colors"
                 >
@@ -324,17 +384,206 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
           {/* Results Display */}
           {!loading && result && (
             <div className="px-4 md:px-8 py-6 max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-8">
-              
+
               {/* LEFT COLUMN: Results, Weather, AI, News (Span 8) */}
               <div className="lg:col-span-8 space-y-6">
-                
+
                 {/* 1. SGE AI Overview */}
                 {activeTab === 'all' && result.aiResponse && (
-                  <div className={`p-6 rounded-3xl border shadow-xl relative overflow-hidden transition-all duration-300 ${
-                    darkMode 
-                      ? 'bg-gradient-to-br from-[#0c0f1d] via-[#101426] to-[#0f0e21] border-indigo-500/25' 
-                      : 'bg-gradient-to-br from-indigo-50/50 via-slate-50 to-indigo-50/20 border-indigo-200'
-                  }`}>
+                  <div className={`p-6 rounded-3xl border shadow-xl relative overflow-hidden transition-all duration-300 ${darkMode
+                    ? 'bg-gradient-to-br from-[#0c0f1d] via-[#101426] to-[#0f0e21] border-indigo-500/25'
+                    : 'bg-gradient-to-br from-indigo-50/50 via-slate-50 to-indigo-50/20 border-indigo-200'
+                    }`}>
+                    <style>{`
+                      /* AI Overview container styling */
+                      .ai-overview-text {
+                        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+                        line-height: 1.625;
+                      }
+                      
+                      /* Dark Mode overrides */
+                      ${darkMode ? `
+                        .ai-overview-text, 
+                        .ai-overview-text span, 
+                        .ai-overview-text div, 
+                        .ai-overview-text p, 
+                        .ai-overview-text li,
+                        .ai-overview-text b,
+                        .ai-overview-text strong {
+                          color: rgba(255, 255, 255, 0.85) !important;
+                        }
+                        
+                        .ai-overview-text h1,
+                        .ai-overview-text h2,
+                        .ai-overview-text h3,
+                        .ai-overview-text h4 {
+                          color: #ffffff !important;
+                          font-weight: 700 !important;
+                        }
+
+                        /* highlighted text spans */
+                        .ai-overview-text b, 
+                        .ai-overview-text strong,
+                        .ai-overview-text .hgKElc {
+                          color: #ffffff !important;
+                          font-weight: 600 !important;
+                        }
+
+                        /* Clean definition highlights */
+                        .ai-overview-text [style*="background-color: rgb(255, 255, 255)"],
+                        .ai-overview-text [style*="background-color:#ffffff"],
+                        .ai-overview-text [style*="background-color:rgb(255,255,255)"],
+                        .ai-overview-text [style*="background: rgb(255, 255, 255)"],
+                        .ai-overview-text [style*="background:#ffffff"],
+                        .ai-overview-text [style*="background:rgb(255,255,255)"] {
+                          background-color: rgba(99, 102, 241, 0.15) !important;
+                          border-bottom: 2px solid rgba(99, 102, 241, 0.4) !important;
+                          color: #e0e7ff !important;
+                          padding: 2px 6px !important;
+                          border-radius: 6px !important;
+                          display: inline !important;
+                        }
+
+                        /* Source cards & nodes in dark mode */
+                        .ai-overview-text [class*="card"],
+                        .ai-overview-text [class*="source"],
+                        .ai-overview-text .wDYxhc,
+                        .ai-overview-text .kp-blk {
+                          background-color: rgba(255, 255, 255, 0.03) !important;
+                          border: 1px solid rgba(255, 255, 255, 0.08) !important;
+                          border-radius: 16px !important;
+                          padding: 12px !important;
+                          margin-top: 8px !important;
+                        }
+                        
+                        /* Interactive buttons in dark mode */
+                        .ai-overview-text button,
+                        .ai-overview-text [role="button"],
+                        .ai-overview-text .LGOjhe {
+                          background-color: rgba(255, 255, 255, 0.05) !important;
+                          border: 1px solid rgba(255, 255, 255, 0.1) !important;
+                          color: #a5b4fc !important; /* Indigo-300 */
+                          padding: 6px 16px !important;
+                          border-radius: 9999px !important;
+                          cursor: pointer !important;
+                          display: inline-flex !important;
+                          align-items: center !important;
+                          gap: 8px !important;
+                          font-size: 12px !important;
+                          font-weight: 600 !important;
+                          transition: all 0.2s !important;
+                          margin-top: 8px !important;
+                        }
+
+                        .ai-overview-text button:hover,
+                        .ai-overview-text [role="button"]:hover,
+                        .ai-overview-text .LGOjhe:hover {
+                          background-color: rgba(255, 255, 255, 0.08) !important;
+                          border-color: rgba(255, 255, 255, 0.15) !important;
+                          color: #c7d2fe !important;
+                        }
+                      ` : `
+                        /* Light Mode Overrides */
+                        .ai-overview-text, 
+                        .ai-overview-text span, 
+                        .ai-overview-text div, 
+                        .ai-overview-text p, 
+                        .ai-overview-text li,
+                        .ai-overview-text b,
+                        .ai-overview-text strong {
+                          color: #334155 !important;
+                        }
+                        
+                        .ai-overview-text h1,
+                        .ai-overview-text h2,
+                        .ai-overview-text h3,
+                        .ai-overview-text h4 {
+                          color: #0f172a !important;
+                          font-weight: 700 !important;
+                        }
+
+                        /* Clean definition highlights */
+                        .ai-overview-text [style*="background-color: rgb(255, 255, 255)"],
+                        .ai-overview-text [style*="background-color:#ffffff"],
+                        .ai-overview-text [style*="background-color:rgb(255,255,255)"],
+                        .ai-overview-text [style*="background: rgb(255, 255, 255)"],
+                        .ai-overview-text [style*="background:#ffffff"],
+                        .ai-overview-text [style*="background:rgb(255,255,255)"] {
+                          background-color: rgba(37, 99, 235, 0.08) !important;
+                          border-bottom: 2px solid rgba(37, 99, 235, 0.3) !important;
+                          color: #1e3a8a !important;
+                          padding: 2px 6px !important;
+                          border-radius: 6px !important;
+                          display: inline !important;
+                        }
+
+                        /* Source cards & nodes in light mode */
+                        .ai-overview-text [class*="card"],
+                        .ai-overview-text [class*="source"],
+                        .ai-overview-text .wDYxhc,
+                        .ai-overview-text .kp-blk {
+                          background-color: #f1f5f9 !important;
+                          border: 1px solid #e2e8f0 !important;
+                          border-radius: 16px !important;
+                          padding: 12px !important;
+                          margin-top: 8px !important;
+                        }
+
+                        /* Interactive buttons in light mode */
+                        .ai-overview-text button,
+                        .ai-overview-text [role="button"],
+                        .ai-overview-text .LGOjhe {
+                          background-color: #e2e8f0 !important;
+                          border: 1px solid #cbd5e1 !important;
+                          color: #2563eb !important; /* Blue-600 */
+                          padding: 6px 16px !important;
+                          border-radius: 9999px !important;
+                          cursor: pointer !important;
+                          display: inline-flex !important;
+                          align-items: center !important;
+                          gap: 8px !important;
+                          font-size: 12px !important;
+                          font-weight: 600 !important;
+                          transition: all 0.2s !important;
+                          margin-top: 8px !important;
+                        }
+
+                        .ai-overview-text button:hover,
+                        .ai-overview-text [role="button"]:hover,
+                        .ai-overview-text .LGOjhe:hover {
+                          background-color: #cbd5e1 !important;
+                          color: #1d4ed8 !important;
+                        }
+                      `}
+
+                      /* Generic cleanups for lists and spacing */
+                      .ai-overview-text ul, 
+                      .ai-overview-text ol {
+                        margin-top: 12px !important;
+                        margin-bottom: 12px !important;
+                        padding-left: 20px !important;
+                      }
+
+                      .ai-overview-text li {
+                        margin-bottom: 8px !important;
+                        list-style-type: disc !important;
+                      }
+
+                      .ai-overview-text p {
+                        margin-bottom: 12px !important;
+                      }
+                      
+                      .ai-overview-text a {
+                        color: ${darkMode ? '#60a5fa' : '#2563eb'} !important;
+                        text-decoration: none !important;
+                        font-weight: 600 !important;
+                      }
+
+                      .ai-overview-text a:hover {
+                        text-decoration: underline !important;
+                      }
+                    `}</style>
+
                     {/* Decorative glows */}
                     <div className="absolute top-0 right-0 w-48 h-48 rounded-full bg-indigo-500/10 blur-[60px] pointer-events-none" />
                     <div className="absolute bottom-0 left-0 w-32 h-32 rounded-full bg-[#00d4aa]/5 blur-[60px] pointer-events-none" />
@@ -344,10 +593,10 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                       <h4 className="font-bold text-base bg-gradient-to-r from-indigo-400 to-[#00d4aa] bg-clip-text text-transparent">AI Overview</h4>
                     </div>
 
-                    <div 
-                      className={`ai-overview-text leading-relaxed text-sm prose max-w-none relative z-10 ${
-                        darkMode ? 'text-white/80' : 'text-slate-700'
-                      }`}
+                    <div
+                      className={`ai-overview-text leading-relaxed text-sm prose max-w-none relative z-10 ${darkMode ? 'text-white/80' : 'text-slate-700'
+                        }`}
+                      onClick={handleAiOverviewClick}
                       dangerouslySetInnerHTML={{ __html: result.aiResponse }}
                     />
                   </div>
@@ -355,11 +604,10 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
 
                 {/* 2. Direct Answer widget */}
                 {activeTab === 'all' && result.directAnswer && (
-                  <div className={`p-6 rounded-2xl border shadow-md transition-all ${
-                    darkMode 
-                      ? 'bg-[#1b1b22] border-white/[0.06]' 
-                      : 'bg-white border-gray-200'
-                  }`}>
+                  <div className={`p-6 rounded-2xl border shadow-md transition-all ${darkMode
+                    ? 'bg-[#1b1b22] border-white/[0.06]'
+                    : 'bg-white border-gray-200'
+                    }`}>
                     <div className="flex items-center gap-2 text-xs text-white/40 mb-3 uppercase tracking-wider font-mono">
                       {result.directAnswer.type === 'weather' ? <CloudSun className="w-4 h-4 text-yellow-400" /> : <Clock className="w-4 h-4 text-blue-400" />}
                       <span>Direct Answer: {result.directAnswer.type}</span>
@@ -388,23 +636,21 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
 
                 {/* 3. Featured Snippet card */}
                 {activeTab === 'all' && result.featuredSnippet && (
-                  <div className={`p-6 rounded-2xl border shadow-sm transition-all ${
-                    darkMode 
-                      ? 'bg-[#1b1b22] border-white/[0.06]' 
-                      : 'bg-white border-gray-200'
-                  }`}>
+                  <div className={`p-6 rounded-2xl border shadow-sm transition-all ${darkMode
+                    ? 'bg-[#1b1b22] border-white/[0.06]'
+                    : 'bg-white border-gray-200'
+                    }`}>
                     <div className="flex items-center gap-1.5 text-xs text-white/40 mb-3 uppercase tracking-wider font-mono">
                       <BookOpen className="w-4 h-4 text-indigo-400" />
                       <span>Featured Snippet</span>
                     </div>
-                    <p className={`text-base md:text-lg leading-relaxed mb-4 font-serif ${
-                      darkMode ? 'text-white/90' : 'text-slate-800'
-                    }`}>
+                    <p className={`text-base md:text-lg leading-relaxed mb-4 font-serif ${darkMode ? 'text-white/90' : 'text-slate-800'
+                      }`}>
                       "{result.featuredSnippet.snippet}"
                     </p>
-                    <a 
-                      href={result.featuredSnippet.link} 
-                      target="_blank" 
+                    <a
+                      href={result.featuredSnippet.link}
+                      target="_blank"
                       rel="noreferrer"
                       className="group block border-t pt-3 border-white/5"
                     >
@@ -415,7 +661,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                 )}
 
                 {/* Tab Filtering & Organic Results rendering */}
-                
+
                 {/* 4A. TAB = ALL: Render organic results + PAA + carousels */}
                 {activeTab === 'all' && (
                   <div className="space-y-6">
@@ -429,21 +675,21 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                             {/* Header / Breadcrumbs */}
                             <div className="flex items-center gap-2 mb-1 text-xs text-white/40 truncate">
                               {item.favicon && (
-                                <img 
-                                  src={item.favicon} 
-                                  alt="Favicon" 
+                                <img
+                                  src={item.favicon}
+                                  alt="Favicon"
                                   className="w-4 h-4 rounded-full flex-shrink-0"
                                   onError={(e) => (e.currentTarget.style.display = 'none')}
                                 />
                               )}
                               <span className="text-white/60 truncate font-sans">{item.displayedLink || item.link}</span>
                             </div>
-                            
+
                             {/* Link Title */}
-                            <a 
-                              href={item.link} 
-                              target="_blank" 
-                              rel="noreferrer" 
+                            <a
+                              href={item.link}
+                              target="_blank"
+                              rel="noreferrer"
                               className="text-lg md:text-xl font-sans text-blue-400 group-hover:underline block leading-tight mb-1"
                             >
                               {item.title}
@@ -460,9 +706,8 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
 
                     {/* People Also Ask (PAA) section */}
                     {result.peopleAlsoAsk && result.peopleAlsoAsk.length > 0 && (
-                      <div className={`border rounded-2xl overflow-hidden transition-all ${
-                        darkMode ? 'border-white/10 bg-white/[0.01]' : 'border-gray-200 bg-gray-50/50'
-                      }`}>
+                      <div className={`border rounded-2xl overflow-hidden transition-all ${darkMode ? 'border-white/10 bg-white/[0.01]' : 'border-gray-200 bg-gray-50/50'
+                        }`}>
                         <div className={`px-5 py-4 border-b font-bold text-sm ${darkMode ? 'border-white/10' : 'border-gray-200'}`}>
                           People also ask
                         </div>
@@ -482,9 +727,9 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                                     <div className="space-y-3">
                                       <p className="font-serif">"{paa.answer}"</p>
                                       {paa.sourceUrl && (
-                                        <a 
-                                          href={paa.sourceUrl} 
-                                          target="_blank" 
+                                        <a
+                                          href={paa.sourceUrl}
+                                          target="_blank"
                                           rel="noreferrer"
                                           className="inline-flex items-center gap-1 text-blue-400 font-semibold hover:underline"
                                         >
@@ -515,18 +760,17 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                     ) : (
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                         {result.images.map((img, idx) => (
-                          <div 
-                            key={idx} 
+                          <div
+                            key={idx}
                             onClick={() => setSelectedImage(img)}
-                            className={`group rounded-2xl overflow-hidden border cursor-pointer transition-all hover:scale-[1.02] shadow-sm hover:shadow-md ${
-                              darkMode ? 'bg-[#1b1b22] border-white/[0.06]' : 'bg-white border-gray-200'
-                            }`}
+                            className={`group rounded-2xl overflow-hidden border cursor-pointer transition-all hover:scale-[1.02] shadow-sm hover:shadow-md ${darkMode ? 'bg-[#1b1b22] border-white/[0.06]' : 'bg-white border-gray-200'
+                              }`}
                           >
                             <div className="relative aspect-video bg-black/40 overflow-hidden flex items-center justify-center">
                               {img.imageUrl ? (
-                                <img 
-                                  src={img.imageUrl} 
-                                  alt={img.alt || 'Crawled result'} 
+                                <img
+                                  src={img.imageUrl}
+                                  alt={img.alt || 'Crawled result'}
                                   className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                                   onError={(e) => (e.currentTarget.src = 'https://placehold.co/600x400/png?text=Preview+Unavailable')}
                                 />
@@ -555,16 +799,15 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                       <div className="text-center py-16 text-white/30 text-sm">No videos found for this query.</div>
                     ) : (
                       result.videos.map((vid, idx) => (
-                        <div 
-                          key={idx} 
-                          className={`p-4 rounded-2xl border flex flex-col sm:flex-row gap-4 transition-all shadow-sm ${
-                            darkMode ? 'bg-[#1b1b22] border-white/[0.06]' : 'bg-white border-gray-200'
-                          }`}
+                        <div
+                          key={idx}
+                          className={`p-4 rounded-2xl border flex flex-col sm:flex-row gap-4 transition-all shadow-sm ${darkMode ? 'bg-[#1b1b22] border-white/[0.06]' : 'bg-white border-gray-200'
+                            }`}
                         >
                           {/* Left: Thumbnail Simulation */}
-                          <a 
-                            href={vid.link} 
-                            target="_blank" 
+                          <a
+                            href={vid.link}
+                            target="_blank"
                             rel="noreferrer"
                             className="w-full sm:w-48 aspect-video bg-black/40 rounded-xl flex items-center justify-center relative overflow-hidden group flex-shrink-0"
                           >
@@ -586,9 +829,9 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                                 <span className="font-semibold uppercase tracking-wider text-blue-400">{vid.source}</span>
                                 {vid.uploadedAt && <span>· {vid.uploadedAt}</span>}
                               </div>
-                              <a 
-                                href={vid.link} 
-                                target="_blank" 
+                              <a
+                                href={vid.link}
+                                target="_blank"
                                 rel="noreferrer"
                                 className="text-base font-bold text-white hover:text-blue-400 transition-colors group-hover:underline block leading-tight mb-2"
                               >
@@ -596,9 +839,9 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                               </a>
                             </div>
 
-                            <a 
-                              href={vid.link} 
-                              target="_blank" 
+                            <a
+                              href={vid.link}
+                              target="_blank"
                               rel="noreferrer"
                               className="text-xs text-white/30 truncate block hover:underline"
                             >
@@ -619,28 +862,27 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                       <div className="text-center py-16 text-white/30 text-sm">No recent news reports found for this query.</div>
                     ) : (
                       result.news.map((item, idx) => (
-                        <div 
+                        <div
                           key={idx}
-                          className={`p-5 rounded-2xl border transition-all hover:border-white/10 ${
-                            darkMode ? 'bg-[#1b1b22] border-white/[0.06]' : 'bg-white border-gray-200'
-                          }`}
+                          className={`p-5 rounded-2xl border transition-all hover:border-white/10 ${darkMode ? 'bg-[#1b1b22] border-white/[0.06]' : 'bg-white border-gray-200'
+                            }`}
                         >
                           <div className="flex items-center gap-2 mb-2 text-[10px] text-white/40 font-mono">
                             <span className="font-bold text-[#6c63ff] uppercase">{item.source}</span>
                             <span>·</span>
                             <span>{item.time}</span>
                           </div>
-                          <a 
-                            href={item.link} 
-                            target="_blank" 
+                          <a
+                            href={item.link}
+                            target="_blank"
                             rel="noreferrer"
                             className="text-base font-bold text-white hover:text-blue-400 hover:underline block leading-snug mb-2"
                           >
                             {item.title}
                           </a>
-                          <a 
-                            href={item.link} 
-                            target="_blank" 
+                          <a
+                            href={item.link}
+                            target="_blank"
                             rel="noreferrer"
                             className="text-[10px] text-white/20 truncate block"
                           >
@@ -661,20 +903,19 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                     ) : (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         {result.shopping.map((prod, idx) => (
-                          <div 
+                          <div
                             key={idx}
-                            className={`p-5 rounded-2xl border transition-all flex flex-col justify-between gap-4 ${
-                              darkMode ? 'bg-[#1b1b22] border-white/[0.06]' : 'bg-white border-gray-200'
-                            }`}
+                            className={`p-5 rounded-2xl border transition-all flex flex-col justify-between gap-4 ${darkMode ? 'bg-[#1b1b22] border-white/[0.06]' : 'bg-white border-gray-200'
+                              }`}
                           >
                             <div>
                               <div className="text-2xl font-black text-emerald-400 font-mono mb-2">{prod.price}</div>
                               <h5 className="text-sm font-bold text-white leading-snug mb-1">{prod.title}</h5>
                               <div className="text-xs text-white/40 font-semibold">{prod.merchant}</div>
                             </div>
-                            <a 
-                              href={prod.link} 
-                              target="_blank" 
+                            <a
+                              href={prod.link}
+                              target="_blank"
                               rel="noreferrer"
                               className="w-full text-center py-2.5 rounded-xl bg-blue-500 hover:bg-blue-600 text-white font-semibold text-xs transition-colors block"
                             >
@@ -695,11 +936,10 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                       <div className="text-center py-16 text-white/30 text-sm">No map places extracted. Try using "Maps Places" tab instead for structured batches.</div>
                     ) : (
                       result.localResults.map((place, idx) => (
-                        <div 
+                        <div
                           key={idx}
-                          className={`p-5 rounded-2xl border flex gap-4 transition-all ${
-                            darkMode ? 'bg-[#1b1b22] border-white/[0.06]' : 'bg-white border-gray-200'
-                          }`}
+                          className={`p-5 rounded-2xl border flex gap-4 transition-all ${darkMode ? 'bg-[#1b1b22] border-white/[0.06]' : 'bg-white border-gray-200'
+                            }`}
                         >
                           <div className="w-10 h-10 rounded-full bg-[#00d4aa]/10 text-[#00d4aa] border border-[#00d4aa]/20 flex items-center justify-center text-base flex-shrink-0">
                             📍
@@ -718,9 +958,9 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                             {place.address && <p className="text-xs text-white/60 mb-1">🏠 {place.address}</p>}
                             {place.phone && <p className="text-xs text-white/60 mb-3">📞 {place.phone}</p>}
                             {place.link && (
-                              <a 
-                                href={place.link} 
-                                target="_blank" 
+                              <a
+                                href={place.link}
+                                target="_blank"
                                 rel="noreferrer"
                                 className="inline-flex items-center gap-1 text-xs text-blue-400 font-bold hover:underline"
                               >
@@ -747,11 +987,10 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                             setQuery(term);
                             executeSearch(term, 1);
                           }}
-                          className={`px-4 py-2 rounded-full text-xs font-semibold border transition-all ${
-                            darkMode
-                              ? 'bg-white/[0.03] border-white/10 text-white/60 hover:bg-white/[0.08] hover:text-white'
-                              : 'bg-gray-100 border-gray-300 text-slate-700 hover:bg-gray-200 hover:text-black shadow-sm'
-                          }`}
+                          className={`px-4 py-2 rounded-full text-xs font-semibold border transition-all ${darkMode
+                            ? 'bg-white/[0.03] border-white/10 text-white/60 hover:bg-white/[0.08] hover:text-white'
+                            : 'bg-gray-100 border-gray-300 text-slate-700 hover:bg-gray-200 hover:text-black shadow-sm'
+                            }`}
                         >
                           🔍 {term}
                         </button>
@@ -765,11 +1004,10 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                   <button
                     disabled={page <= 1}
                     onClick={() => executeSearch(activeQuery, page - 1)}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
-                      darkMode
-                        ? 'bg-white/[0.04] border-white/10 hover:bg-white/[0.08] disabled:opacity-30'
-                        : 'bg-white border-gray-300 hover:bg-gray-100 disabled:opacity-30 shadow-sm text-slate-800'
-                    }`}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border ${darkMode
+                      ? 'bg-white/[0.04] border-white/10 hover:bg-white/[0.08] disabled:opacity-30'
+                      : 'bg-white border-gray-300 hover:bg-gray-100 disabled:opacity-30 shadow-sm text-slate-800'
+                      }`}
                   >
                     Prev Page
                   </button>
@@ -778,11 +1016,10 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                   </div>
                   <button
                     onClick={() => executeSearch(activeQuery, page + 1)}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
-                      darkMode
-                        ? 'bg-white/[0.04] border-white/10 hover:bg-white/[0.08]'
-                        : 'bg-white border-gray-300 hover:bg-gray-100 shadow-sm text-slate-800'
-                    }`}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border ${darkMode
+                      ? 'bg-white/[0.04] border-white/10 hover:bg-white/[0.08]'
+                      : 'bg-white border-gray-300 hover:bg-gray-100 shadow-sm text-slate-800'
+                      }`}
                   >
                     Next Page
                   </button>
@@ -792,12 +1029,11 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
 
               {/* RIGHT COLUMN: Sidebar (Span 4) */}
               <div className="lg:col-span-4 space-y-6">
-                
+
                 {/* A. Knowledge Panel Card */}
                 {result.knowledgePanel ? (
-                  <div className={`rounded-2xl border shadow-md overflow-hidden transition-all ${
-                    darkMode ? 'bg-[#1b1b22] border-white/[0.06]' : 'bg-white border-gray-200'
-                  }`}>
+                  <div className={`rounded-2xl border shadow-md overflow-hidden transition-all ${darkMode ? 'bg-[#1b1b22] border-white/[0.06]' : 'bg-white border-gray-200'
+                    }`}>
                     {/* Header Banner simulation */}
                     <div className="bg-gradient-to-r from-blue-500/10 to-indigo-500/10 p-5 border-b border-white/5">
                       <div className="text-[10px] uppercase font-bold text-indigo-400 mb-1 tracking-wider">Knowledge Graph Info</div>
@@ -814,9 +1050,9 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                             {result.knowledgePanel.description}
                           </p>
                           {result.knowledgePanel.sourceUrl && (
-                            <a 
-                              href={result.knowledgePanel.sourceUrl} 
-                              target="_blank" 
+                            <a
+                              href={result.knowledgePanel.sourceUrl}
+                              target="_blank"
                               rel="noreferrer"
                               className="inline-flex items-center gap-1 text-xs text-blue-400 font-bold hover:underline"
                             >
@@ -841,18 +1077,16 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                     </div>
                   </div>
                 ) : (
-                  <div className={`p-5 rounded-2xl border text-center text-xs text-white/30 transition-all ${
-                    darkMode ? 'bg-[#1b1b22]/50 border-white/[0.04]' : 'bg-gray-50 border-gray-200'
-                  }`}>
+                  <div className={`p-5 rounded-2xl border text-center text-xs text-white/30 transition-all ${darkMode ? 'bg-[#1b1b22]/50 border-white/[0.04]' : 'bg-gray-50 border-gray-200'
+                    }`}>
                     No direct sidebar knowledge graph exists for this exact search. Try querying a topic like a country, celebrity, or weather location.
                   </div>
                 )}
 
                 {/* B. Shopping Products Preview in sidebar */}
                 {result.shopping && result.shopping.length > 0 && activeTab !== 'shopping' && (
-                  <div className={`p-5 rounded-2xl border space-y-4 transition-all ${
-                    darkMode ? 'bg-[#1b1b22] border-white/[0.06]' : 'bg-white border-gray-200 shadow-sm'
-                  }`}>
+                  <div className={`p-5 rounded-2xl border space-y-4 transition-all ${darkMode ? 'bg-[#1b1b22] border-white/[0.06]' : 'bg-white border-gray-200 shadow-sm'
+                    }`}>
                     <h5 className="font-extrabold text-xs uppercase text-white/40 tracking-wider">Related Products</h5>
                     <div className="divide-y divide-white/5 space-y-3">
                       {result.shopping.slice(0, 3).map((prod, idx) => (
@@ -870,9 +1104,8 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
 
                 {/* C. Local places / Map listings preview in sidebar */}
                 {result.localResults && result.localResults.length > 0 && activeTab !== 'maps' && (
-                  <div className={`p-5 rounded-2xl border space-y-4 transition-all ${
-                    darkMode ? 'bg-[#1b1b22] border-white/[0.06]' : 'bg-white border-gray-200 shadow-sm'
-                  }`}>
+                  <div className={`p-5 rounded-2xl border space-y-4 transition-all ${darkMode ? 'bg-[#1b1b22] border-white/[0.06]' : 'bg-white border-gray-200 shadow-sm'
+                    }`}>
                     <h5 className="font-extrabold text-xs uppercase text-white/40 tracking-wider">Local Results Preview</h5>
                     <div className="divide-y divide-white/5 space-y-3">
                       {result.localResults.slice(0, 3).map((place, idx) => (
@@ -897,35 +1130,35 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
 
       {/* Lightbox Modal for Image Preview */}
       {selectedImage && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-300"
           onClick={() => setSelectedImage(null)}
         >
-          <button 
+          <button
             onClick={() => setSelectedImage(null)}
             className="absolute top-4 right-4 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-all"
           >
             <X className="w-6 h-6" />
           </button>
-          
-          <div 
+
+          <div
             className="bg-[#1b1b22] border border-white/10 max-w-4xl w-full rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="relative bg-black flex items-center justify-center p-4 max-h-[70vh]">
-              <img 
-                src={selectedImage.imageUrl} 
-                alt={selectedImage.alt} 
-                className="max-w-full max-h-[60vh] object-contain rounded-lg" 
+              <img
+                src={selectedImage.imageUrl}
+                alt={selectedImage.alt}
+                className="max-w-full max-h-[60vh] object-contain rounded-lg"
               />
             </div>
             <div className="p-6 border-t border-white/5">
               <h3 className="text-lg font-bold text-white leading-tight mb-2">{selectedImage.alt || 'Crawled Google Image Result'}</h3>
               <p className="text-xs text-white/40 truncate mb-4">Source URL: {selectedImage.sourceUrl}</p>
-              
-              <a 
-                href={selectedImage.sourceUrl} 
-                target="_blank" 
+
+              <a
+                href={selectedImage.sourceUrl}
+                target="_blank"
                 rel="noreferrer"
                 className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-blue-500 hover:bg-blue-600 rounded-xl text-xs font-bold text-white shadow transition-colors"
               >
