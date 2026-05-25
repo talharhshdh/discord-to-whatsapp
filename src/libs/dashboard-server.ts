@@ -43,6 +43,12 @@ import { browserPool, searchViaPool } from './browser-pool';
 import type { WebhookPayload } from './browser-pool';
 import { searchPlacesViaPool, searchPlacesStream, searchViaGoogleSearchUrl, searchViaGoogleSearchStream } from './google-places-search';
 
+const Corrosion = require('corrosion');
+const webProxy = new Corrosion({
+  prefix: '/api/web-proxy/',
+  codec: 'base64',
+});
+
 // ── URL Registry ─────────────────────────────────────────────────────────────
 
 export interface ToolUrlEntry {
@@ -798,6 +804,34 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     return;
   }
 
+  // ── Web Proxy (Corrosion) ──────────────────────────────────────────────────
+  if (url.startsWith('/api/web-proxy')) {
+    try {
+      if (url.includes('?url=')) {
+        const params = new URL(url, 'http://localhost').searchParams;
+        let targetUrl = params.get('url');
+        if (targetUrl) {
+          if (!/^https?:\/\//i.test(targetUrl)) {
+            targetUrl = 'https://' + targetUrl;
+          }
+          let encoded = '';
+          if (webProxy.codec && typeof webProxy.codec.encode === 'function') {
+            encoded = webProxy.codec.encode(targetUrl);
+          } else {
+            encoded = Buffer.from(targetUrl).toString('base64');
+          }
+          res.writeHead(302, { 'Location': `/api/web-proxy/${encoded}` });
+          res.end();
+          return;
+        }
+      }
+      webProxy.request(req, res);
+    } catch (e) {
+      err(res, (e as Error).message);
+    }
+    return;
+  }
+
   // ── POST /api/browser/custom ───────────────────────────────────────────
   if (method === 'POST' && url === '/api/browser/custom') {
     try {
@@ -1395,6 +1429,11 @@ export function startLocalServer(port = 4000): Promise<string> {
         console.error('Dashboard handler error:', e);
         try { res.writeHead(500); res.end('Internal error'); } catch { /* already sent */ }
       });
+    });
+    server.on('upgrade', (req: any, socket: any, head: any) => {
+      if (req.url.startsWith('/api/web-proxy/')) {
+        webProxy.upgrade(req, socket, head);
+      }
     });
     server.on('error', reject);
     server.listen(port, '127.0.0.1', () => {

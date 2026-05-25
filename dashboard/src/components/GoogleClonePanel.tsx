@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { api, BrowserSearchResult } from '../api';
 import {
   Search, Mic, Camera, Globe, MapPin, Video, Newspaper, ShoppingBag,
-  Clock, CloudSun, Sparkles, BookOpen, Languages, ChevronDown, ChevronUp,
+  Clock, CloudSun, BookOpen, Languages, ChevronDown, ChevronUp,
   ExternalLink, Image, Play, Star, Info, Moon, Sun, ArrowLeft, RefreshCw, X,
   Loader2
 } from 'lucide-react';
@@ -22,7 +22,6 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
   const [result, setResult] = useState<BrowserSearchResult | null>(null);
   const [isSearched, setIsSearched] = useState(false);
   const [activeTab, setActiveTab] = useState<SearchTab>('all');
-  const [includeAI, setIncludeAI] = useState(true);
   const [darkMode, setDarkMode] = useState(true);
   const [openPaaIndex, setOpenPaaIndex] = useState<number | null>(null);
   const [selectedImage, setSelectedImage] = useState<{ alt: string; sourceUrl: string; imageUrl?: string } | null>(null);
@@ -45,7 +44,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
     setActiveQuery(searchQuery);
 
     try {
-      const res = await api.browserSearch(searchQuery, targetPage, 'auto', includeAI);
+      const res = await api.browserSearch(searchQuery, targetPage, 'auto', false);
       setResult(res);
       setPage(targetPage);
     } catch (err: any) {
@@ -77,77 +76,6 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
     setOpenPaaIndex(openPaaIndex === index ? null : index);
   };
 
-  const handleAiOverviewClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const target = e.target as HTMLElement;
-    const button = target.closest('button, [role="button"], .wDYxhc, a');
-    if (!button) return;
-
-    // If it's a link, let it open normally
-    if (button.tagName === 'A') {
-      const href = button.getAttribute('href');
-      if (href && !href.startsWith('#')) return;
-    }
-
-    e.preventDefault();
-
-    const container = e.currentTarget;
-    const buttonText = button.textContent?.toLowerCase() || '';
-
-    if (
-      buttonText.includes('show more') ||
-      buttonText.includes('show less') ||
-      buttonText.includes('more') ||
-      button.classList.contains('LGOjhe')
-    ) {
-      // Toggle all elements inside this AI Overview that have style with display:none or display: none
-      const hiddenElements = container.querySelectorAll('[style*="display: none"], [style*="display:none"]');
-      let didToggle = false;
-      hiddenElements.forEach(el => {
-        const htmlEl = el as HTMLElement;
-        if (htmlEl.style.display === 'none') {
-          htmlEl.style.setProperty('display', 'block', 'important');
-          didToggle = true;
-        } else {
-          htmlEl.style.setProperty('display', 'none', 'important');
-          didToggle = true;
-        }
-      });
-
-      // Let's also look for elements with height/max-height zero, or collapsed classes, and toggle them
-      const collapsedContainers = container.querySelectorAll('[class*="collapse"], [class*="hidden"], [aria-hidden="true"]');
-      collapsedContainers.forEach(el => {
-        const htmlEl = el as HTMLElement;
-        if (htmlEl.classList.contains('hidden') || htmlEl.getAttribute('aria-hidden') === 'true') {
-          htmlEl.classList.remove('hidden');
-          htmlEl.removeAttribute('aria-hidden');
-          htmlEl.style.setProperty('display', 'block', 'important');
-          didToggle = true;
-        }
-      });
-
-      // Expand all collapsed cards/grid height if no explicit display none is found
-      if (!didToggle) {
-        const cardsList = container.querySelectorAll('[class*="card"], [class*="list"], [class*="grid"]');
-        cardsList.forEach(el => {
-          const htmlEl = el as HTMLElement;
-          if (htmlEl.style.maxHeight || htmlEl.style.height) {
-            htmlEl.style.maxHeight = '';
-            htmlEl.style.height = '';
-          } else {
-            htmlEl.style.maxHeight = 'none';
-          }
-        });
-      }
-
-      // Also toggle text on the button
-      if (button.textContent?.includes('Show more')) {
-        button.textContent = button.textContent.replace('Show more', 'Show less');
-      } else if (button.textContent?.includes('Show less')) {
-        button.textContent = button.textContent.replace('Show less', 'Show more');
-      }
-    }
-  };
-
   return (
     <div className={`${isStandalone ? 'min-h-screen w-full' : 'min-h-[85vh] rounded-3xl border'} transition-all duration-300 ${darkMode
       ? `bg-[#0f0f13] text-white ${isStandalone ? '' : 'border-white/[0.08]'}`
@@ -170,22 +98,11 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
           )}
           <span className={`text-[10px] tracking-wider uppercase font-mono px-2 py-0.5 rounded ${darkMode ? 'bg-[#6c63ff]/10 text-[#6c63ff]' : 'bg-blue-100 text-blue-700'
             }`}>
-            Google SGE Clone
+            Google Clone
           </span>
         </div>
 
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => setIncludeAI(v => !v)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all border ${includeAI
-              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-              : darkMode ? 'bg-white/[0.03] border-white/10 text-white/40' : 'bg-gray-100 border-gray-300 text-gray-400'
-              }`}
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>AI Overview: {includeAI ? 'ON' : 'OFF'}</span>
-          </button>
-
           <button
             onClick={() => setDarkMode(!darkMode)}
             className={`p-2 rounded-full border transition-all ${darkMode
@@ -361,8 +278,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
           {loading && (
             <div className="flex flex-col items-center justify-center p-24 gap-3">
               <div className="w-10 h-10 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
-              <p className="text-xs text-white/40 tracking-wider uppercase font-mono animate-pulse"><Loader2 className='animate-spin h-8 w-8 ' /></p>
-            </div>
+           </div>
           )}
 
           {/* Error State */}
@@ -388,219 +304,6 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
               {/* LEFT COLUMN: Results, Weather, AI, News (Span 8) */}
               <div className="lg:col-span-8 space-y-6">
 
-                {/* 1. SGE AI Overview */}
-                {activeTab === 'all' && result.aiResponse && (
-                  <div className={`p-6 rounded-3xl border shadow-xl relative overflow-hidden transition-all duration-300 ${darkMode
-                    ? 'bg-gradient-to-br from-[#0c0f1d] via-[#101426] to-[#0f0e21] border-indigo-500/25'
-                    : 'bg-gradient-to-br from-indigo-50/50 via-slate-50 to-indigo-50/20 border-indigo-200'
-                    }`}>
-                    <style>{`
-                      /* AI Overview container styling */
-                      .ai-overview-text {
-                        font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-                        line-height: 1.625;
-                      }
-                      
-                      /* Dark Mode overrides */
-                      ${darkMode ? `
-                        .ai-overview-text, 
-                        .ai-overview-text span, 
-                        .ai-overview-text div, 
-                        .ai-overview-text p, 
-                        .ai-overview-text li,
-                        .ai-overview-text b,
-                        .ai-overview-text strong {
-                          color: rgba(255, 255, 255, 0.85) !important;
-                        }
-                        
-                        .ai-overview-text h1,
-                        .ai-overview-text h2,
-                        .ai-overview-text h3,
-                        .ai-overview-text h4 {
-                          color: #ffffff !important;
-                          font-weight: 700 !important;
-                        }
-
-                        /* highlighted text spans */
-                        .ai-overview-text b, 
-                        .ai-overview-text strong,
-                        .ai-overview-text .hgKElc {
-                          color: #ffffff !important;
-                          font-weight: 600 !important;
-                        }
-
-                        /* Clean definition highlights */
-                        .ai-overview-text [style*="background-color: rgb(255, 255, 255)"],
-                        .ai-overview-text [style*="background-color:#ffffff"],
-                        .ai-overview-text [style*="background-color:rgb(255,255,255)"],
-                        .ai-overview-text [style*="background: rgb(255, 255, 255)"],
-                        .ai-overview-text [style*="background:#ffffff"],
-                        .ai-overview-text [style*="background:rgb(255,255,255)"] {
-                          background-color: rgba(99, 102, 241, 0.15) !important;
-                          border-bottom: 2px solid rgba(99, 102, 241, 0.4) !important;
-                          color: #e0e7ff !important;
-                          padding: 2px 6px !important;
-                          border-radius: 6px !important;
-                          display: inline !important;
-                        }
-
-                        /* Source cards & nodes in dark mode */
-                        .ai-overview-text [class*="card"],
-                        .ai-overview-text [class*="source"],
-                        .ai-overview-text .wDYxhc,
-                        .ai-overview-text .kp-blk {
-                          background-color: rgba(255, 255, 255, 0.03) !important;
-                          border: 1px solid rgba(255, 255, 255, 0.08) !important;
-                          border-radius: 16px !important;
-                          padding: 12px !important;
-                          margin-top: 8px !important;
-                        }
-                        
-                        /* Interactive buttons in dark mode */
-                        .ai-overview-text button,
-                        .ai-overview-text [role="button"],
-                        .ai-overview-text .LGOjhe {
-                          background-color: rgba(255, 255, 255, 0.05) !important;
-                          border: 1px solid rgba(255, 255, 255, 0.1) !important;
-                          color: #a5b4fc !important; /* Indigo-300 */
-                          padding: 6px 16px !important;
-                          border-radius: 9999px !important;
-                          cursor: pointer !important;
-                          display: inline-flex !important;
-                          align-items: center !important;
-                          gap: 8px !important;
-                          font-size: 12px !important;
-                          font-weight: 600 !important;
-                          transition: all 0.2s !important;
-                          margin-top: 8px !important;
-                        }
-
-                        .ai-overview-text button:hover,
-                        .ai-overview-text [role="button"]:hover,
-                        .ai-overview-text .LGOjhe:hover {
-                          background-color: rgba(255, 255, 255, 0.08) !important;
-                          border-color: rgba(255, 255, 255, 0.15) !important;
-                          color: #c7d2fe !important;
-                        }
-                      ` : `
-                        /* Light Mode Overrides */
-                        .ai-overview-text, 
-                        .ai-overview-text span, 
-                        .ai-overview-text div, 
-                        .ai-overview-text p, 
-                        .ai-overview-text li,
-                        .ai-overview-text b,
-                        .ai-overview-text strong {
-                          color: #334155 !important;
-                        }
-                        
-                        .ai-overview-text h1,
-                        .ai-overview-text h2,
-                        .ai-overview-text h3,
-                        .ai-overview-text h4 {
-                          color: #0f172a !important;
-                          font-weight: 700 !important;
-                        }
-
-                        /* Clean definition highlights */
-                        .ai-overview-text [style*="background-color: rgb(255, 255, 255)"],
-                        .ai-overview-text [style*="background-color:#ffffff"],
-                        .ai-overview-text [style*="background-color:rgb(255,255,255)"],
-                        .ai-overview-text [style*="background: rgb(255, 255, 255)"],
-                        .ai-overview-text [style*="background:#ffffff"],
-                        .ai-overview-text [style*="background:rgb(255,255,255)"] {
-                          background-color: rgba(37, 99, 235, 0.08) !important;
-                          border-bottom: 2px solid rgba(37, 99, 235, 0.3) !important;
-                          color: #1e3a8a !important;
-                          padding: 2px 6px !important;
-                          border-radius: 6px !important;
-                          display: inline !important;
-                        }
-
-                        /* Source cards & nodes in light mode */
-                        .ai-overview-text [class*="card"],
-                        .ai-overview-text [class*="source"],
-                        .ai-overview-text .wDYxhc,
-                        .ai-overview-text .kp-blk {
-                          background-color: #f1f5f9 !important;
-                          border: 1px solid #e2e8f0 !important;
-                          border-radius: 16px !important;
-                          padding: 12px !important;
-                          margin-top: 8px !important;
-                        }
-
-                        /* Interactive buttons in light mode */
-                        .ai-overview-text button,
-                        .ai-overview-text [role="button"],
-                        .ai-overview-text .LGOjhe {
-                          background-color: #e2e8f0 !important;
-                          border: 1px solid #cbd5e1 !important;
-                          color: #2563eb !important; /* Blue-600 */
-                          padding: 6px 16px !important;
-                          border-radius: 9999px !important;
-                          cursor: pointer !important;
-                          display: inline-flex !important;
-                          align-items: center !important;
-                          gap: 8px !important;
-                          font-size: 12px !important;
-                          font-weight: 600 !important;
-                          transition: all 0.2s !important;
-                          margin-top: 8px !important;
-                        }
-
-                        .ai-overview-text button:hover,
-                        .ai-overview-text [role="button"]:hover,
-                        .ai-overview-text .LGOjhe:hover {
-                          background-color: #cbd5e1 !important;
-                          color: #1d4ed8 !important;
-                        }
-                      `}
-
-                      /* Generic cleanups for lists and spacing */
-                      .ai-overview-text ul, 
-                      .ai-overview-text ol {
-                        margin-top: 12px !important;
-                        margin-bottom: 12px !important;
-                        padding-left: 20px !important;
-                      }
-
-                      .ai-overview-text li {
-                        margin-bottom: 8px !important;
-                        list-style-type: disc !important;
-                      }
-
-                      .ai-overview-text p {
-                        margin-bottom: 12px !important;
-                      }
-                      
-                      .ai-overview-text a {
-                        color: ${darkMode ? '#60a5fa' : '#2563eb'} !important;
-                        text-decoration: none !important;
-                        font-weight: 600 !important;
-                      }
-
-                      .ai-overview-text a:hover {
-                        text-decoration: underline !important;
-                      }
-                    `}</style>
-
-                    {/* Decorative glows */}
-                    <div className="absolute top-0 right-0 w-48 h-48 rounded-full bg-indigo-500/10 blur-[60px] pointer-events-none" />
-                    <div className="absolute bottom-0 left-0 w-32 h-32 rounded-full bg-[#00d4aa]/5 blur-[60px] pointer-events-none" />
-
-                    <div className="flex items-center gap-2 mb-4 relative z-10">
-                      <Sparkles className="w-5 h-5 text-indigo-400 animate-pulse" />
-                      <h4 className="font-bold text-base bg-gradient-to-r from-indigo-400 to-[#00d4aa] bg-clip-text text-transparent">AI Overview</h4>
-                    </div>
-
-                    <div
-                      className={`ai-overview-text leading-relaxed text-sm prose max-w-none relative z-10 ${darkMode ? 'text-white/80' : 'text-slate-700'
-                        }`}
-                      onClick={handleAiOverviewClick}
-                      dangerouslySetInnerHTML={{ __html: result.aiResponse }}
-                    />
-                  </div>
-                )}
 
                 {/* 2. Direct Answer widget */}
                 {activeTab === 'all' && result.directAnswer && (
@@ -1170,34 +873,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
         </div>
       )}
 
-      {/* Scoped CSS styles for custom SGE rich elements */}
-      <style>{`
-        .ai-overview-text h1, .ai-overview-text h2, .ai-overview-text h3,
-        .ai-overview-text h4, .ai-overview-text h5 {
-          color: rgba(255,255,255,0.95);
-          font-weight: 700;
-          margin-top: 1.25em;
-          margin-bottom: 0.5em;
-        }
-        .ai-overview-text h2 { font-size: 1.2em; border-left: 3px solid #6c63ff; padding-left: 8px; }
-        .ai-overview-text h3 { font-size: 1.05em; }
-        .ai-overview-text p { margin-bottom: 0.85em; font-size: 0.92rem; }
-        .ai-overview-text ul, .ai-overview-text ol {
-          padding-left: 1.5em;
-          margin-bottom: 0.85em;
-        }
-        .ai-overview-text li { margin-bottom: 0.4em; list-style-type: square; }
-        .ai-overview-text a {
-          color: #6c63ff;
-          text-decoration: underline;
-          text-underline-offset: 2.5px;
-          font-weight: 600;
-        }
-        .ai-overview-text a:hover { color: #00d4aa; }
-        .ai-overview-text img { max-width: 100%; border-radius: 12px; margin: 0.75em 0; }
-        .ai-overview-text strong, .ai-overview-text b { color: rgba(255,255,255,0.98); font-weight: bold; }
-        .ai-overview-text br + br { display: none; }
-      `}</style>
+
     </div>
   );
 }
