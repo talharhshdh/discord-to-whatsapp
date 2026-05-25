@@ -97,7 +97,7 @@ function cleanupOldJobs(): void {
   const now = Date.now();
   const ONE_HOUR = 60 * 60 * 1000;
   const downloadsDir = join(__dirname, '..', '..', 'downloads');
-  
+
   for (const [id, job] of Object.entries(downloadJobs)) {
     if (now - job.createdAt > ONE_HOUR) {
       delete downloadJobs[id];
@@ -390,12 +390,12 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       const body = await parseJsonBody(req);
       const username = body['username'] as string;
       const password = body['password'] as string;
-      
+
       if (!usernameEnv || !passwordEnv) {
         json(res, { success: true, token: '' });
         return;
       }
-      
+
       if (username === usernameEnv && password === passwordEnv) {
         const token = Buffer.from(`${username}:${password}`).toString('base64');
         res.setHeader('Set-Cookie', `dashboard_token=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000`);
@@ -747,7 +747,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       'Content-Disposition': `attachment; filename="${encodeURIComponent(name.replace(/^\w+_/, ''))}"`,
       'Access-Control-Allow-Origin': '*',
     });
-    
+
     const { createReadStream } = require('fs');
     createReadStream(filePath).pipe(res);
     return;
@@ -856,6 +856,65 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
           return;
         }
       }
+
+      // Detect and directly stream video/audio or range requests to bypass Corrosion's in-memory buffering
+      let targetUrlStr = '';
+      try {
+        const urlData = webProxy.url.unwrap(url, { flags: true, leftovers: true });
+        targetUrlStr = typeof urlData === 'string' ? urlData : urlData?.value || '';
+      } catch (e) {
+        // ignore
+      }
+
+      if (targetUrlStr) {
+        const isRange = !!req.headers['range'];
+        const acceptHeader = req.headers['accept'] || '';
+        const isAcceptMedia = typeof acceptHeader === 'string' && (acceptHeader.includes('video/') || acceptHeader.includes('audio/'));
+        const isMediaExtension = /\.(mp4|webm|mp3|wav|ogg|m4a|mov|flac|aac|ts|m3u8|mpd)(?:\?|$)/i.test(targetUrlStr);
+        const isMediaKeyword = /videoplayback|googlevideo\.com|\/video\/|\/audio\/|\/stream/i.test(targetUrlStr);
+
+        if (isRange || isAcceptMedia || isMediaExtension || isMediaKeyword) {
+          try {
+            const targetUrl = new URL(targetUrlStr);
+            const isHttps = targetUrl.protocol === 'https:';
+            const requester = isHttps ? require('https').request : require('http').request;
+
+            const headers = { ...req.headers };
+            headers['host'] = targetUrl.host;
+            delete headers['origin'];
+            delete headers['referer'];
+
+            const proxyReq = requester(
+              {
+                method: req.method || 'GET',
+                hostname: targetUrl.hostname,
+                port: targetUrl.port || undefined,
+                path: targetUrl.pathname + targetUrl.search,
+                headers: headers,
+                rejectUnauthorized: false,
+              },
+              (proxyRes: any) => {
+                res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
+                proxyRes.pipe(res);
+              }
+            );
+
+            proxyReq.on('error', (err: Error) => {
+              console.error('Direct media proxy stream error:', err);
+              if (!res.headersSent) {
+                res.writeHead(500, { 'Content-Type': 'text/plain' });
+                res.end(err.message);
+              }
+            });
+
+            req.pipe(proxyReq);
+            return;
+          } catch (streamErr) {
+            console.error('Direct media stream request failed:', streamErr);
+          }
+        }
+      }
+
       webProxy.request(req, res);
     } catch (e) {
       err(res, (e as Error).message);
@@ -1238,13 +1297,13 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   //   data: {type:"error", message:string}
   if (method === 'GET' && url.startsWith('/api/browser/places/stream')) {
     const params = new URL(url, 'http://localhost').searchParams;
-    const query  = params.get('query')?.trim() ?? '';
+    const query = params.get('query')?.trim() ?? '';
     if (!query) { err(res, 'query param is required', 400); return; }
 
     res.writeHead(200, {
-      'Content-Type':  'text/event-stream',
+      'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
-      'Connection':    'keep-alive',
+      'Connection': 'keep-alive',
       'Access-Control-Allow-Origin': '*',
     });
 
@@ -1315,14 +1374,14 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   // Query params: query (required), maxPages (optional, default 10)
   if (method === 'GET' && url.startsWith('/api/browser/places/google-search/stream')) {
     const params = new URL(url, 'http://localhost').searchParams;
-    const query   = params.get('query')?.trim() ?? '';
+    const query = params.get('query')?.trim() ?? '';
     const maxPages = Number(params.get('maxPages')) || 10;
     if (!query) { err(res, 'query param is required', 400); return; }
 
     res.writeHead(200, {
-      'Content-Type':  'text/event-stream',
+      'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
-      'Connection':    'keep-alive',
+      'Connection': 'keep-alive',
       'Access-Control-Allow-Origin': '*',
     });
 
