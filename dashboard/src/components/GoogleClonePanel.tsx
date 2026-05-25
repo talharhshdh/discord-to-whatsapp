@@ -94,9 +94,9 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
     const buttonText = button.textContent?.toLowerCase() || '';
 
     if (
-      buttonText.includes('show more') || 
-      buttonText.includes('show less') || 
-      buttonText.includes('more') || 
+      buttonText.includes('show more') ||
+      buttonText.includes('show less') ||
+      buttonText.includes('more') ||
       button.classList.contains('LGOjhe')
     ) {
       // Toggle all elements inside this AI Overview that have style with display:none or display: none
@@ -383,7 +383,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
 
           {/* Results Display */}
           {!loading && result && (
-            <div className="px-4 md:px-8 py-6 max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <div className="px-4 md:px-8 py-6  mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-8">
 
               {/* LEFT COLUMN: Results, Weather, AI, News (Span 8) */}
               <div className="lg:col-span-8 space-y-6">
