@@ -3,7 +3,7 @@ import { browserPool } from '../libs/browser-pool';
 import { cookieSearchPool } from '../libs/cookie-search-pool';
 
 async function main() {
-    const workerUrl = process.argv[2] || process.env.WORKER_URL || 'https://execute-teams-ideal-conceptual.trycloudflare.com';
+    const workerUrl = process.argv[2] || process.env.WORKER_URL || 'https://hostels-belts-brooks-breath.trycloudflare.com';
     const query = process.argv[3] || 'weather in tokyo';
     const category = process.argv[4] || 'all';
 

@@ -56,6 +56,8 @@ class CookieSearchPool {
     );
   }
 
+
+
   private async fetchCookiesForWorker(browser: any): Promise<string> {
     let conn: WorkerConnection | null = null;
     let page: any = null;
@@ -124,7 +126,7 @@ class CookieSearchPool {
     this.cookieFetchPromises.set(workerId, promise);
   }
 
-  private async performFetch(url: string, cookie: string): Promise<string> {
+  private async performFetch(url: string, cookie: string): Promise<{ text: string; finalUrl: string }> {
     const resp = await fetch(url, {
       headers: {
         "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
@@ -146,7 +148,8 @@ class CookieSearchPool {
     });
 
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    return await resp.text();
+    const text = await resp.text();
+    return { text, finalUrl: resp.url };
   }
 
   public async search(
@@ -183,16 +186,24 @@ class CookieSearchPool {
         }
 
         let html = '';
+        let finalUrl = '';
         try {
-          html = await this.performFetch(targetUrl, cookie);
+          const fetchResult = await this.performFetch(targetUrl, cookie);
+          html = fetchResult.text;
+          finalUrl = fetchResult.finalUrl;
         } catch (err: any) {
           console.warn(`[CookieSearchPool] Fetch failed on browser ${browser.workerId}:`, err.message);
           this.cookiesMap.delete(browser.workerId);
           continue;
         }
 
-        if (this.isCaptcha(html)) {
-          console.warn(`[CookieSearchPool] CAPTCHA detected on browser ${browser.workerId}. Trying next browser...`);
+        const isRedirectedToBlock = finalUrl && (
+          finalUrl.includes('consent.google.com') ||
+          finalUrl.includes('/sorry/')
+        );
+
+        if (isRedirectedToBlock || this.isCaptcha(html)) {
+          console.warn(`[CookieSearchPool] CAPTCHA/Consent redirect detected on browser ${browser.workerId} (finalUrl: ${finalUrl}). Trying next browser...`);
           this.cookiesMap.delete(browser.workerId);
           this.clearAndRefreshCookiesInBackground(browser);
           browserPool.recordCaptcha(browser.workerId);
@@ -252,6 +263,14 @@ class CookieSearchPool {
               parent.parent().text().replace(title, '').trim().slice(0, 200);
             organic.push({ title, link, snippet });
           });
+        }
+
+        if (organic.length === 0) {
+          console.warn(`[CookieSearchPool] Zero organic results parsed on browser ${browser.workerId} (likely CAPTCHA or block page). Trying next browser...`);
+          this.cookiesMap.delete(browser.workerId);
+          this.clearAndRefreshCookiesInBackground(browser);
+          browserPool.recordCaptcha(browser.workerId);
+          continue;
         }
 
         return { organic, aiResponse: null };
