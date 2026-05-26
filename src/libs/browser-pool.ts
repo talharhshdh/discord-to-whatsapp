@@ -20,6 +20,7 @@ import {
   isWorkerCached,
 } from './page-pool';
 import type { WorkerConnection } from './page-pool';
+import * as cheerio from 'cheerio';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -937,9 +938,20 @@ export async function searchViaPool(
 
       workerCdpFailures.delete(browser.workerId);
 
+      let cleanAiResponse: string | null = null;
+      if (results.aiResponse) {
+        const $ = cheerio.load(results.aiResponse);
+        $('script, style').remove();
+        cleanAiResponse = $.text()
+          .split('\n')
+          .map(line => line.trim())
+          .filter(line => line.length > 0)
+          .join('\n');
+      }
+
       return {
         organic: results.organic,
-        aiResponse: results.aiResponse,
+        aiResponse: cleanAiResponse,
         featuredSnippet: results.featuredSnippet,
         knowledgePanel: results.knowledgePanel,
         peopleAlsoAsk: results.peopleAlsoAsk,

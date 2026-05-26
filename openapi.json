@@ -57,6 +57,54 @@
                   }
                 },
                 "required": ["text"]
+              },
+              "examples": {
+                "allCategory": {
+                  "summary": "All (Web) Category Search",
+                  "value": {
+                    "text": "xxxtentacion",
+                    "pageNumber": 1,
+                    "engine": "auto",
+                    "includeAI": true,
+                    "category": "all"
+                  }
+                },
+                "imagesCategory": {
+                  "summary": "Images Category Search",
+                  "value": {
+                    "text": "xxxtentacion",
+                    "pageNumber": 1,
+                    "engine": "auto",
+                    "category": "images"
+                  }
+                },
+                "videosCategory": {
+                  "summary": "Videos Category Search",
+                  "value": {
+                    "text": "xxxtentacion",
+                    "pageNumber": 1,
+                    "engine": "auto",
+                    "category": "videos"
+                  }
+                },
+                "newsCategory": {
+                  "summary": "News Category Search",
+                  "value": {
+                    "text": "xxxtentacion",
+                    "pageNumber": 1,
+                    "engine": "auto",
+                    "category": "news"
+                  }
+                },
+                "shoppingCategory": {
+                  "summary": "Shopping Category Search",
+                  "value": {
+                    "text": "xxxtentacion",
+                    "pageNumber": 1,
+                    "engine": "auto",
+                    "category": "shopping"
+                  }
+                }
               }
             }
           }
@@ -235,6 +283,99 @@
                         }
                       }
                     }
+                  }
+                }
+              },
+              "examples": {
+                "webSearchResponse": {
+                  "summary": "Web / All Search Response",
+                  "value": {
+                    "organic": [
+                      {
+                        "title": "XXXTENTACION - Look At Me! (Official Audio) - YouTube",
+                        "link": "https://www.youtube.com/watch?v=WmjPPKP8EBw",
+                        "snippet": "Official Audio for \"Look At Me!\" by XXXTENTACION.",
+                        "displayedLink": "youtube.com › watch",
+                        "favicon": "https://www.google.com/s2/favicons?sz=64&domain=youtube.com"
+                      }
+                    ],
+                    "aiResponse": "Jahseh Dwayne Ricardo Onfroy, known professionally as XXXTentacion, was an American rapper and singer-songwriter...",
+                    "featuredSnippet": {
+                      "title": "XXXTENTACION Biography",
+                      "link": "https://www.biography.com/musicians/xxxtentacion",
+                      "snippet": "Jahseh Dwayne Ricardo Onfroy, known professionally as XXXTentacion..."
+                    },
+                    "knowledgePanel": {
+                      "title": "XXXTentacion",
+                      "subtitle": "American rapper",
+                      "description": "Jahseh Dwayne Ricardo Onfroy, known professionally as XXXTentacion, was an American rapper...",
+                      "sourceUrl": "https://en.wikipedia.org/wiki/XXXTentacion",
+                      "attributes": [
+                        {
+                          "label": "Born",
+                          "value": "January 23, 1998, Plantation, FL"
+                        }
+                      ]
+                    },
+                    "peopleAlsoAsk": [
+                      {
+                        "question": "What was XXXTentacion's biggest hit?"
+                      }
+                    ],
+                    "directAnswer": null,
+                    "relatedSearches": ["xxxtentacion albums", "xxxtentacion age", "xxxtentacion real name"]
+                  }
+                },
+                "imagesSearchResponse": {
+                  "summary": "Images Search Response",
+                  "value": {
+                    "images": [
+                      {
+                        "alt": "XXXTentacion posing for portrait",
+                        "sourceUrl": "https://www.rollingstone.com/music/music-news/xxxtentacion-murder-trial-1234676456/",
+                        "imageUrl": "https://www.rollingstone.com/wp-content/uploads/2023/02/XXXTentacion.jpg"
+                      }
+                    ]
+                  }
+                },
+                "videosSearchResponse": {
+                  "summary": "Videos Search Response",
+                  "value": {
+                    "videos": [
+                      {
+                        "title": "XXXTENTACION - SAD! (Official Music Video)",
+                        "source": "YouTube",
+                        "duration": "2:46",
+                        "uploadedAt": "Mar 2, 2018",
+                        "link": "https://www.youtube.com/watch?v=pgN-vvVVxLk"
+                      }
+                    ]
+                  }
+                },
+                "newsSearchResponse": {
+                  "summary": "News Search Response",
+                  "value": {
+                    "news": [
+                      {
+                        "title": "How XXXTentacion's Album Changed the Sound of SoundCloud",
+                        "source": "Pitchfork",
+                        "time": "2 days ago",
+                        "link": "https://pitchfork.com/news/1739-xxxtentacion"
+                      }
+                    ]
+                  }
+                },
+                "shoppingSearchResponse": {
+                  "summary": "Shopping Search Response",
+                  "value": {
+                    "shopping": [
+                      {
+                        "title": "XXXTentacion - ? Vinyl LP",
+                        "price": "$29.98",
+                        "merchant": "Amazon.com",
+                        "link": "https://www.amazon.com/dp/B07DY2M3QZ"
+                      }
+                    ]
                   }
                 }
               }

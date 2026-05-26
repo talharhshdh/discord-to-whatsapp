@@ -1332,6 +1332,17 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         }
       }
 
+      if (results && results.aiResponse) {
+        const cheerio = require('cheerio');
+        const $ = cheerio.load(results.aiResponse);
+        $('script, style').remove();
+        results.aiResponse = $.text()
+          .split('\n')
+          .map((line: string) => line.trim())
+          .filter((line: string) => line.length > 0)
+          .join('\n');
+      }
+
       json(res, results);
     } catch (e) {
       err(res, (e as Error).message);
