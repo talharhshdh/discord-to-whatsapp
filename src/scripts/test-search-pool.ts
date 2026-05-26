@@ -112,6 +112,7 @@ async function timedSearchViaPool(
             const tGoto = performance.now();
             const client = await page.target().createCDPSession();
             await client.send('Page.navigate', { url: targetUrl, timeout: 0 });
+            await client.detach();
             console.log(`⏱️  page.goto (Network request) took:         ${Math.round(performance.now() - tGoto)} ms`);
 
             let title = '';

@@ -352,6 +352,7 @@ export async function searchViaPool(
 
       const client = await page.target().createCDPSession();
       await client.send('Page.navigate', { url: targetUrl });
+      await client.detach();
 
       await page
         .waitForSelector('#search, .Gx5Zad.xpd, .xpd, h3, a', {
