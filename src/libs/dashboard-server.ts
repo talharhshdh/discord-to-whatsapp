@@ -887,8 +887,14 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       }
 
       if (!targetUrlStr || !/^https?:\/\//i.test(targetUrlStr)) {
-        err(res, 'Invalid or missing target URL for proxy', 400);
-        return;
+        const isCorrosionInternal = req.url && (
+          req.url.startsWith('/api/web-proxy/index.js') ||
+          req.url.startsWith('/api/web-proxy/gateway')
+        );
+        if (!isCorrosionInternal) {
+          err(res, 'Invalid or missing target URL for proxy', 400);
+          return;
+        }
       }
 
       if (targetUrlStr) {
