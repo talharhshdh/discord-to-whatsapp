@@ -42,15 +42,19 @@ export const MAX_WORKER_CDP_FAILURES = 3;
 // ---------------------------------------------------------------------------
 
 /**
- * Pre-warm and cache the puppeteer connection for a worker.
- * Can be called eagerly during registration to maximize startup speed.
+ * Return a ready page from the worker's pool.
+ * Creates a new puppeteer connection + page if none cached yet.
+ * Throws on failure so the caller can retry with the next worker.
  */
-export async function prewarmConnection(browser: RemoteBrowser): Promise<void> {
-  if (workerConnections.has(browser.workerId)) return;
+export async function acquirePage(
+  browser: RemoteBrowser,
+): Promise<{ conn: WorkerConnection; page: any }> {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const puppeteer = require('puppeteer-core');
 
-  try {
+  let conn = workerConnections.get(browser.workerId);
+
+  if (!conn) {
     const versionResp = await fetch(`${browser.cdpUrl}/json/version`, {
       signal: AbortSignal.timeout(10_000),
     });
@@ -69,27 +73,9 @@ export async function prewarmConnection(browser: RemoteBrowser): Promise<void> {
       defaultViewport: null,
     });
 
-    const conn = { browserConn, wsUrl, freePages: [], busyPages: new Set() };
+    conn = { browserConn, wsUrl, freePages: [], busyPages: new Set() };
     workerConnections.set(browser.workerId, conn);
-  } catch (err: any) {
-    // Log suppressed
-  }
-}
-
-/**
- * Return a ready page from the worker's pool.
- * Creates a new puppeteer connection + page if none cached yet.
- * Throws on failure so the caller can retry with the next worker.
- */
-export async function acquirePage(
-  browser: RemoteBrowser,
-): Promise<{ conn: WorkerConnection; page: any }> {
-  let conn = workerConnections.get(browser.workerId);
-
-  if (!conn) {
-    await prewarmConnection(browser);
-    conn = workerConnections.get(browser.workerId);
-    if (!conn) throw new Error('CDP_UNREACHABLE');
+    console.log(`🔗 New puppeteer connection cached for ${browser.workerId}`);
   }
 
   // Re-use idle page or open a new one
@@ -149,21 +135,16 @@ export function invalidateWorkerConnection(workerId: string): void {
   workerConnections.delete(workerId);
   for (const p of [...conn.freePages, ...conn.busyPages]) {
     try {
-      p.close().catch(() => {});
+      p.close().catch(() => { });
     } catch {
       /* ignore */
     }
   }
   try {
     const res = conn.browserConn.disconnect();
-    if (res && res.catch) res.catch(() => {});
+    if (res && res.catch) res.catch(() => { });
   } catch {
     /* ignore */
   }
+  console.log(`🗑️ Invalidated puppeteer connection for ${workerId}`);
 }
-
-/** Check if a worker has an active cached Puppeteer/CDP connection. */
-export function isConnectionCached(workerId: string): boolean {
-  return workerConnections.has(workerId);
-}
-

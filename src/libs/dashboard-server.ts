@@ -40,7 +40,7 @@ import { searchYouTube, getYouTubeInfo, downloadYouTubeVideo } from './youtube-d
 import { searchMovies } from './movie-search';
 import type { YouTubeQualityOption } from './youtube-dl';
 import { browserPool, searchViaPool } from './browser-pool';
-import { isConnectionCached } from './page-pool';
+// import { isConnectionCached } from './page-pool';
 import type { WebhookPayload } from './browser-pool';
 import { searchPlacesViaPool, searchPlacesStream, searchViaGoogleSearchUrl, searchViaGoogleSearchStream } from './google-places-search';
 
@@ -1157,7 +1157,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         registeredAt: new Date(b.registeredAt).toISOString(),
         lastHeartbeat: new Date(b.lastHeartbeat).toISOString(),
         secondsSinceHeartbeat: Math.round((Date.now() - b.lastHeartbeat) / 1000),
-        isCached: isConnectionCached(b.workerId),
+        // isCached: isConnectionCached(b.workerId),
       })),
     });
     return;

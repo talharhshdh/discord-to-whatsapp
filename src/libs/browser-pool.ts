@@ -16,7 +16,7 @@ import {
   invalidateWorkerConnection,
   workerCdpFailures,
   MAX_WORKER_CDP_FAILURES,
-  prewarmConnection,
+
 } from './page-pool';
 import type { WorkerConnection } from './page-pool';
 
@@ -89,8 +89,7 @@ class BrowserPool {
       this.browsers.set(workerId, browserEntry);
     }
 
-    // Eagerly pre-warm & cache the puppeteer connection in background
-    prewarmConnection(browserEntry).catch(() => {});
+
   }
 
   /** Update heartbeat timestamp for a known worker. Returns false if unknown. */
@@ -392,10 +391,18 @@ export async function searchViaPool(
         // 1. EXTRACT AI OVERVIEW / RESPONSE (SGE)
         for (const sel of [
           '.M8OgIe', '.LLtROe', '.IZ6rdc',
-          '[data-attrid="wa:/description"]'
+          '[data-attrid="wa:/description"]', '.wDYxhc[data-md]', '.kp-blk',
         ]) {
           const el = document.querySelector(sel);
           if (el && (el as HTMLElement).innerText?.trim().length > 20) {
+            // Filter out maps/places listing blocks incorrectly matched by generic card wrapper selectors
+            if (
+              el.querySelector('[href*="/maps/"]') ||
+              el.querySelector('.YzSd') ||
+              (el.textContent?.includes('Places') && el.textContent?.includes('Reviews'))
+            ) {
+              continue;
+            }
             aiResponse = (el as HTMLElement).innerHTML || (el as HTMLElement).innerText.trim();
             break;
           }
