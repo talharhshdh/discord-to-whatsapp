@@ -865,10 +865,16 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         }
       }
 
+      // Strip any query parameters (like ?token=...) from the proxy path before passing to Corrosion
+      // to avoid corrupting the base64 URL decoding.
+      if (req.url) {
+        req.url = req.url.split('?')[0];
+      }
+
       // Detect and directly stream video/audio or range requests to bypass Corrosion's in-memory buffering
       let targetUrlStr = '';
       try {
-        const urlData = webProxy.url.unwrap(url, { flags: true, leftovers: true });
+        const urlData = webProxy.url.unwrap(req.url || '', { flags: true, leftovers: true });
         targetUrlStr = typeof urlData === 'string' ? urlData : urlData?.value || '';
       } catch (e) {
         // ignore
