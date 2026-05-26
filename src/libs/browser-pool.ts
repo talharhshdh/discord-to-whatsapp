@@ -355,7 +355,7 @@ export async function searchViaPool(
 
       await page
         .waitForSelector('#search, .Gx5Zad.xpd, .xpd, h3, a', {
-          timeout: 50,
+          timeout: 100,
         })
         .catch(() => { /* timeout is fine */ });
 
@@ -963,9 +963,8 @@ export async function searchViaPool(
       }
     } finally {
       if (conn && page) {
-        // Always discard pages used for Search — Google navigation leaves
-        // the page in a state that can cause "Detached Frame" errors on reuse.
-        await releasePage(conn, page, true);
+        // Reuse pages used for Search
+        await releasePage(conn, page, false);
       }
     }
   }
