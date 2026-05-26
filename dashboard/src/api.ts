@@ -308,6 +308,8 @@ export const api = {
 
   browserSearch: (text: string, pageNumber: number, engine: 'auto' | 'cdp' | 'selenium' = 'auto', includeAI = false, category = 'all') =>
     post<BrowserSearchResult>('/api/browser/search', { text, pageNumber, engine, includeAI, category }),
+  cookieSearch: (text: string, pageNumber: number, category = 'all') =>
+    post<BrowserSearchResult>('/api/browser/cookie-search', { text, pageNumber, category }),
   restartBrowsers: () =>
     post<{ ok: boolean; message: string }>('/api/browsers/restart', {}),
   getBrowserPool: () =>

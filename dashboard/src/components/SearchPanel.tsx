@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { api, BrowserSearchResult } from '../api';
 
-type SearchEngine = 'auto' | 'cdp' | 'selenium';
+type SearchEngine = 'auto' | 'cdp' | 'selenium' | 'cookie';
 
 export default function SearchPanel() {
   const [query, setQuery] = useState('');
@@ -23,7 +23,9 @@ export default function SearchPanel() {
     const targetPage = customPage ?? page;
 
     try {
-      const res = await api.browserSearch(query, targetPage, engine, includeAI);
+      const res = engine === 'cookie'
+        ? await api.cookieSearch(query, targetPage)
+        : await api.browserSearch(query, targetPage, engine, includeAI);
       setResult(res);
       setPage(targetPage);
       setUsedEngine(engine);
@@ -62,7 +64,7 @@ export default function SearchPanel() {
         {/* Engine selector */}
         <div className="flex flex-wrap items-center gap-2 mb-3">
           <span className="text-xs text-white/40">Engine:</span>
-          {(['auto', 'cdp', 'selenium'] as SearchEngine[]).map(eng => (
+          {(['auto', 'cdp', 'selenium', 'cookie'] as SearchEngine[]).map(eng => (
             <button
               key={eng}
               onClick={() => setEngine(eng)}
@@ -72,7 +74,7 @@ export default function SearchPanel() {
                   : 'bg-white/[0.03] border-white/10 text-white/40 hover:text-white/60 hover:bg-white/[0.06]'
               }`}
             >
-              {eng === 'auto' ? '⚡ Auto' : eng === 'cdp' ? '🔌 CDP' : '🐍 Selenium'}
+              {eng === 'auto' ? '⚡ Auto' : eng === 'cdp' ? '🔌 CDP' : eng === 'selenium' ? '🐍 Selenium' : '🍪 Cookie'}
             </button>
           ))}
         </div>

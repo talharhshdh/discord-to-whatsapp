@@ -43,6 +43,8 @@ import { browserPool, searchViaPool } from './browser-pool';
 // import { isConnectionCached } from './page-pool';
 import type { WebhookPayload } from './browser-pool';
 import { searchPlacesViaPool, searchPlacesStream, searchViaGoogleSearchUrl, searchViaGoogleSearchStream } from './google-places-search';
+import { acquirePage, releasePage } from './page-pool';
+import { cookieSearchPool } from './cookie-search-pool';
 
 const Corrosion = require('corrosion');
 const webProxy = new Corrosion({
@@ -1343,6 +1345,22 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
           .join('\n');
       }
 
+      json(res, results);
+    } catch (e) {
+      err(res, (e as Error).message);
+    }
+    return;
+  }
+
+  // ── POST /api/browser/cookie-search ───────────────────────────────────────
+  if (method === 'POST' && url === '/api/browser/cookie-search') {
+    try {
+      const body = await parseJsonBody(req);
+      const text = body['text'] as string;
+      if (!text) return err(res, 'text is required', 400);
+      const pageNumber = Number(body['pageNumber']) || 1;
+      const category = (body['category'] as string) || 'all';
+      const results = await cookieSearchPool.search(text, pageNumber, category);
       json(res, results);
     } catch (e) {
       err(res, (e as Error).message);
