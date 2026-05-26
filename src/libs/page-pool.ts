@@ -169,3 +169,25 @@ export function invalidateWorkerConnection(workerId: string): void {
   }
   console.log(`🗑️ Invalidated puppeteer connection for ${workerId}`);
 }
+
+/**
+ * Eagerly connect to a worker and cache an idle page.
+ * Called when a new worker registers.
+ */
+export function warmupWorker(browser: RemoteBrowser): void {
+  acquirePage(browser)
+    .then(({ conn, page }) => {
+      releasePage(conn, page).catch(() => {});
+    })
+    .catch((err) => {
+      console.error(`Failed to warmup worker ${browser.workerId}: ${err.message}`);
+    });
+}
+
+/**
+ * Check if a worker currently has a cached and connected browser session.
+ */
+export function isWorkerCached(workerId: string): boolean {
+  const conn = workerConnections.get(workerId);
+  return !!conn && conn.browserConn.isConnected();
+}

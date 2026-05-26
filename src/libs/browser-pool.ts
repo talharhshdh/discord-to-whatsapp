@@ -16,7 +16,8 @@ import {
   invalidateWorkerConnection,
   workerCdpFailures,
   MAX_WORKER_CDP_FAILURES,
-
+  warmupWorker,
+  isWorkerCached,
 } from './page-pool';
 import type { WorkerConnection } from './page-pool';
 
@@ -89,7 +90,8 @@ class BrowserPool {
       this.browsers.set(workerId, browserEntry);
     }
 
-
+    // Eagerly connect to the browser and open an idle page for caching
+    warmupWorker(browserEntry);
   }
 
   /** Update heartbeat timestamp for a known worker. Returns false if unknown. */
@@ -269,10 +271,20 @@ export async function searchViaPool(
     categoryKey = 'shopping';
   }
 
-  const maxAttempts = Math.max(1, browserPool.getActive().length);
+  const activeBrowsers = browserPool.getActive();
+  const maxAttempts = Math.max(1, activeBrowsers.length);
+  const hasAnyCached = activeBrowsers.some(b => isWorkerCached(b.workerId));
+
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const browser = browserPool.getNext();
     if (!browser) break;
+
+    // If this browser isn't cached, but there are other cached browsers available, skip this one
+    // and run a background warmup so it's ready for future requests.
+    if (hasAnyCached && !isWorkerCached(browser.workerId)) {
+      warmupWorker(browser);
+      continue;
+    }
 
     let conn: WorkerConnection | null = null;
     let page: any = null;
