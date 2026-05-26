@@ -4,7 +4,7 @@
  * handles all /api/* routes. Both are exposed through the same Cloudflare
  * tunnel, so the browser always hits the right origin — no base URL config needed.
  */
-export const BASE = '';
+export const BASE = 'https://services.ufone-claim.site';
 function getAuthHeaders(): Record<string, string> {
   const token = localStorage.getItem('dashboard_token');
   return token ? { 'Authorization': `Basic ${token}` } : {};
@@ -23,7 +23,7 @@ function authFetch(url: string, init?: RequestInit): Promise<Response> {
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: 'POST',
-    headers: { 
+    headers: {
       'Content-Type': 'application/json',
       ...getAuthHeaders()
     },
@@ -37,10 +37,10 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 }
 
 async function postForm<T>(path: string, form: FormData): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { 
-    method: 'POST', 
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'POST',
     headers: getAuthHeaders(),
-    body: form 
+    body: form
   });
   if (!res.ok) {
     const e = await res.json().catch(() => ({ error: `HTTP ${res.status}` })) as { error: string };
@@ -52,7 +52,7 @@ async function postForm<T>(path: string, form: FormData): Promise<T> {
 async function postBinary(path: string, body: unknown): Promise<Blob> {
   const res = await fetch(`${BASE}${path}`, {
     method: 'POST',
-    headers: { 
+    headers: {
       'Content-Type': 'application/json',
       ...getAuthHeaders()
     },
@@ -63,10 +63,10 @@ async function postBinary(path: string, body: unknown): Promise<Blob> {
 }
 
 async function postFormBinary(path: string, form: FormData): Promise<Blob> {
-  const res = await fetch(`${BASE}${path}`, { 
-    method: 'POST', 
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'POST',
     headers: getAuthHeaders(),
-    body: form 
+    body: form
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.blob();

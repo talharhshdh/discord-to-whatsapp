@@ -49,6 +49,23 @@ export default function App() {
   const [section, setSection] = React.useState<NavSection>(getInitialSection());
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   
+  // Theme state
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    const saved = localStorage.getItem('theme');
+    if (saved === 'light' || saved === 'dark') return saved;
+    return 'dark';
+  });
+
+  React.useEffect(() => {
+    localStorage.setItem('theme', theme);
+    const root = document.documentElement;
+    if (theme === 'dark') {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+  }, [theme]);
+  
   // Auth state
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(!!localStorage.getItem('dashboard_token'));
   const [loginUsername, setLoginUsername] = useState('');
@@ -118,6 +135,18 @@ export default function App() {
   if (!isAuthenticated && section !== 'google') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#070b14] relative p-4 font-sans text-white">
+        {/* Theme toggle on login screen */}
+        <div className="absolute top-4 right-4 z-20">
+          <button
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            className="p-2.5 rounded-xl glass border border-white/10 text-white/60 hover:text-white/90 hover:scale-[1.02] active:scale-[0.98] text-xs transition-all flex items-center gap-1.5 font-medium shadow-lg shadow-black/10"
+            title={theme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
+          >
+            <span>{theme === 'dark' ? '☀️' : '🌙'}</span>
+            <span>{theme === 'dark' ? 'Light' : 'Dark'}</span>
+          </button>
+        </div>
+
         {/* Ambient orbs */}
         <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
           <div className="absolute -top-40 -left-40 w-[600px] h-[600px] rounded-full bg-[#6c63ff]/10 blur-[120px]" />
@@ -222,6 +251,16 @@ export default function App() {
               }`}>
                 <span className="hidden sm:inline">⏱</span> {cd.display}
               </div>
+
+              {/* Theme toggle button */}
+              <button 
+                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} 
+                className="p-1.5 md:px-3 md:py-1.5 rounded-full bg-white/[0.04] border border-white/10 text-white/60 hover:text-white/90 text-[10px] md:text-xs transition-colors flex items-center gap-1.5 font-medium"
+                title={theme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
+              >
+                <span>{theme === 'dark' ? '☀️' : '🌙'}</span>
+                <span className="hidden sm:inline">{theme === 'dark' ? 'Light' : 'Dark'}</span>
+              </button>
 
               <button onClick={refresh} className="p-1.5 md:px-3 md:py-1.5 rounded-full bg-white/[0.04] border border-white/10 text-white/40 hover:text-white/70 text-[10px] md:text-xs transition-colors">
                 <span className="hidden md:inline">🔄 Refresh</span>
@@ -328,27 +367,6 @@ export default function App() {
             </div>
           )}
 
-          {/* Mobile nav tabs (sticky horizontal scroll) */}
-          <div className="md:hidden flex-shrink-0 w-full overflow-x-auto border-b border-white/[0.07] bg-[#0d1424]/90 backdrop-blur-md sticky top-[59px] z-20 scrollbar-none shadow-lg shadow-black/20">
-            <div className="flex gap-1 px-4 py-2.5">
-              {NAV.map(n => (
-                <button key={n.id} onClick={() => handleNavClick(n.id)}
-                  className={`flex-shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[11px] font-semibold transition-all border ${
-                    section === n.id 
-                      ? 'bg-[#6c63ff]/20 text-white border-[#6c63ff]/30 shadow-lg shadow-[#6c63ff]/10' 
-                      : 'text-white/40 border-transparent hover:text-white/60'
-                  }`}>
-                  <span className="text-sm">{n.icon}</span> 
-                  {n.label}
-                  {n.id === 'urls' && data?.tools && Object.keys(data.tools).length > 0 && (
-                    <span className="ml-1 text-[9px] bg-teal-500/20 text-teal-400 rounded-full px-1.5 py-0.5 border border-teal-500/20">
-                      {Object.keys(data.tools).length}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
 
           {/* Main content */}
           <main className="flex-1 overflow-y-auto scrollbar-thin p-4 md:p-6 lg:p-8">

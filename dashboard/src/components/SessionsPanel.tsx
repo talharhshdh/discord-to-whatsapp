@@ -89,7 +89,7 @@ export default function SessionsPanel() {
     <div className="space-y-4">
       <p className="text-white/40 text-sm">Launch new isolated sessions. Each call creates a fresh Cloudflare tunnel.</p>
       
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
         <SessionCard
           icon="💻" title="Web Terminal" color="bg-green-500/15 border border-green-500/20"
           description="ttyd web terminal with sudo access"
