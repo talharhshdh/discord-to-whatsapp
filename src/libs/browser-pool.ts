@@ -899,9 +899,18 @@ export async function searchViaPool(
         };
       }, categoryParam);
 
+      const hasCategoryResults = (res: any) => {
+        if (categoryKey === 'all') return res.organic && res.organic.length > 0;
+        if (categoryKey === 'images') return res.images && res.images.length > 0;
+        if (categoryKey === 'videos') return res.videos && res.videos.length > 0;
+        if (categoryKey === 'news') return res.news && res.news.length > 0;
+        if (categoryKey === 'shopping') return res.shopping && res.shopping.length > 0;
+        return false;
+      };
+
       let results = await extractResults(categoryKey);
 
-      if (!results.captcha && results.organic.length === 0) {
+      if (!results.captcha && !hasCategoryResults(results)) {
         await page
           .waitForSelector('#search .g, #rso .g, .MjjYud .g, .Gx5Zad.xpd, .xpd, h3, a[href^="http"], a[href*="/url?q="]', {
             timeout: 15_000,
@@ -910,7 +919,7 @@ export async function searchViaPool(
 
         results = await extractResults(categoryKey);
 
-        if (!results.captcha && results.organic.length === 0) {
+        if (!results.captcha && !hasCategoryResults(results)) {
           await page
             .waitForSelector('form[action="/sorry/index"], #captcha, .g-recaptcha', {
               timeout: 5_000,
