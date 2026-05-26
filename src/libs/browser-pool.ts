@@ -943,12 +943,10 @@ export async function searchViaPool(
             await client.detach();
           } catch { /* ignore */ }
         }
-        browserPool.deregister(browser.workerId);
-        page = null;
+        pageErrored = true;
       } else if ([
-        'CDP_UNREACHABLE', 'NO_WS_URL', 'Protocol error', 'WebSocket',
-        'Connection closed', 'Detached Frame', 'Target closed', 'Session closed'
-      ].some((k) => msg.includes(k))) {
+        'CDP_UNREACHABLE', 'NO_WS_URL', 'WebSocket', 'Connection closed'
+      ].some((k) => msg.includes(k)) || (conn && !conn.browserConn.isConnected())) {
         invalidateWorkerConnection(browser.workerId);
         page = null;
 
@@ -964,8 +962,8 @@ export async function searchViaPool(
       }
     } finally {
       if (conn && page) {
-        // Reuse pages used for Search
-        await releasePage(conn, page, false);
+        // Reuse pages used for Search, discard if page errored
+        await releasePage(conn, page, pageErrored);
       }
     }
   }

@@ -1,5 +1,6 @@
 import { performance } from 'perf_hooks';
 import * as fs from 'fs';
+import pLimit from 'p-limit';
 import { browserPool } from '../libs/browser-pool';
 import {
     acquirePage,
@@ -11,7 +12,7 @@ import {
 import type { WorkerConnection } from '../libs/page-pool';
 
 const WORKERS = [
-    { id: 'browser-worker-4-runner-2a319255', url: 'https://promotes-plugins-platform-evident.trycloudflare.com' },
+    { id: 'browser-worker-4-runner-2a319255', url: 'https://inspection-trades-bytes-aka.trycloudflare.com' },
 ];
 
 for (const w of WORKERS) {
@@ -115,11 +116,6 @@ async function timedSearchViaPool(
             await client.detach();
             console.log(`⏱️  page.goto (Network request) took:         ${Math.round(performance.now() - tGoto)} ms`);
 
-            let title = '';
-            try {
-                title = await page.title();
-            } catch (e) { }
-            console.log(`📄  Page Title:                               "${title}"`);
 
             const tWait = performance.now();
             await page.waitForSelector('#search, .Gx5Zad.xpd, .xpd, h3, a[href^="http"], a[href*="/url?q="]', {
@@ -675,12 +671,17 @@ async function timedSearchViaPool(
         } catch (e) {
             const msg = (e as Error).message;
             console.error(`❌  Pool search failed via ${browser.workerId}:`, msg);
-            browserPool.deregister(browser.workerId);
             pageErrored = true;
+            if ([
+                'CDP_UNREACHABLE', 'NO_WS_URL', 'WebSocket', 'Connection closed'
+            ].some((k) => msg.includes(k)) || (conn && !conn.browserConn.isConnected())) {
+                invalidateWorkerConnection(browser.workerId);
+                browserPool.deregister(browser.workerId);
+            }
         } finally {
             const tRelease = performance.now();
             if (conn && page) {
-                await releasePage(conn, page, false);
+                await releasePage(conn, page, pageErrored);
             }
             console.log(`⏱️  releasePage / cleanup took:               ${Math.round(performance.now() - tRelease)} ms`);
             console.log(`    Total time for this attempt:              ${Math.round(performance.now() - attemptStart)} ms`);
@@ -693,10 +694,18 @@ async function timedSearchViaPool(
 async function main() {
     const query = process.argv[2] || 'weather in tokyo';
     const category = process.argv[3] || 'all';
-    const response = await timedSearchViaPool(query, 1, false, category);
-    const responseCached = await timedSearchViaPool(query, 1, false, category);
-    console.log(response?.images?.length)
-    console.log(responseCached?.images?.length)
+    const limit = pLimit(5);
+    const tasks = [];
+    for (let i = 1; i <= 20; i++) {
+        const pageIdx = i;
+        tasks.push(
+            limit(async () => {
+                const response = await timedSearchViaPool(query, pageIdx, false, category);
+                console.log(`Found ${response?.organic?.length || 0} organic results and ${response?.images?.length || 0} images.`);
+            })
+        );
+    }
+    await Promise.all(tasks);
     process.exit(0);
 }
 
