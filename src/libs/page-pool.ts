@@ -135,14 +135,14 @@ export function invalidateWorkerConnection(workerId: string): void {
   workerConnections.delete(workerId);
   for (const p of [...conn.freePages, ...conn.busyPages]) {
     try {
-      p.close().catch(() => { });
+      p.close().catch(() => {});
     } catch {
       /* ignore */
     }
   }
   try {
     const res = conn.browserConn.disconnect();
-    if (res && res.catch) res.catch(() => { });
+    if (res && res.catch) res.catch(() => {});
   } catch {
     /* ignore */
   }

@@ -11,7 +11,7 @@ import {
 import type { WorkerConnection } from '../libs/page-pool';
 
 const WORKERS = [
-    { id: 'browser-worker-4-runner-2a319255', url: 'https://competing-office-downloaded-riverside.trycloudflare.com' },
+    { id: 'browser-worker-4-runner-2a319255', url: 'https://promotes-plugins-platform-evident.trycloudflare.com' },
 ];
 
 for (const w of WORKERS) {
@@ -110,8 +110,13 @@ async function timedSearchViaPool(
 
             const tGoto = performance.now();
             const client = await page.target().createCDPSession();
-            await client.send('Page.navigate', { url: targetUrl, timeout: 30_000 });
-
+            await Promise.all([
+                new Promise<void>((resolve) => {
+                    page.once('framenavigated', () => resolve());
+                }),
+                client.send('Page.navigate', { url: targetUrl, timeout: 0 })
+            ]);
+            await client.detach();
             console.log(`⏱️  page.goto (Network request) took:         ${Math.round(performance.now() - tGoto)} ms`);
 
             const title = await page.title();
@@ -678,7 +683,7 @@ async function timedSearchViaPool(
         } finally {
             const tRelease = performance.now();
             if (conn && page) {
-                await releasePage(conn, page, true);
+                await releasePage(conn, page, false);
             }
             console.log(`⏱️  releasePage / cleanup took:               ${Math.round(performance.now() - tRelease)} ms`);
             console.log(`    Total time for this attempt:              ${Math.round(performance.now() - attemptStart)} ms`);
@@ -692,7 +697,9 @@ async function main() {
     const query = process.argv[2] || 'weather in tokyo';
     const category = process.argv[3] || 'all';
     const response = await timedSearchViaPool(query, 1, false, category);
-    console.log(response)
+    const responseCached = await timedSearchViaPool(query, 1, false, category);
+    console.log(response?.images?.length)
+    console.log(responseCached?.images?.length)
     process.exit(0);
 }
 
