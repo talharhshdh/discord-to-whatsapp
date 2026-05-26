@@ -392,7 +392,7 @@ export async function searchViaPool(
         // 1. EXTRACT AI OVERVIEW / RESPONSE (SGE)
         for (const sel of [
           '.M8OgIe', '.LLtROe', '.IZ6rdc',
-          '[data-attrid="wa:/description"]', '.wDYxhc[data-md]', '.kp-blk',
+          '[data-attrid="wa:/description"]'
         ]) {
           const el = document.querySelector(sel);
           if (el && (el as HTMLElement).innerText?.trim().length > 20) {

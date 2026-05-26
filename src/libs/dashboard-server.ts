@@ -1232,7 +1232,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 
           if (fetchAI) {
             // AI overview — grab the entire container's HTML for rich rendering
-            const aiSelectors = ['.M8OgIe', '.LLtROe', '.IZ6rdc', '[data-attrid="wa:/description"]', '.wDYxhc[data-md]', '.kp-blk'];
+            const aiSelectors = ['.M8OgIe', '.LLtROe', '.IZ6rdc', '[data-attrid="wa:/description"]'];
             for (const sel of aiSelectors) {
               const el = document.querySelector(sel);
               if (el && (el as HTMLElement).innerText?.trim().length > 20) {

@@ -11,8 +11,7 @@ import {
 import type { WorkerConnection } from '../libs/page-pool';
 
 const WORKERS = [
-    { id: 'browser-worker-4-runner-2a319255', url: 'https://joint-squad-shots-simulations.trycloudflare.com' },
-    { id: 'browser-worker-5-runner-2a319255', url: 'https://hammer-auburn-downloaded-affordable.trycloudflare.com' },
+    { id: 'browser-worker-4-runner-2a319255', url: 'https://competing-office-downloaded-riverside.trycloudflare.com' },
 ];
 
 for (const w of WORKERS) {
@@ -156,7 +155,7 @@ async function timedSearchViaPool(
 
                 for (const sel of [
                     '.M8OgIe', '.LLtROe', '.IZ6rdc',
-                    '[data-attrid="wa:/description"]', '.wDYxhc[data-md]', '.kp-blk',
+                    '[data-attrid="wa:/description"]'
                 ]) {
                     const el = document.querySelector(sel);
                     if (el && (el as HTMLElement).innerText?.trim().length > 20) {
