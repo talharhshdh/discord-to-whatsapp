@@ -865,10 +865,16 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         }
       }
 
-      // Strip any query parameters (like ?token=...) from the proxy path before passing to Corrosion
-      // to avoid corrupting the base64 URL decoding.
+      // Strip only the 'token' parameter from the query string of the proxy path
+      // to avoid corrupting the base64 URL decoding while preserving other query params.
       if (req.url) {
-        req.url = req.url.split('?')[0];
+        const [path, search] = req.url.split('?');
+        if (search) {
+          const params = new URLSearchParams(search);
+          params.delete('token');
+          const newSearch = params.toString();
+          req.url = path + (newSearch ? '?' + newSearch : '');
+        }
       }
 
       // Detect and directly stream video/audio or range requests to bypass Corrosion's in-memory buffering
