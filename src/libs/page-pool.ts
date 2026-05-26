@@ -64,10 +64,24 @@ export async function acquirePage(
     let connPromise = connectionPromises.get(browser.workerId);
     if (!connPromise) {
       connPromise = (async () => {
-        const versionResp = await fetch(`${browser.cdpUrl}/json/version`, {
-          signal: AbortSignal.timeout(10_000),
-        });
-        if (!versionResp.ok) throw new Error('CDP_UNREACHABLE');
+        let versionResp: any = null;
+        let lastErr: any = null;
+        for (let attempt = 1; attempt <= 5; attempt++) {
+          try {
+            versionResp = await fetch(`${browser.cdpUrl}/json/version`, {
+              signal: AbortSignal.timeout(10_000),
+            });
+            if (versionResp.ok) break;
+          } catch (err: any) {
+            lastErr = err;
+          }
+          if (attempt < 5) {
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+          }
+        }
+        if (!versionResp || !versionResp.ok) {
+          throw lastErr || new Error('CDP_UNREACHABLE');
+        }
         const versionInfo = (await versionResp.json()) as {
           webSocketDebuggerUrl?: string;
         };
@@ -156,14 +170,14 @@ export function invalidateWorkerConnection(workerId: string): void {
   workerConnections.delete(workerId);
   for (const p of [...conn.freePages, ...conn.busyPages]) {
     try {
-      p.close().catch(() => {});
+      p.close().catch(() => { });
     } catch {
       /* ignore */
     }
   }
   try {
     const res = conn.browserConn.disconnect();
-    if (res && res.catch) res.catch(() => {});
+    if (res && res.catch) res.catch(() => { });
   } catch {
     /* ignore */
   }
@@ -177,7 +191,7 @@ export function invalidateWorkerConnection(workerId: string): void {
 export function warmupWorker(browser: RemoteBrowser): void {
   acquirePage(browser)
     .then(({ conn, page }) => {
-      releasePage(conn, page).catch(() => {});
+      releasePage(conn, page).catch(() => { });
     })
     .catch((err) => {
       console.error(`Failed to warmup worker ${browser.workerId}: ${err.message}`);
