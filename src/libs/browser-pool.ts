@@ -16,6 +16,7 @@ import {
   invalidateWorkerConnection,
   workerCdpFailures,
   MAX_WORKER_CDP_FAILURES,
+  prewarmConnection,
 } from './page-pool';
 import type { WorkerConnection } from './page-pool';
 
@@ -71,21 +72,25 @@ class BrowserPool {
   register(workerId: string, cdpUrl: string): void {
     const now = Date.now();
     const existing = this.browsers.get(workerId);
+    let browserEntry: RemoteBrowser;
     if (existing) {
       existing.cdpUrl = cdpUrl;
       existing.lastHeartbeat = now;
       existing.status = 'active';
-      console.log(`🔄 Browser worker re-registered: ${workerId} → ${cdpUrl}`);
+      browserEntry = existing;
     } else {
-      this.browsers.set(workerId, {
+      browserEntry = {
         workerId,
         cdpUrl,
         registeredAt: now,
         lastHeartbeat: now,
         status: 'active',
-      });
-      console.log(`✅ Browser worker registered: ${workerId} → ${cdpUrl}  (pool size: ${this.browsers.size})`);
+      };
+      this.browsers.set(workerId, browserEntry);
     }
+
+    // Eagerly pre-warm & cache the puppeteer connection in background
+    prewarmConnection(browserEntry).catch(() => {});
   }
 
   /** Update heartbeat timestamp for a known worker. Returns false if unknown. */
@@ -93,9 +98,6 @@ class BrowserPool {
     const entry = this.browsers.get(workerId);
     if (!entry) return false;
     entry.lastHeartbeat = Date.now();
-    if (entry.status !== 'active') {
-      console.log(`💚 Browser worker recovered from stale: ${workerId}`);
-    }
     entry.status = 'active';
     return true;
   }
@@ -105,7 +107,6 @@ class BrowserPool {
     const existed = this.browsers.delete(workerId);
     if (existed) {
       invalidateWorkerConnection(workerId);
-      console.log(`🗑️ Browser worker deregistered: ${workerId}  (pool size: ${this.browsers.size})`);
     }
   }
 
@@ -172,7 +173,6 @@ class BrowserPool {
   async restartWorkers(): Promise<void> {
     const now = Date.now();
     if (now - this.lastRestartTime < this.RESTART_COOLDOWN_MS) {
-      console.log('⏭️ Restart skipped: Cooldown active.');
       return;
     }
     this.lastRestartTime = now;
@@ -181,14 +181,11 @@ class BrowserPool {
     const repo = process.env.GITHUB_REPO || 'talharhshdh/discord-to-whatsapp';
 
     if (!pat) {
-      console.error('❌ Cannot restart workers: GITHUB_PAT or PAT_TOKEN not found in env.');
       return;
     }
 
-    console.log(`🔄 Restarting browser workers for ${repo}...`);
-
     try {
-      const resp = await fetch(`https://api.github.com/repos/${repo}/dispatches`, {
+      await fetch(`https://api.github.com/repos/${repo}/dispatches`, {
         method: 'POST',
         headers: {
           Accept: 'application/vnd.github+json',
@@ -197,15 +194,8 @@ class BrowserPool {
         },
         body: JSON.stringify({ event_type: 'spawn-browsers' }),
       });
-
-      if (resp.ok) {
-        console.log('✅ GitHub dispatch sent successfully!');
-      } else {
-        const error = await resp.text();
-        console.error(`❌ Failed to send GitHub dispatch (HTTP ${resp.status}):`, error);
-      }
     } catch (e) {
-      console.error('❌ Error triggering GitHub dispatch:', e);
+      // Error suppressed
     }
   }
 
@@ -219,10 +209,8 @@ class BrowserPool {
       if (elapsed > DEAD_TIMEOUT_MS) {
         this.browsers.delete(id);
         invalidateWorkerConnection(id);
-        console.log(`💀 Browser worker removed (dead — no heartbeat for ${Math.round(elapsed / 1000)}s): ${id}`);
       } else if (elapsed > STALE_TIMEOUT_MS && entry.status === 'active') {
         entry.status = 'stale';
-        console.log(`⚠️ Browser worker marked stale (${Math.round(elapsed / 1000)}s since heartbeat): ${id}`);
       }
     }
   }
@@ -249,6 +237,7 @@ export async function searchViaPool(
   text: string,
   pageNumber: number = 1,
   includeAI: boolean = false,
+  category: string = 'all',
 ): Promise<{
   organic: Array<{ title: string; link: string; snippet: string }>;
   aiResponse: string | null;
@@ -269,6 +258,18 @@ export async function searchViaPool(
   relatedSearches?: string[];
   localResults?: Array<{ title: string; rating?: string; reviewsCount?: string; address?: string; phone?: string; link?: string }>;
 } | null> {
+  const normCategory = category.toLowerCase().trim();
+  let categoryKey = 'all';
+  if (normCategory === 'videos' || normCategory === 'video') {
+    categoryKey = 'videos';
+  } else if (normCategory === 'images' || normCategory === 'image') {
+    categoryKey = 'images';
+  } else if (normCategory === 'news') {
+    categoryKey = 'news';
+  } else if (normCategory === 'shopping' || normCategory === 'shop') {
+    categoryKey = 'shopping';
+  }
+
   const maxAttempts = Math.max(1, browserPool.getActive().length);
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const browser = browserPool.getNext();
@@ -339,17 +340,27 @@ export async function searchViaPool(
       });
 
       const startParam = (pageNumber - 1) * 10;
+      let targetUrl = `https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}&num=10&hl=en&gbv=2&pws=0`;
+      if (categoryKey === 'images') {
+        targetUrl += '&udm=2';
+      } else if (categoryKey === 'videos') {
+        targetUrl += '&udm=7';
+      } else if (categoryKey === 'news') {
+        targetUrl += '&udm=14';
+      } else if (categoryKey === 'shopping') {
+        targetUrl += '&udm=3';
+      }
 
       const client = await page.target().createCDPSession();
-      await client.send('Page.navigate', { url: `https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}&num=10&hl=en&gbv=2&pws=0` });
+      await client.send('Page.navigate', { url: targetUrl });
 
       await page
-        .waitForSelector('#search, .Gx5Zad.xpd, .xpd, h3', {
-          timeout: 100,
+        .waitForSelector('#search, .Gx5Zad.xpd, .xpd, h3, a', {
+          timeout: 50,
         })
         .catch(() => { /* timeout is fine */ });
 
-      const extractResults = async () => page.evaluate(() => {
+      const extractResults = async (categoryParam: string) => page.evaluate((categoryParamInner: string) => {
         if (document.querySelector('form[action="/sorry/index"], #captcha, .g-recaptcha')) {
           return { captcha: true, organic: [] as any[], aiResponse: null as string | null };
         }
@@ -569,23 +580,46 @@ export async function searchViaPool(
 
         // 7. EXTRACT VIDEOS
         const videos: any[] = [];
-        document.querySelectorAll('g-card, .V2Ew3b, .z3HNeb, .MjjYud').forEach((el) => {
-          const a = el.querySelector('a');
-          if (!a) return;
-          const href = a.getAttribute('href') || '';
-          const link = decodeGoogleLink(href);
-          const isVideo = link.includes('youtube.com') || link.includes('vimeo.com') || el.querySelector('.vP1iyc') || el.querySelector('.J1y2db');
-          if (isVideo && !seen.has(link)) {
-            const h3 = el.querySelector('h3, .mCBkyc, .z3HNeb');
-            const durEl = el.querySelector('.vP1iyc, .J1y2db');
-            const uploadedEl = el.querySelector('.ap3aec, .PCvXJ');
+        document.querySelectorAll('g-card, .V2Ew3b, .z3HNeb, .MjjYud, [data-curl], .EyBRub, .hIwNKe').forEach((el) => {
+          let a = el.querySelector('a');
+          if (!a && el.tagName === 'A') {
+            a = el as HTMLAnchorElement;
+          }
+          const href = a ? (a.getAttribute('href') || '') : '';
+          const dataCurl = el.getAttribute('data-curl') || '';
+          const targetLink = decodeGoogleLink(dataCurl || href);
+          if (!targetLink) return;
+
+          const isVideo = targetLink.includes('youtube.com') || targetLink.includes('vimeo.com') || targetLink.includes('tiktok.com') || el.querySelector('.vP1iyc') || el.querySelector('.J1y2db') || el.getAttribute('data-pubr') || el.querySelector('.O1KYjb');
+          if (isVideo && !seen.has(targetLink)) {
+            seen.add(targetLink);
+            const h3 = el.querySelector('h3, h1, .mCBkyc, .z3HNeb, .WQWxe');
+            const durEl = el.querySelector('.vP1iyc, .J1y2db, .ZwRhJd');
+            const uploadedEl = el.querySelector('.ap3aec, .PCvXJ, .PLq9Je, .DKsccc');
+
+            let duration = durEl ? cleanText(durEl.textContent) : undefined;
+            let uploadedAt = uploadedEl ? cleanText(uploadedEl.textContent) : undefined;
+
+            const ariaEl = el.querySelector('[aria-label]');
+            if (ariaEl) {
+              const label = ariaEl.getAttribute('aria-label') || '';
+              if (label && !duration) {
+                const durationMatch = label.match(/(\d+:\d+)/);
+                if (durationMatch) duration = durationMatch[1];
+              }
+            }
+
+            const pubr = el.getAttribute('data-pubr');
+            const srcEl = el.querySelector('.NUnG9b, .h1UuCc, .ap3aec, .sjVJQd, .KrMNbf');
+            const source = pubr ? cleanText(pubr) : (srcEl ? cleanText(srcEl.textContent) : (targetLink.includes('youtube.com') ? 'YouTube' : 'Video'));
+
             if (h3) {
               videos.push({
                 title: cleanText(h3.textContent),
-                source: link.includes('youtube.com') ? 'YouTube' : 'Video',
-                duration: durEl ? cleanText(durEl.textContent) : undefined,
-                uploadedAt: uploadedEl ? cleanText(uploadedEl.textContent) : undefined,
-                link
+                source,
+                duration,
+                uploadedAt,
+                link: targetLink
               });
             }
           }
@@ -595,76 +629,108 @@ export async function searchViaPool(
         const images: any[] = [];
         const seenImages = new Set<string>();
 
-        // Method A: CSS class-independent heading-based images block parsing
-        document.querySelectorAll('span, div, h2, h3').forEach((el) => {
-          const text = el.textContent ? el.textContent.trim() : '';
-          if (text === 'Images') {
-            let parent = el.parentElement;
-            while (parent && parent.querySelectorAll('img').length < 3 && parent.tagName !== 'BODY') {
-              parent = parent.parentElement;
+        // Method A: Script-based high-res image extraction for images category
+        if (categoryParamInner === 'images') {
+          const pageHtml = document.documentElement.innerHTML;
+          const imgRegex = /\[0\s*,\s*"([^"]+)"\s*,\s*\[\s*"([^"]+)"\s*,\s*(\d+)\s*,\s*(\d+)\s*\]\s*,\s*\[\s*"([^"]+)"\s*,\s*(\d+)\s*,\s*(\d+)\s*\]/g;
+          let imgMatch;
+          while ((imgMatch = imgRegex.exec(pageHtml)) !== null) {
+            const imgUrl = imgMatch[5].replace(/\\u003d/g, '=').replace(/\\u0026/g, '&');
+            if (seenImages.has(imgUrl)) continue;
+            seenImages.add(imgUrl);
+
+            const nextChunk = pageHtml.substring(imgMatch.index, imgMatch.index + 2000);
+            const metaRegex = /"2003"\s*:\s*\[\s*null\s*,\s*"[^"]*"\s*,\s*"([^"]+)"\s*,\s*"([^"]+)"/;
+            const metaMatch = metaRegex.exec(nextChunk);
+
+            let sourceUrl = '';
+            let title = '';
+            if (metaMatch) {
+              sourceUrl = metaMatch[1].replace(/\\u003d/g, '=').replace(/\\u0026/g, '&');
+              title = metaMatch[2];
             }
-            if (parent) {
-              parent.querySelectorAll('img').forEach((img) => {
-                const alt = img.getAttribute('alt') || '';
-                const imageUrl = img.getAttribute('src') || '';
-                if (!imageUrl) return;
 
-                let p = img.parentElement;
-                let sourceUrl = '';
-                while (p && p !== parent && p.tagName !== 'BODY') {
-                  const anchor = p.querySelector('a');
-                  if (anchor) {
-                    const href = anchor.getAttribute('href') || '';
-                    if (href) {
-                      sourceUrl = decodeGoogleLink(href);
-                      break;
-                    }
-                  }
-                  p = p.parentElement;
-                }
-
-                if (sourceUrl && !seenImages.has(imageUrl)) {
-                  seenImages.add(imageUrl);
-                  images.push({
-                    alt: cleanText(alt),
-                    sourceUrl,
-                    imageUrl
-                  });
-                }
-              });
-            }
-          }
-        });
-
-        // Method B: Traditional imgres fallback links (e.g. JS-disabled/fallback page)
-        document.querySelectorAll('a[href*="imgres"]').forEach((el) => {
-          const img = el.querySelector('img');
-          const alt = img ? img.getAttribute('alt') || '' : '';
-          const href = el.getAttribute('href') || '';
-
-          let sourceUrl = '';
-          let imageUrl = '';
-          try {
-            const urlObj = new URL(href, window.location.href);
-            imageUrl = urlObj.searchParams.get('imgurl') || '';
-            sourceUrl = urlObj.searchParams.get('imgrefurl') || '';
-          } catch (e) {
-            const imgMatch = href.match(/[?&]imgurl=([^&]+)/);
-            const refMatch = href.match(/[?&]imgrefurl=([^&]+)/);
-            if (imgMatch) imageUrl = decodeURIComponent(imgMatch[1]);
-            if (refMatch) sourceUrl = decodeURIComponent(refMatch[1]);
-          }
-
-          sourceUrl = decodeGoogleLink(sourceUrl || href);
-          if (sourceUrl && imageUrl && !seenImages.has(imageUrl)) {
-            seenImages.add(imageUrl);
             images.push({
-              alt: cleanText(alt),
-              sourceUrl,
-              imageUrl: imageUrl || undefined
+              alt: cleanText(title || 'Image'),
+              sourceUrl: sourceUrl || imgUrl,
+              imageUrl: imgUrl
             });
           }
-        });
+        }
+
+        // Method B: DOM-based fallback if no script-based images are found or for non-images category
+        if (images.length === 0) {
+          // Method B.1: CSS class-independent heading-based images block parsing
+          document.querySelectorAll('span, div, h2, h3').forEach((el) => {
+            const text = el.textContent ? el.textContent.trim() : '';
+            if (text === 'Images') {
+              let parent = el.parentElement;
+              while (parent && parent.querySelectorAll('img').length < 3 && parent.tagName !== 'BODY') {
+                parent = parent.parentElement;
+              }
+              if (parent) {
+                parent.querySelectorAll('img').forEach((img) => {
+                  const alt = img.getAttribute('alt') || '';
+                  const imageUrl = img.getAttribute('src') || '';
+                  if (!imageUrl) return;
+
+                  let p = img.parentElement;
+                  let sourceUrl = '';
+                  while (p && p !== parent && p.tagName !== 'BODY') {
+                    const anchor = p.querySelector('a');
+                    if (anchor) {
+                      const href = anchor.getAttribute('href') || '';
+                      if (href) {
+                        sourceUrl = decodeGoogleLink(href);
+                        break;
+                      }
+                    }
+                    p = p.parentElement;
+                  }
+
+                  if (sourceUrl && !seenImages.has(imageUrl)) {
+                    seenImages.add(imageUrl);
+                    images.push({
+                      alt: cleanText(alt),
+                      sourceUrl,
+                      imageUrl
+                    });
+                  }
+                });
+              }
+            }
+          });
+
+          // Method B.2: Traditional imgres fallback links (e.g. JS-disabled/fallback page)
+          document.querySelectorAll('a[href*="imgres"]').forEach((el) => {
+            const img = el.querySelector('img');
+            const alt = img ? img.getAttribute('alt') || '' : '';
+            const href = el.getAttribute('href') || '';
+
+            let sourceUrl = '';
+            let imageUrl = '';
+            try {
+              const urlObj = new URL(href, window.location.href);
+              imageUrl = urlObj.searchParams.get('imgurl') || '';
+              sourceUrl = urlObj.searchParams.get('imgrefurl') || '';
+            } catch (e) {
+              const imgMatch = href.match(/[?&]imgurl=([^&]+)/);
+              const refMatch = href.match(/[?&]imgrefurl=([^&]+)/);
+              if (imgMatch) imageUrl = decodeURIComponent(imgMatch[1]);
+              if (refMatch) sourceUrl = decodeURIComponent(refMatch[1]);
+            }
+
+            sourceUrl = decodeGoogleLink(sourceUrl || href);
+            if (sourceUrl && imageUrl && !seenImages.has(imageUrl)) {
+              seenImages.add(imageUrl);
+              images.push({
+                alt: cleanText(alt),
+                sourceUrl,
+                imageUrl: imageUrl || undefined
+              });
+            }
+          });
+        }
 
 
         // 9. EXTRACT SHOPPING RESULTS
@@ -725,86 +791,95 @@ export async function searchViaPool(
         });
 
         // 12. EXTRACT ORGANIC SEARCH RESULTS
-        document.querySelectorAll('h3').forEach((h3) => {
-          const headingText = cleanText(h3.textContent);
-          if (
-            headingText === 'Search Results' ||
-            headingText === 'Weather Result' ||
-            headingText === 'Web results' ||
-            headingText === 'Featured snippet' ||
-            headingText.includes('People also ask')
-          ) {
-            return;
-          }
-
-          const container = h3.closest('.g, .MjjYud, .xpd, .Gx5Zad') || h3.parentElement;
-          if (!container) return;
-
-          const a = container.tagName === 'A' ? container : container.querySelector('a');
-          if (!a) return;
-
-          const rawLink = a.getAttribute('href') || '';
-          const link = decodeGoogleLink(rawLink);
-
-          if (!link || link.includes('google.com') || link.includes('sorry/index') || seen.has(link)) return;
-          seen.add(link);
-
-          let snippet = '';
-          for (const s of ['.VwiC3b', '.lEBKkf', '.lyLwlc', '[data-sncf]', '.IsZvec', '.ilUpNd.H66NU.aSRlid', '.H66NU', '.lQigmf']) {
-            const sn = container.querySelector(s);
-            if (sn && sn.textContent && sn.textContent.trim()) {
-              const txt = cleanText(sn.textContent);
-              if (txt !== cleanText(h3.textContent) && !txt.includes('www.') && txt.length > 10) {
-                snippet = txt;
-                break;
-              }
+        if (categoryParamInner === 'all') {
+          document.querySelectorAll('h3').forEach((h3) => {
+            const headingText = cleanText(h3.textContent);
+            if (
+              headingText === 'Search Results' ||
+              headingText === 'Weather Result' ||
+              headingText === 'Web results' ||
+              headingText === 'Featured snippet' ||
+              headingText.includes('People also ask')
+            ) {
+              return;
             }
-          }
 
-          if (!snippet) {
-            container.querySelectorAll('div, span, p').forEach((sub) => {
-              if (!snippet && sub.className && sub.textContent && sub.children.length === 0) {
-                const txt = cleanText(sub.textContent);
-                if (txt.length > 30 && !txt.includes('www.') && txt !== cleanText(h3.textContent)) {
+            const container = h3.closest('.g, .MjjYud, .xpd, .Gx5Zad') || h3.parentElement;
+            if (!container) return;
+
+            const a = container.tagName === 'A' ? container : container.querySelector('a');
+            if (!a) return;
+
+            const rawLink = a.getAttribute('href') || '';
+            const link = decodeGoogleLink(rawLink);
+
+            if (!link || link.includes('google.com') || link.includes('sorry/index') || seen.has(link)) return;
+            seen.add(link);
+
+            let snippet = '';
+            for (const s of ['.VwiC3b', '.lEBKkf', '.lyLwlc', '[data-sncf]', '.IsZvec', '.ilUpNd.H66NU.aSRlid', '.H66NU', '.lQigmf']) {
+              const sn = container.querySelector(s);
+              if (sn && sn.textContent && sn.textContent.trim()) {
+                const txt = cleanText(sn.textContent);
+                if (txt !== cleanText(h3.textContent) && !txt.includes('www.') && txt.length > 10) {
                   snippet = txt;
+                  break;
                 }
               }
+            }
+
+            if (!snippet) {
+              container.querySelectorAll('div, span, p').forEach((sub) => {
+                if (!snippet && sub.className && sub.textContent && sub.children.length === 0) {
+                  const txt = cleanText(sub.textContent);
+                  if (txt.length > 30 && !txt.includes('www.') && txt !== cleanText(h3.textContent)) {
+                    snippet = txt;
+                  }
+                }
+              });
+            }
+
+            const dispEl = container.querySelector('.TbwUpd, .byrV5b, .ylgVCe, .BamJPe');
+            const displayedLink = dispEl ? cleanText(dispEl.textContent) : undefined;
+
+            const favEl = container.querySelector('img.H1u2de, img.XNo5Ab, .wb41ae img');
+            const favicon = favEl ? favEl.getAttribute('src') || undefined : undefined;
+
+            organic.push({
+              title: cleanText(h3.textContent),
+              link,
+              snippet,
+              displayedLink,
+              favicon
             });
-          }
-
-          const dispEl = container.querySelector('.TbwUpd, .byrV5b, .ylgVCe, .BamJPe');
-          const displayedLink = dispEl ? cleanText(dispEl.textContent) : undefined;
-
-          const favEl = container.querySelector('img.H1u2de, img.XNo5Ab, .wb41ae img');
-          const favicon = favEl ? favEl.getAttribute('src') || undefined : undefined;
-
-          organic.push({
-            title: cleanText(h3.textContent),
-            link,
-            snippet,
-            displayedLink,
-            favicon
           });
-        });
+        }
+
+        // Strict Category Tab Filtering / Isolation
+        const cleanOrganic = categoryParamInner === 'all' ? organic : [];
+        const cleanNews = categoryParamInner === 'news' ? news : [];
+        const cleanVideos = categoryParamInner === 'videos' ? videos : [];
+        const cleanImages = categoryParamInner === 'images' ? images : [];
+        const cleanShopping = categoryParamInner === 'shopping' ? shopping : [];
 
         return {
           captcha: false,
-          organic,
-          aiResponse,
-          featuredSnippet,
-          knowledgePanel,
-          peopleAlsoAsk: peopleAlsoAsk.length > 0 ? peopleAlsoAsk : undefined,
-          directAnswer,
-          news: news.length > 0 ? news : undefined,
-          videos: videos.length > 0 ? videos : undefined,
-          images: images.length > 0 ? images : undefined,
-          shopping: shopping.length > 0 ? shopping : undefined,
-          relatedSearches: relatedSearches.length > 0 ? relatedSearches : undefined,
-          localResults: localResults.length > 0 ? localResults : undefined
+          organic: cleanOrganic,
+          aiResponse: categoryParamInner === 'all' ? aiResponse : null,
+          featuredSnippet: categoryParamInner === 'all' ? featuredSnippet : null,
+          knowledgePanel: categoryParamInner === 'all' ? knowledgePanel : null,
+          peopleAlsoAsk: categoryParamInner === 'all' ? peopleAlsoAsk : undefined,
+          directAnswer: categoryParamInner === 'all' ? directAnswer : null,
+          news: cleanNews.length > 0 ? cleanNews : undefined,
+          videos: cleanVideos.length > 0 ? cleanVideos : undefined,
+          images: cleanImages.length > 0 ? cleanImages : undefined,
+          shopping: cleanShopping.length > 0 ? cleanShopping : undefined,
+          relatedSearches: categoryParamInner === 'all' ? relatedSearches : undefined,
+          localResults: categoryParamInner === 'all' && localResults.length > 0 ? localResults : undefined
         };
-      });
+      }, categoryParam);
 
-      let results = await extractResults();
+      let results = await extractResults(categoryKey);
 
       if (!results.captcha && results.organic.length === 0) {
         await page
@@ -813,7 +888,7 @@ export async function searchViaPool(
           })
           .catch(() => { /* timeout is fine */ });
 
-        results = await extractResults();
+        results = await extractResults(categoryKey);
 
         if (!results.captcha && results.organic.length === 0) {
           await page
@@ -822,12 +897,11 @@ export async function searchViaPool(
             })
             .catch(() => { /* timeout is fine */ });
 
-          results = await extractResults();
+          results = await extractResults(categoryKey);
         }
       }
 
       if (results.captcha) {
-        console.warn(`⚠️ Captcha detected on pool browser ${browser.workerId}`);
         pageErrored = true;
         throw new Error('CAPTCHA_DETECTED');
       }
@@ -851,7 +925,6 @@ export async function searchViaPool(
 
     } catch (e) {
       const msg = (e as Error).message;
-      console.error(`❌ Pool search failed via ${browser.workerId} (attempt ${attempt + 1}/${maxAttempts}):`, msg);
       browserPool.recordFailure();
 
       if (msg.includes('CAPTCHA_DETECTED')) {
@@ -862,7 +935,6 @@ export async function searchViaPool(
             await client.detach();
           } catch { /* ignore */ }
         }
-        console.warn(`⏳ Temporarily evicting ${browser.workerId} for IP cooldown.`);
         browserPool.deregister(browser.workerId);
         page = null;
       } else if ([
@@ -876,7 +948,6 @@ export async function searchViaPool(
         workerCdpFailures.set(browser.workerId, cdpFails);
 
         if (cdpFails >= MAX_WORKER_CDP_FAILURES) {
-          console.warn(`🔥 Worker ${browser.workerId} hit ${cdpFails} consecutive CDP failures — evicting from pool.`);
           workerCdpFailures.delete(browser.workerId);
           browserPool.deregister(browser.workerId);
         }
@@ -893,7 +964,6 @@ export async function searchViaPool(
   }
 
   if (browserPool.getActive().length === 0) {
-    console.error('🚨 All pool workers are dead. Triggering emergency worker restart...');
     browserPool.restartWorkers();
   }
 

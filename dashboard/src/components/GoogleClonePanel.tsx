@@ -7,7 +7,7 @@ import {
   Loader2
 } from 'lucide-react';
 
-type SearchTab = 'all' | 'images' | 'videos' | 'news' | 'shopping' | 'maps';
+type SearchTab = 'all' | 'images' | 'videos' | 'news' | 'shopping';
 
 interface GoogleClonePanelProps {
   isStandalone?: boolean;
@@ -36,7 +36,14 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
     }
   }, []);
 
-  const executeSearch = async (searchQuery: string, targetPage: number) => {
+  // Reactive effect: refetch results whenever the active category tab changes
+  useEffect(() => {
+    if (isSearched && (query || activeQuery)) {
+      executeSearch(query || activeQuery, 1, activeTab);
+    }
+  }, [activeTab]);
+
+  const executeSearch = async (searchQuery: string, targetPage: number, tabCategory: SearchTab = activeTab) => {
     if (!searchQuery.trim()) return;
     setLoading(true);
     setError('');
@@ -44,7 +51,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
     setActiveQuery(searchQuery);
 
     try {
-      const res = await api.browserSearch(searchQuery, targetPage, 'auto', false);
+      const res = await api.browserSearch(searchQuery, targetPage, 'auto', false, tabCategory);
       setResult(res);
       setPage(targetPage);
     } catch (err: any) {
@@ -56,7 +63,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    executeSearch(query, 1);
+    executeSearch(query, 1, activeTab);
   };
 
   const handleClear = () => {
@@ -70,6 +77,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
     setActiveQuery('');
     setPage(1);
     setError('');
+    setActiveTab('all');
   };
 
   const togglePaa = (index: number) => {
@@ -141,7 +149,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
               <Search className={`w-5 h-5 mr-3 flex-shrink-0 ${darkMode ? 'text-white/30' : 'text-gray-400'}`} />
               <input
                 type="text"
-                className="flex-1 bg-transparent border-none outline-none font-sans text-base focus:ring-0 p-0"
+                className={`flex-1 bg-transparent border-none outline-none font-sans text-base focus:ring-0 p-0 ${darkMode ? 'text-white' : 'text-gray-900'}`}
                 placeholder="Search Google Clone or type URL..."
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -150,12 +158,12 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                 <button
                   type="button"
                   onClick={handleClear}
-                  className={`p-1 rounded-full mr-2 hover:bg-white/10 ${darkMode ? 'text-white/40' : 'text-gray-400'}`}
+                  className={`p-1 rounded-full mr-2 ${darkMode ? 'hover:bg-white/10 text-white/40' : 'hover:bg-gray-100 text-gray-400'}`}
                 >
                   <X className="w-4 h-4" />
                 </button>
               )}
-              <div className="flex items-center gap-2 border-l pl-3 ml-1 border-white/10">
+              <div className={`hidden sm:flex items-center gap-2 border-l pl-3 ml-1 ${darkMode ? 'border-white/10' : 'border-gray-200'}`}>
                 <span title="Search by Voice">
                   <Mic className="w-5 h-5 text-blue-500 cursor-pointer hover:opacity-85" />
                 </span>
@@ -166,7 +174,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
             </div>
 
             {/* Buttons */}
-            <div className="flex justify-center gap-3 mt-8">
+            <div className="flex flex-row flex-wrap justify-center gap-3 mt-8">
               <button
                 type="submit"
                 disabled={loading || !query.trim()}
@@ -183,7 +191,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                   const items = ['Pakistan historical spots', 'Weather in Tokyo', 'Who is the Prime Minister of Pakistan', 'Local food near Islamabad', 'Gemini AI vs GPT-4'];
                   const random = items[Math.floor(Math.random() * items.length)];
                   setQuery(random);
-                  executeSearch(random, 1);
+                  executeSearch(random, 1, activeTab);
                 }}
                 className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all shadow ${darkMode
                   ? 'bg-[#1b1b22] hover:bg-[#23232c] hover:text-white text-white/80 border border-white/5'
@@ -196,7 +204,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
           </form>
 
           {/* Languages offered */}
-          <div className="text-xs text-white/40 mt-10">
+          <div className={`text-xs mt-10 ${darkMode ? 'text-white/40' : 'text-gray-500'}`}>
             Google offered in: <span className="text-[#6c63ff] hover:underline cursor-pointer">English</span> · <span className="text-[#6c63ff] hover:underline cursor-pointer">Urdu</span> · <span className="text-[#6c63ff] hover:underline cursor-pointer">Pushto</span> · <span className="text-[#6c63ff] hover:underline cursor-pointer">Punjabi</span>
           </div>
         </div>
@@ -228,7 +236,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                   }`}>
                   <input
                     type="text"
-                    className="flex-1 bg-transparent border-none outline-none font-sans text-sm focus:ring-0 p-0"
+                    className={`flex-1 bg-transparent border-none outline-none font-sans text-sm focus:ring-0 p-0 ${darkMode ? 'text-white' : 'text-gray-900'}`}
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                   />
@@ -236,15 +244,15 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                     <button
                       type="button"
                       onClick={handleClear}
-                      className={`p-1 rounded-full mr-2 hover:bg-white/10 ${darkMode ? 'text-white/40' : 'text-gray-400'}`}
+                      className={`p-1 rounded-full mr-2 ${darkMode ? 'hover:bg-white/10 text-white/40' : 'hover:bg-gray-100 text-gray-400'}`}
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
                   )}
-                  <div className="flex items-center gap-2 border-l pl-3 ml-1 border-white/10">
+                  <div className={`flex items-center gap-2 border-l pl-3 ml-1 ${darkMode ? 'border-white/10' : 'border-gray-200'}`}>
                     <Search
                       className="w-4 h-4 text-blue-500 cursor-pointer hover:opacity-85"
-                      onClick={() => executeSearch(query, 1)}
+                      onClick={() => executeSearch(query, 1, activeTab)}
                     />
                   </div>
                 </div>
@@ -253,13 +261,15 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
 
             {/* Navigation Tabs */}
             <div className="flex gap-4 overflow-x-auto scrollbar-none font-sans text-sm">
-              {(['all', 'images', 'videos', 'news', 'shopping', 'maps'] as SearchTab[]).map(tab => (
+              {(['all', 'images', 'videos', 'news', 'shopping'] as SearchTab[]).map(tab => (
                 <button
                   key={tab}
-                  onClick={() => setActiveTab(tab)}
+                  onClick={() => {
+                    setActiveTab(tab);
+                  }}
                   className={`flex items-center gap-1.5 pb-3 pt-1 border-b-2 font-medium capitalize transition-all ${activeTab === tab
-                    ? (darkMode ? 'border-[#6c63ff] text-white' : 'border-blue-500 text-blue-500')
-                    : 'border-transparent text-white/40 hover:text-white/60'
+                    ? (darkMode ? 'border-[#6c63ff] text-white' : 'border-blue-600 text-blue-600')
+                    : `border-transparent ${darkMode ? 'text-white/40 hover:text-white/60' : 'text-gray-500 hover:text-gray-800'}`
                     }`}
                 >
                   {tab === 'all' && <Globe className="w-4 h-4" />}
@@ -267,8 +277,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                   {tab === 'videos' && <Video className="w-4 h-4" />}
                   {tab === 'news' && <Newspaper className="w-4 h-4" />}
                   {tab === 'shopping' && <ShoppingBag className="w-4 h-4" />}
-                  {tab === 'maps' && <MapPin className="w-4 h-4" />}
-                  <span>{tab === 'maps' ? 'Maps' : tab}</span>
+                  <span>{tab}</span>
                 </button>
               ))}
             </div>
@@ -278,7 +287,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
           {loading && (
             <div className="flex flex-col items-center justify-center p-24 gap-3">
               <div className="w-10 h-10 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
-           </div>
+            </div>
           )}
 
           {/* Error State */}
@@ -311,26 +320,26 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                     ? 'bg-[#1b1b22] border-white/[0.06]'
                     : 'bg-white border-gray-200'
                     }`}>
-                    <div className="flex items-center gap-2 text-xs text-white/40 mb-3 uppercase tracking-wider font-mono">
-                      {result.directAnswer.type === 'weather' ? <CloudSun className="w-4 h-4 text-yellow-400" /> : <Clock className="w-4 h-4 text-blue-400" />}
+                    <div className={`flex items-center gap-2 text-xs mb-3 uppercase tracking-wider font-mono ${darkMode ? 'text-white/40' : 'text-gray-500'}`}>
+                      {result.directAnswer.type === 'weather' ? <CloudSun className="w-4 h-4 text-yellow-400" /> : <Clock className="w-4 h-4 text-blue-600" />}
                       <span>Direct Answer: {result.directAnswer.type}</span>
                     </div>
 
                     {result.directAnswer.type === 'weather' ? (
                       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                         <div>
-                          <div className="text-4xl font-bold font-sans tracking-tight">{result.directAnswer.answer}</div>
-                          <div className="text-sm font-semibold mt-1">{result.directAnswer.details?.split(' - ')[1] || 'Current Weather'}</div>
+                          <div className={`text-4xl font-bold font-sans tracking-tight ${darkMode ? 'text-white' : 'text-gray-900'}`}>{result.directAnswer.answer}</div>
+                          <div className={`text-sm font-semibold mt-1 ${darkMode ? 'text-white' : 'text-gray-800'}`}>{result.directAnswer.details?.split(' - ')[1] || 'Current Weather'}</div>
                         </div>
-                        <div className="text-right sm:text-left text-xs text-white/50 leading-relaxed border-t sm:border-t-0 sm:border-l pt-3 sm:pt-0 sm:pl-4 border-white/10">
+                        <div className={`text-right sm:text-left text-xs leading-relaxed border-t sm:border-t-0 sm:border-l pt-3 sm:pt-0 sm:pl-4 ${darkMode ? 'text-white/50 border-white/10' : 'text-gray-500 border-gray-200'}`}>
                           {result.directAnswer.details || ''}
                         </div>
                       </div>
                     ) : (
                       <div>
-                        <div className="text-4xl font-bold font-mono tracking-tight text-blue-400">{result.directAnswer.answer}</div>
+                        <div className={`text-4xl font-bold font-mono tracking-tight ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>{result.directAnswer.answer}</div>
                         {result.directAnswer.details && (
-                          <div className="text-sm text-white/60 mt-1">{result.directAnswer.details}</div>
+                          <div className={`text-sm mt-1 ${darkMode ? 'text-white/60' : 'text-gray-600'}`}>{result.directAnswer.details}</div>
                         )}
                       </div>
                     )}
@@ -343,8 +352,8 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                     ? 'bg-[#1b1b22] border-white/[0.06]'
                     : 'bg-white border-gray-200'
                     }`}>
-                    <div className="flex items-center gap-1.5 text-xs text-white/40 mb-3 uppercase tracking-wider font-mono">
-                      <BookOpen className="w-4 h-4 text-indigo-400" />
+                    <div className={`flex items-center gap-1.5 text-xs mb-3 uppercase tracking-wider font-mono ${darkMode ? 'text-white/40' : 'text-gray-500'}`}>
+                      <BookOpen className="w-4 h-4 text-indigo-500" />
                       <span>Featured Snippet</span>
                     </div>
                     <p className={`text-base md:text-lg leading-relaxed mb-4 font-serif ${darkMode ? 'text-white/90' : 'text-slate-800'
@@ -355,10 +364,10 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                       href={result.featuredSnippet.link}
                       target="_blank"
                       rel="noreferrer"
-                      className="group block border-t pt-3 border-white/5"
+                      className={`group block border-t pt-3 ${darkMode ? 'border-white/5' : 'border-gray-200'}`}
                     >
-                      <div className="text-xs text-blue-400 font-semibold group-hover:underline truncate">{result.featuredSnippet.title}</div>
-                      <div className="text-[10px] text-white/30 truncate mt-0.5">{result.featuredSnippet.link}</div>
+                      <div className={`text-xs font-semibold group-hover:underline truncate ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>{result.featuredSnippet.title}</div>
+                      <div className={`text-[10px] truncate mt-0.5 ${darkMode ? 'text-white/30' : 'text-gray-400'}`}>{result.featuredSnippet.link}</div>
                     </a>
                   </div>
                 )}
@@ -371,12 +380,12 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                     {/* Organic List */}
                     <div className="space-y-4">
                       {result.organic.length === 0 ? (
-                        <div className="text-center py-12 text-white/30 text-sm">No organic web links found for this query.</div>
+                        <div className={`text-center py-12 text-sm ${darkMode ? 'text-white/30' : 'text-gray-400'}`}>No organic web links found for this query.</div>
                       ) : (
                         result.organic.map((item, idx) => (
                           <div key={idx} className="group">
                             {/* Header / Breadcrumbs */}
-                            <div className="flex items-center gap-2 mb-1 text-xs text-white/40 truncate">
+                            <div className={`flex items-center gap-2 mb-1 text-xs truncate ${darkMode ? 'text-white/40' : 'text-gray-500'}`}>
                               {item.favicon && (
                                 <img
                                   src={item.favicon}
@@ -385,7 +394,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                                   onError={(e) => (e.currentTarget.style.display = 'none')}
                                 />
                               )}
-                              <span className="text-white/60 truncate font-sans">{item.displayedLink || item.link}</span>
+                              <span className={`truncate font-sans ${darkMode ? 'text-white/60' : 'text-gray-600'}`}>{item.displayedLink || item.link}</span>
                             </div>
 
                             {/* Link Title */}
@@ -393,7 +402,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                               href={item.link}
                               target="_blank"
                               rel="noreferrer"
-                              className="text-lg md:text-xl font-sans text-blue-400 group-hover:underline block leading-tight mb-1"
+                              className={`text-lg md:text-xl font-sans group-hover:underline block leading-tight mb-1 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}
                             >
                               {item.title}
                             </a>
@@ -414,12 +423,12 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                         <div className={`px-5 py-4 border-b font-bold text-sm ${darkMode ? 'border-white/10' : 'border-gray-200'}`}>
                           People also ask
                         </div>
-                        <div className="divide-y divide-white/5">
+                        <div className={`divide-y ${darkMode ? 'divide-white/5' : 'divide-gray-200'}`}>
                           {result.peopleAlsoAsk.map((paa, idx) => (
                             <div key={idx} className="transition-all">
                               <button
                                 onClick={() => togglePaa(idx)}
-                                className="w-full flex justify-between items-center px-5 py-3.5 text-left text-sm font-semibold hover:bg-white/[0.02]"
+                                className={`w-full flex justify-between items-center px-5 py-3.5 text-left text-sm font-semibold ${darkMode ? 'hover:bg-white/[0.02]' : 'hover:bg-gray-100'}`}
                               >
                                 <span>{paa.question}</span>
                                 <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${openPaaIndex === idx ? 'rotate-180 text-blue-400' : ''}`} />
@@ -434,10 +443,10 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                                           href={paa.sourceUrl}
                                           target="_blank"
                                           rel="noreferrer"
-                                          className="inline-flex items-center gap-1 text-blue-400 font-semibold hover:underline"
+                                          className="inline-flex items-center gap-1 text-blue-500 font-semibold hover:underline"
                                         >
                                           <span>{paa.sourceTitle || 'Learn more'}</span>
-                                          <ExternalLink className="w-3 h-3" />
+                                          <ExternalLink className="w-3.5 h-3.5" />
                                         </a>
                                       )}
                                     </div>
@@ -457,9 +466,9 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                 {/* 4B. TAB = IMAGES: Render gorgeous image card gallery */}
                 {activeTab === 'images' && (
                   <div className="space-y-6">
-                    <h4 className="font-bold text-sm uppercase tracking-wider text-white/40 mb-3">Google Images Results</h4>
+                    <h4 className={`font-bold text-sm uppercase tracking-wider mb-3 ${darkMode ? 'text-white/40' : 'text-gray-500'}`}>Google Images Results</h4>
                     {!result.images || result.images.length === 0 ? (
-                      <div className="text-center py-16 text-white/30 text-sm">No images crawled for this query.</div>
+                      <div className={`text-center py-16 text-sm ${darkMode ? 'text-white/30' : 'text-gray-400'}`}>No images crawled for this query.</div>
                     ) : (
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                         {result.images.map((img, idx) => (
@@ -478,14 +487,14 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                                   onError={(e) => (e.currentTarget.src = 'https://placehold.co/600x400/png?text=Preview+Unavailable')}
                                 />
                               ) : (
-                                <span className="text-white/20 text-xs">No image data</span>
+                                <span className={`text-xs ${darkMode ? 'text-white/20' : 'text-gray-400'}`}>No image data</span>
                               )}
                             </div>
                             <div className="p-3">
-                              <p className="text-xs font-semibold truncate leading-tight group-hover:text-blue-400 transition-colors">
+                              <p className={`text-xs font-semibold truncate leading-tight transition-colors ${darkMode ? 'text-white group-hover:text-blue-400' : 'text-gray-900 group-hover:text-blue-700'}`}>
                                 {img.alt || 'Untitled Image'}
                               </p>
-                              <p className="text-[10px] text-white/30 truncate mt-1">{img.sourceUrl}</p>
+                              <p className={`text-[10px] truncate mt-1 ${darkMode ? 'text-white/30' : 'text-gray-500'}`}>{img.sourceUrl}</p>
                             </div>
                           </div>
                         ))}
@@ -497,9 +506,9 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                 {/* 4C. TAB = VIDEOS: Render structured video list */}
                 {activeTab === 'videos' && (
                   <div className="space-y-4">
-                    <h4 className="font-bold text-sm uppercase tracking-wider text-white/40 mb-3">Google Video Results</h4>
+                    <h4 className={`font-bold text-sm uppercase tracking-wider mb-3 ${darkMode ? 'text-white/40' : 'text-gray-500'}`}>Google Video Results</h4>
                     {!result.videos || result.videos.length === 0 ? (
-                      <div className="text-center py-16 text-white/30 text-sm">No videos found for this query.</div>
+                      <div className={`text-center py-16 text-sm ${darkMode ? 'text-white/30' : 'text-gray-400'}`}>No videos found for this query.</div>
                     ) : (
                       result.videos.map((vid, idx) => (
                         <div
@@ -528,15 +537,15 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                           {/* Right: Info */}
                           <div className="flex-1 flex flex-col justify-between">
                             <div>
-                              <div className="flex items-center gap-2 text-[10px] text-white/40 mb-1">
-                                <span className="font-semibold uppercase tracking-wider text-blue-400">{vid.source}</span>
+                              <div className={`flex items-center gap-2 text-[10px] mb-1 ${darkMode ? 'text-white/40' : 'text-gray-500'}`}>
+                                <span className="font-semibold uppercase tracking-wider text-blue-500">{vid.source}</span>
                                 {vid.uploadedAt && <span>· {vid.uploadedAt}</span>}
                               </div>
                               <a
                                 href={vid.link}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="text-base font-bold text-white hover:text-blue-400 transition-colors group-hover:underline block leading-tight mb-2"
+                                className={`text-base font-bold transition-colors group-hover:underline block leading-tight mb-2 ${darkMode ? 'text-white hover:text-blue-400' : 'text-gray-900 hover:text-blue-700'}`}
                               >
                                 {vid.title}
                               </a>
@@ -546,7 +555,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                               href={vid.link}
                               target="_blank"
                               rel="noreferrer"
-                              className="text-xs text-white/30 truncate block hover:underline"
+                              className={`text-xs truncate block hover:underline ${darkMode ? 'text-white/30' : 'text-gray-500'}`}
                             >
                               {vid.link}
                             </a>
@@ -560,9 +569,9 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                 {/* 4D. TAB = NEWS: Top news articles */}
                 {activeTab === 'news' && (
                   <div className="space-y-4">
-                    <h4 className="font-bold text-sm uppercase tracking-wider text-white/40 mb-3">Top News Stories</h4>
+                    <h4 className={`font-bold text-sm uppercase tracking-wider mb-3 ${darkMode ? 'text-white/40' : 'text-gray-500'}`}>Top News Stories</h4>
                     {!result.news || result.news.length === 0 ? (
-                      <div className="text-center py-16 text-white/30 text-sm">No recent news reports found for this query.</div>
+                      <div className={`text-center py-16 text-sm ${darkMode ? 'text-white/30' : 'text-gray-400'}`}>No recent news reports found for this query.</div>
                     ) : (
                       result.news.map((item, idx) => (
                         <div
@@ -570,7 +579,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                           className={`p-5 rounded-2xl border transition-all hover:border-white/10 ${darkMode ? 'bg-[#1b1b22] border-white/[0.06]' : 'bg-white border-gray-200'
                             }`}
                         >
-                          <div className="flex items-center gap-2 mb-2 text-[10px] text-white/40 font-mono">
+                          <div className={`flex items-center gap-2 mb-2 text-[10px] font-mono ${darkMode ? 'text-white/40' : 'text-gray-500'}`}>
                             <span className="font-bold text-[#6c63ff] uppercase">{item.source}</span>
                             <span>·</span>
                             <span>{item.time}</span>
@@ -579,7 +588,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                             href={item.link}
                             target="_blank"
                             rel="noreferrer"
-                            className="text-base font-bold text-white hover:text-blue-400 hover:underline block leading-snug mb-2"
+                            className={`text-base font-bold hover:underline block leading-snug mb-2 ${darkMode ? 'text-white hover:text-blue-400' : 'text-gray-900 hover:text-blue-700'}`}
                           >
                             {item.title}
                           </a>
@@ -587,7 +596,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                             href={item.link}
                             target="_blank"
                             rel="noreferrer"
-                            className="text-[10px] text-white/20 truncate block"
+                            className={`text-[10px] truncate block ${darkMode ? 'text-white/20' : 'text-gray-400'}`}
                           >
                             {item.link}
                           </a>
@@ -600,9 +609,9 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                 {/* 4E. TAB = SHOPPING: Products catalog */}
                 {activeTab === 'shopping' && (
                   <div className="space-y-4">
-                    <h4 className="font-bold text-sm uppercase tracking-wider text-white/40 mb-3">Google Shopping Results</h4>
+                    <h4 className={`font-bold text-sm uppercase tracking-wider mb-3 ${darkMode ? 'text-white/40' : 'text-gray-500'}`}>Google Shopping Results</h4>
                     {!result.shopping || result.shopping.length === 0 ? (
-                      <div className="text-center py-16 text-white/30 text-sm">No matching shopping products found.</div>
+                      <div className={`text-center py-16 text-sm ${darkMode ? 'text-white/30' : 'text-gray-400'}`}>No matching shopping products found.</div>
                     ) : (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         {result.shopping.map((prod, idx) => (
@@ -612,9 +621,9 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                               }`}
                           >
                             <div>
-                              <div className="text-2xl font-black text-emerald-400 font-mono mb-2">{prod.price}</div>
-                              <h5 className="text-sm font-bold text-white leading-snug mb-1">{prod.title}</h5>
-                              <div className="text-xs text-white/40 font-semibold">{prod.merchant}</div>
+                              <div className="text-2xl font-black text-emerald-500 font-mono mb-2">{prod.price}</div>
+                              <h5 className={`text-sm font-bold leading-snug mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{prod.title}</h5>
+                              <div className={`text-xs font-semibold ${darkMode ? 'text-white/40' : 'text-gray-500'}`}>{prod.merchant}</div>
                             </div>
                             <a
                               href={prod.link}
@@ -631,64 +640,19 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                   </div>
                 )}
 
-                {/* 4F. TAB = MAPS: Place listings */}
-                {activeTab === 'maps' && (
-                  <div className="space-y-4">
-                    <h4 className="font-bold text-sm uppercase tracking-wider text-white/40 mb-3">Maps & Local Results</h4>
-                    {!result.localResults || result.localResults.length === 0 ? (
-                      <div className="text-center py-16 text-white/30 text-sm">No map places extracted. Try using "Maps Places" tab instead for structured batches.</div>
-                    ) : (
-                      result.localResults.map((place, idx) => (
-                        <div
-                          key={idx}
-                          className={`p-5 rounded-2xl border flex gap-4 transition-all ${darkMode ? 'bg-[#1b1b22] border-white/[0.06]' : 'bg-white border-gray-200'
-                            }`}
-                        >
-                          <div className="w-10 h-10 rounded-full bg-[#00d4aa]/10 text-[#00d4aa] border border-[#00d4aa]/20 flex items-center justify-center text-base flex-shrink-0">
-                            📍
-                          </div>
-                          <div className="flex-1">
-                            <h5 className="text-base font-bold text-white mb-1">{place.title}</h5>
-                            <div className="flex items-center gap-1.5 text-xs text-white/50 mb-2">
-                              {place.rating && (
-                                <div className="flex items-center gap-0.5 text-yellow-400 font-bold">
-                                  <Star className="w-3.5 h-3.5 fill-current" />
-                                  <span>{place.rating}</span>
-                                </div>
-                              )}
-                              {place.reviewsCount && <span>({place.reviewsCount} reviews)</span>}
-                            </div>
-                            {place.address && <p className="text-xs text-white/60 mb-1">🏠 {place.address}</p>}
-                            {place.phone && <p className="text-xs text-white/60 mb-3">📞 {place.phone}</p>}
-                            {place.link && (
-                              <a
-                                href={place.link}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-1 text-xs text-blue-400 font-bold hover:underline"
-                              >
-                                <span>Get Directions</span>
-                                <ExternalLink className="w-3.5 h-3.5" />
-                              </a>
-                            )}
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
+                {/* Maps Tab Removed */}
 
                 {/* 5. Related Queries (Clickable to perform new search) */}
                 {result.relatedSearches && result.relatedSearches.length > 0 && (
-                  <div className="pt-6 border-t border-white/[0.06] space-y-3">
-                    <h5 className="font-bold text-xs uppercase tracking-wider text-white/30">Related Searches</h5>
+                  <div className={`pt-6 border-t space-y-3 ${darkMode ? 'border-white/[0.06]' : 'border-gray-200'}`}>
+                    <h5 className={`font-bold text-xs uppercase tracking-wider ${darkMode ? 'text-white/30' : 'text-gray-500'}`}>Related Searches</h5>
                     <div className="flex flex-wrap gap-2">
                       {result.relatedSearches.map((term, idx) => (
                         <button
                           key={idx}
                           onClick={() => {
                             setQuery(term);
-                            executeSearch(term, 1);
+                            executeSearch(term, 1, activeTab);
                           }}
                           className={`px-4 py-2 rounded-full text-xs font-semibold border transition-all ${darkMode
                             ? 'bg-white/[0.03] border-white/10 text-white/60 hover:bg-white/[0.08] hover:text-white'
@@ -706,7 +670,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                 <div className="flex justify-center gap-3 pt-8">
                   <button
                     disabled={page <= 1}
-                    onClick={() => executeSearch(activeQuery, page - 1)}
+                    onClick={() => executeSearch(activeQuery, page - 1, activeTab)}
                     className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border ${darkMode
                       ? 'bg-white/[0.04] border-white/10 hover:bg-white/[0.08] disabled:opacity-30'
                       : 'bg-white border-gray-300 hover:bg-gray-100 disabled:opacity-30 shadow-sm text-slate-800'
@@ -714,11 +678,11 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                   >
                     Prev Page
                   </button>
-                  <div className="px-4 py-2 flex items-center justify-center text-xs font-mono font-bold text-white/40">
+                  <div className={`px-4 py-2 flex items-center justify-center text-xs font-mono font-bold ${darkMode ? 'text-white/40' : 'text-gray-500'}`}>
                     Page {page}
                   </div>
                   <button
-                    onClick={() => executeSearch(activeQuery, page + 1)}
+                    onClick={() => executeSearch(activeQuery, page + 1, activeTab)}
                     className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border ${darkMode
                       ? 'bg-white/[0.04] border-white/10 hover:bg-white/[0.08]'
                       : 'bg-white border-gray-300 hover:bg-gray-100 shadow-sm text-slate-800'
@@ -738,11 +702,11 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                   <div className={`rounded-2xl border shadow-md overflow-hidden transition-all ${darkMode ? 'bg-[#1b1b22] border-white/[0.06]' : 'bg-white border-gray-200'
                     }`}>
                     {/* Header Banner simulation */}
-                    <div className="bg-gradient-to-r from-blue-500/10 to-indigo-500/10 p-5 border-b border-white/5">
-                      <div className="text-[10px] uppercase font-bold text-indigo-400 mb-1 tracking-wider">Knowledge Graph Info</div>
-                      <h3 className="text-xl font-extrabold text-white tracking-tight">{result.knowledgePanel.title}</h3>
+                    <div className={`p-5 border-b ${darkMode ? 'bg-gradient-to-r from-blue-500/10 to-indigo-500/10 border-white/5' : 'bg-gray-50 border-gray-200'}`}>
+                      <div className="text-[10px] uppercase font-bold text-indigo-500 mb-1 tracking-wider">Knowledge Graph Info</div>
+                      <h3 className={`text-xl font-extrabold tracking-tight ${darkMode ? 'text-white' : 'text-gray-900'}`}>{result.knowledgePanel.title}</h3>
                       {result.knowledgePanel.subtitle && (
-                        <p className="text-xs text-white/50 mt-0.5 leading-snug">{result.knowledgePanel.subtitle}</p>
+                        <p className={`text-xs mt-0.5 leading-snug ${darkMode ? 'text-white/50' : 'text-gray-500'}`}>{result.knowledgePanel.subtitle}</p>
                       )}
                     </div>
 
@@ -757,7 +721,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                               href={result.knowledgePanel.sourceUrl}
                               target="_blank"
                               rel="noreferrer"
-                              className="inline-flex items-center gap-1 text-xs text-blue-400 font-bold hover:underline"
+                              className="inline-flex items-center gap-1 text-xs text-blue-500 font-bold hover:underline"
                             >
                               <span>Read full topic source</span>
                               <ExternalLink className="w-3.5 h-3.5" />
@@ -768,11 +732,11 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
 
                       {/* Fact attributes list */}
                       {result.knowledgePanel.attributes && result.knowledgePanel.attributes.length > 0 && (
-                        <div className="border-t border-white/5 pt-4 space-y-3">
+                        <div className={`border-t pt-4 space-y-3 ${darkMode ? 'border-white/5' : 'border-gray-200'}`}>
                           {result.knowledgePanel.attributes.map((attr, idx) => (
                             <div key={idx} className="flex flex-col gap-0.5 text-xs">
-                              <span className="font-bold text-white/40 uppercase tracking-wide text-[9px]">{attr.label}</span>
-                              <span className="font-semibold text-white/80 leading-relaxed">{attr.value}</span>
+                              <span className={`font-bold uppercase tracking-wide text-[9px] ${darkMode ? 'text-white/40' : 'text-gray-500'}`}>{attr.label}</span>
+                              <span className={`font-semibold leading-relaxed ${darkMode ? 'text-white/80' : 'text-gray-800'}`}>{attr.value}</span>
                             </div>
                           ))}
                         </div>
@@ -780,7 +744,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                     </div>
                   </div>
                 ) : (
-                  <div className={`p-5 rounded-2xl border text-center text-xs text-white/30 transition-all ${darkMode ? 'bg-[#1b1b22]/50 border-white/[0.04]' : 'bg-gray-50 border-gray-200'
+                  <div className={`p-5 rounded-2xl border text-center text-xs transition-all ${darkMode ? 'bg-[#1b1b22]/50 border-white/[0.04] text-white/30' : 'bg-gray-50 border-gray-200 text-gray-400'
                     }`}>
                     No direct sidebar knowledge graph exists for this exact search. Try querying a topic like a country, celebrity, or weather location.
                   </div>
@@ -790,39 +754,22 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                 {result.shopping && result.shopping.length > 0 && activeTab !== 'shopping' && (
                   <div className={`p-5 rounded-2xl border space-y-4 transition-all ${darkMode ? 'bg-[#1b1b22] border-white/[0.06]' : 'bg-white border-gray-200 shadow-sm'
                     }`}>
-                    <h5 className="font-extrabold text-xs uppercase text-white/40 tracking-wider">Related Products</h5>
-                    <div className="divide-y divide-white/5 space-y-3">
+                    <h5 className={`font-extrabold text-xs uppercase tracking-wider ${darkMode ? 'text-white/40' : 'text-gray-500'}`}>Related Products</h5>
+                    <div className={`divide-y space-y-3 ${darkMode ? 'divide-white/5' : 'divide-gray-200'}`}>
                       {result.shopping.slice(0, 3).map((prod, idx) => (
                         <div key={idx} className="pt-3 first:pt-0 flex flex-col gap-1">
-                          <span className="text-sm font-black text-emerald-400">{prod.price}</span>
-                          <a href={prod.link} target="_blank" rel="noreferrer" className="text-xs font-semibold text-white hover:text-blue-400 leading-snug hover:underline block">
+                          <span className="text-sm font-black text-emerald-500">{prod.price}</span>
+                          <a href={prod.link} target="_blank" rel="noreferrer" className={`text-xs font-semibold leading-snug hover:underline block ${darkMode ? 'text-white hover:text-blue-400' : 'text-gray-800 hover:text-blue-700'}`}>
                             {prod.title}
                           </a>
-                          <span className="text-[10px] text-white/30 font-semibold">{prod.merchant}</span>
+                          <span className={`text-[10px] font-semibold ${darkMode ? 'text-white/30' : 'text-gray-500'}`}>{prod.merchant}</span>
                         </div>
                       ))}
                     </div>
                   </div>
                 )}
 
-                {/* C. Local places / Map listings preview in sidebar */}
-                {result.localResults && result.localResults.length > 0 && activeTab !== 'maps' && (
-                  <div className={`p-5 rounded-2xl border space-y-4 transition-all ${darkMode ? 'bg-[#1b1b22] border-white/[0.06]' : 'bg-white border-gray-200 shadow-sm'
-                    }`}>
-                    <h5 className="font-extrabold text-xs uppercase text-white/40 tracking-wider">Local Results Preview</h5>
-                    <div className="divide-y divide-white/5 space-y-3">
-                      {result.localResults.slice(0, 3).map((place, idx) => (
-                        <div key={idx} className="pt-3 first:pt-0">
-                          <h6 className="text-xs font-bold text-white leading-snug mb-0.5">{place.title}</h6>
-                          <div className="flex items-center gap-1 text-[10px] text-white/40">
-                            {place.rating && <span className="text-yellow-400 font-bold">★ {place.rating}</span>}
-                            {place.address && <span className="truncate">· {place.address}</span>}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+           
 
               </div>
 

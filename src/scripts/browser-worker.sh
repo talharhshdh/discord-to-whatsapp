@@ -35,8 +35,6 @@ TUNNEL_PID=""
 # Cleanup handler
 # ---------------------------------------------------------------------------
 cleanup() {
-  echo "🧹 Cleaning up worker ${WORKER_ID}..."
-
   # Best-effort deregister
   if [ -n "$TUNNEL_URL" ]; then
     for attempt in 1 2 3; do
@@ -46,10 +44,8 @@ cleanup() {
         -d "{\"event\":\"deregister\",\"workerId\":\"${WORKER_ID}\",\"cdpUrl\":\"${TUNNEL_URL}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
         2>/dev/null || echo "000")
       if [ "$HTTP_CODE" = "200" ]; then
-        echo "✅ Deregister acknowledged (attempt $attempt)"
         break
       fi
-      echo "⚠️ Deregister attempt $attempt failed (HTTP $HTTP_CODE)"
       sleep 3
     done
   fi
@@ -58,7 +54,6 @@ cleanup() {
   [ -n "$TUNNEL_PID" ] && kill "$TUNNEL_PID" 2>/dev/null || true
   [ -n "$CHROME_PID" ] && kill "$CHROME_PID" 2>/dev/null || true
 
-  echo "👋 Worker ${WORKER_ID} shutdown complete."
   exit 0
 }
 trap cleanup EXIT SIGTERM SIGINT
@@ -117,16 +112,12 @@ cloudflared tunnel --url "http://127.0.0.1:${CDP_PORT}" --http-host-header "loca
 TUNNEL_PID=$!
 
 # Wait for tunnel URL to appear in logs
-echo "⏳ Waiting for tunnel URL..."
 for i in $(seq 1 30); do
   TUNNEL_URL=$(grep -oP 'https://[-0-9a-z]+\.trycloudflare\.com' "$TUNNEL_LOG" 2>/dev/null | head -1 || true)
   if [ -n "$TUNNEL_URL" ]; then
-    echo "✅ Tunnel URL: $TUNNEL_URL"
     break
   fi
   if [ $i -eq 30 ]; then
-    echo "❌ Tunnel URL not found within 30 seconds"
-    cat "$TUNNEL_LOG" || true
     exit 1
   fi
   sleep 1
@@ -150,7 +141,6 @@ for attempt in $(seq 1 20); do
     2>/dev/null || echo "000")
 
   if [ "$HTTP_CODE" = "200" ]; then
-    echo "✅ Registered successfully (attempt $attempt)"
     REGISTERED=true
     break
   fi
@@ -158,12 +148,10 @@ for attempt in $(seq 1 20); do
   # Exponential backoff: 5, 10, 20, 40, 60, 60, ...
   BACKOFF=$(( 5 * (2 ** (attempt - 1)) ))
   [ $BACKOFF -gt 60 ] && BACKOFF=60
-  echo "⚠️ Register attempt $attempt failed (HTTP $HTTP_CODE). Retrying in ${BACKOFF}s..."
   sleep "$BACKOFF"
 done
 
 if [ "$REGISTERED" != "true" ]; then
-  echo "❌ Failed to register after 20 attempts. Exiting."
   exit 1
 fi
 
@@ -179,19 +167,16 @@ MAX_CONSECUTIVE_FAILURES=10
 while true; do
   ELAPSED=$(( $(date +%s) - START_TIME ))
   if [ $ELAPSED -ge $MAX_RUNTIME ]; then
-    echo "⏱️ Max runtime reached (${MAX_RUNTIME}s). Shutting down."
     break
   fi
 
   # Check Chrome is still alive
   if ! kill -0 "$CHROME_PID" 2>/dev/null; then
-    echo "❌ Chrome process died. Shutting down."
     break
   fi
 
   # Check tunnel is still alive
   if ! kill -0 "$TUNNEL_PID" 2>/dev/null; then
-    echo "❌ Cloudflared tunnel process died. Shutting down."
     break
   fi
 
@@ -206,11 +191,8 @@ while true; do
 
   if [ "$HTTP_CODE" = "200" ]; then
     CONSECUTIVE_FAILURES=0
-    REMAINING=$(( MAX_RUNTIME - ELAPSED ))
-    echo "💓 Heartbeat OK (${ELAPSED}s elapsed, ${REMAINING}s remaining)"
   elif [ "$HTTP_CODE" = "404" ]; then
     # Dashboard doesn't know us — re-register
-    echo "⚠️ Dashboard returned 404 — re-registering..."
     curl -s -o /dev/null --max-time 15 \
       -X POST "$WEBHOOK_URL" \
       -H "Content-Type: application/json" \
@@ -219,9 +201,7 @@ while true; do
     CONSECUTIVE_FAILURES=0
   else
     CONSECUTIVE_FAILURES=$(( CONSECUTIVE_FAILURES + 1 ))
-    echo "⚠️ Heartbeat failed (HTTP $HTTP_CODE) — failure ${CONSECUTIVE_FAILURES}/${MAX_CONSECUTIVE_FAILURES}"
     if [ $CONSECUTIVE_FAILURES -ge $MAX_CONSECUTIVE_FAILURES ]; then
-      echo "❌ Too many consecutive heartbeat failures. Shutting down."
       break
     fi
   fi

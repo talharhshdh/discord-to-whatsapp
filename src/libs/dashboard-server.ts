@@ -40,6 +40,7 @@ import { searchYouTube, getYouTubeInfo, downloadYouTubeVideo } from './youtube-d
 import { searchMovies } from './movie-search';
 import type { YouTubeQualityOption } from './youtube-dl';
 import { browserPool, searchViaPool } from './browser-pool';
+import { isConnectionCached } from './page-pool';
 import type { WebhookPayload } from './browser-pool';
 import { searchPlacesViaPool, searchPlacesStream, searchViaGoogleSearchUrl, searchViaGoogleSearchStream } from './google-places-search';
 
@@ -839,24 +840,28 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   if (url.startsWith('/api/web-proxy')) {
     try {
       if (url.includes('?url=')) {
-        const params = new URL(url, 'http://localhost').searchParams;
-        let targetUrl = params.get('url');
-        if (targetUrl) {
-          if (!/^https?:\/\//i.test(targetUrl)) {
-            targetUrl = 'https://' + targetUrl;
+        try {
+          const params = new URL(url, 'http://localhost').searchParams;
+          let targetUrl = params.get('url');
+          if (targetUrl) {
+            if (!/^https?:\/\//i.test(targetUrl)) {
+              targetUrl = 'https://' + targetUrl;
+            }
+            let encoded = '';
+            if (webProxy.codec && typeof webProxy.codec.encode === 'function') {
+              encoded = webProxy.codec.encode(targetUrl);
+            } else {
+              encoded = Buffer.from(targetUrl).toString('base64');
+            }
+            const token = params.get('token');
+            res.writeHead(302, {
+              'Location': `/api/web-proxy/${encoded}${token ? `?token=${encodeURIComponent(token)}` : ''}`
+            });
+            res.end();
+            return;
           }
-          let encoded = '';
-          if (webProxy.codec && typeof webProxy.codec.encode === 'function') {
-            encoded = webProxy.codec.encode(targetUrl);
-          } else {
-            encoded = Buffer.from(targetUrl).toString('base64');
-          }
-          const token = params.get('token');
-          res.writeHead(302, {
-            'Location': `/api/web-proxy/${encoded}${token ? `?token=${encodeURIComponent(token)}` : ''}`
-          });
-          res.end();
-          return;
+        } catch (urlParamsErr) {
+          console.error('Failed to parse proxy URL params:', urlParamsErr);
         }
       }
 
@@ -867,6 +872,11 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         targetUrlStr = typeof urlData === 'string' ? urlData : urlData?.value || '';
       } catch (e) {
         // ignore
+      }
+
+      if (!targetUrlStr || !/^https?:\/\//i.test(targetUrlStr)) {
+        err(res, 'Invalid or missing target URL for proxy', 400);
+        return;
       }
 
       if (targetUrlStr) {
@@ -1147,6 +1157,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         registeredAt: new Date(b.registeredAt).toISOString(),
         lastHeartbeat: new Date(b.lastHeartbeat).toISOString(),
         secondsSinceHeartbeat: Math.round((Date.now() - b.lastHeartbeat) / 1000),
+        isCached: isConnectionCached(b.workerId),
       })),
     });
     return;
@@ -1172,6 +1183,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       const pageNumber = Number(body['pageNumber']) || 1;
       const engine = (body['engine'] as string) || 'auto';
       const includeAI = Boolean(body['includeAI']);
+      const category = (body['category'] as string) || 'all';
 
       // ── CDP / Puppeteer search ──────────────────────────────────────────
       const tryCdpSearch = async (): Promise<any | null> => {
@@ -1189,7 +1201,17 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         const browser = await puppeteer.connect({ browserWSEndpoint: wsUrl, defaultViewport: null });
         const page = await browser.newPage();
         const startParam = (pageNumber - 1) * 10;
-        await page.goto(`https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}`, { waitUntil: 'domcontentloaded' });
+        let googleUrl = `https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}`;
+        if (category === 'images') {
+          googleUrl += '&udm=2';
+        } else if (category === 'videos') {
+          googleUrl += '&udm=7';
+        } else if (category === 'news') {
+          googleUrl += '&udm=14';
+        } else if (category === 'shopping') {
+          googleUrl += '&udm=3';
+        }
+        await page.goto(googleUrl, { waitUntil: 'domcontentloaded' });
         await new Promise(r => setTimeout(r, 3000));
 
         // Click "Show more" buttons only when AI response is requested
@@ -1261,7 +1283,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         const resp = await fetch(`${PYTHON_API}/search`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, pageNumber, includeAI }),
+          body: JSON.stringify({ text, pageNumber, includeAI, category }),
         });
         if (!resp.ok) throw new Error(`Python API /search → HTTP ${resp.status}`);
         return resp.json();
@@ -1275,12 +1297,12 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       } else if (engine === 'selenium') {
         results = await trySeleniumSearch();
       } else if (engine === 'pool') {
-        results = await searchViaPool(text, pageNumber, includeAI);
+        results = await searchViaPool(text, pageNumber, includeAI, category);
         if (!results) return err(res, 'No browsers available in pool', 503);
       } else {
         // auto: try pool first → local CDP → selenium fallback
         try {
-          results = await searchViaPool(text, pageNumber, includeAI);
+          results = await searchViaPool(text, pageNumber, includeAI, category);
         } catch { results = null; }
         if (!results) {
           try {

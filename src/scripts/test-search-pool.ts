@@ -1,11 +1,3 @@
-/**
- * @file test-search-pool.ts
- * @description Standalone test script to measure execution time of searchViaPool locally using specific CDP URLs.
- *
- * Usage:
- *   npx ts-node src/scripts/test-search-pool.ts "your search query"
- */
-
 import { performance } from 'perf_hooks';
 import * as fs from 'fs';
 import { browserPool } from '../libs/browser-pool';
@@ -17,31 +9,36 @@ import {
     MAX_WORKER_CDP_FAILURES,
 } from '../libs/page-pool';
 import type { WorkerConnection } from '../libs/page-pool';
-/*
- https://aircraft-reflected-exceed-points.trycloudflare.com  (pool size: 8)
-✅ Browser worker registered: browser-worker-4-runner-ef6a90c9 → https://adrian-absolutely-knowing-increasingly.trycloudflare.com  (pool size: 9)
-✅ Browser worker registered: browser-worker-3-runner-e5853599 → https://novel-yang-sullivan-calculations.trycloudflare.com  (pool size: 10)
-*/
-// Register the worker URLs you provided
-const WORKERS = [
-    { id: 'browser-worker-4-runner-2a319255', url: 'https://charge-material-reasonably-acts.trycloudflare.com' },
 
+const WORKERS = [
+    { id: 'browser-worker-4-runner-2a319255', url: 'https://joint-squad-shots-simulations.trycloudflare.com' },
+    { id: 'browser-worker-5-runner-2a319255', url: 'https://hammer-auburn-downloaded-affordable.trycloudflare.com' },
 ];
 
-// Add them directly into the pool
 for (const w of WORKERS) {
     browserPool.register(w.id, w.url);
 }
 
-/**
- * Exact copy of the searchViaPool logic from browser-pool.ts, 
- * augmented with `performance.now()` checkpoints.
- */
 async function timedSearchViaPool(
     text: string,
     pageNumber: number = 1,
     includeAI: boolean = false,
+    category: string = 'all',
 ) {
+    const normCategory = category.toLowerCase().trim();
+    let categoryKey = 'all';
+    if (normCategory === 'videos' || normCategory === 'video') {
+        categoryKey = 'videos';
+    } else if (normCategory === 'images' || normCategory === 'image') {
+        categoryKey = 'images';
+    } else if (normCategory === 'news') {
+        categoryKey = 'news';
+    } else if (normCategory === 'shopping' || normCategory === 'shop') {
+        categoryKey = 'shopping';
+    } else if (normCategory === 'maps' || normCategory === 'map') {
+        categoryKey = 'maps';
+    }
+
     const maxAttempts = Math.max(1, browserPool.getActive().length);
     console.log(`\n======================================================`);
     console.log(`🚀 Starting timed search for: "${text}"`);
@@ -91,7 +88,6 @@ async function timedSearchViaPool(
                 ) {
                     return req.abort();
                 }
-                // Try ALLOWING scripts temporarily to see if Google needs them to render results
                 if (['xhr', 'fetch'].includes(type)) {
                     return req.abort();
                 }
@@ -99,11 +95,21 @@ async function timedSearchViaPool(
             });
             console.log(`⏱️  setup request interception took:          ${Math.round(performance.now() - tInterception)} ms`);
 
-            const startParam = (pageNumber - 1) * 30;
-            const targetUrl = `https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}&num=10&hl=en&gbv=2&pws=0`;
+            const startParam = (pageNumber - 1) * 10;
+            let targetUrl = `https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}&num=10&hl=en&gbv=2&pws=0`;
+            if (categoryKey === 'images') {
+                targetUrl += '&udm=2';
+            } else if (categoryKey === 'videos') {
+                targetUrl += '&udm=7';
+            } else if (categoryKey === 'news') {
+                targetUrl += '&udm=14';
+            } else if (categoryKey === 'shopping') {
+                targetUrl += '&udm=3';
+            } else if (categoryKey === 'maps') {
+                targetUrl += '&tbm=lcl';
+            }
 
             const tGoto = performance.now();
-            //   await page.goto(targetUrl, { timeout: 30_000 });
             const client = await page.target().createCDPSession();
             await client.send('Page.navigate', { url: targetUrl, timeout: 30_000 });
 
@@ -113,11 +119,13 @@ async function timedSearchViaPool(
             console.log(`📄  Page Title:                               "${title}"`);
 
             const tWait = performance.now();
-            await page.waitForSelector('#search .g, #rso .g, .MjjYud .g, form[action="/sorry/index"]', { timeout: 100 }).catch(() => { });
+            await page.waitForSelector('#search, .Gx5Zad.xpd, .xpd, h3, a[href^="http"], a[href*="/url?q="]', {
+                timeout: 100,
+            }).catch(() => { /* ignore */ });
             console.log(`⏱️  waitForSelector (DOM render wait) took:   ${Math.round(performance.now() - tWait)} ms`);
 
             const tEval = performance.now();
-            const results = await page.evaluate(() => {
+            const results = await page.evaluate((categoryParam: string) => {
                 if (document.querySelector('form[action="/sorry/index"], #captcha, .g-recaptcha')) {
                     return { captcha: true, organic: [] as any[], aiResponse: null as string | null };
                 }
@@ -146,7 +154,6 @@ async function timedSearchViaPool(
                     return href;
                 };
 
-                // 1. EXTRACT AI OVERVIEW / RESPONSE (SGE)
                 for (const sel of [
                     '.M8OgIe', '.LLtROe', '.IZ6rdc',
                     '[data-attrid="wa:/description"]', '.wDYxhc[data-md]', '.kp-blk',
@@ -158,7 +165,6 @@ async function timedSearchViaPool(
                     }
                 }
 
-                // 2. EXTRACT FEATURED SNIPPET
                 let featuredSnippet: any = null;
                 const fsContainer = document.querySelector('[data-attrid="wa:/description"], .kp-blk, .hp-xpd, .c2d06b');
                 if (fsContainer) {
@@ -174,7 +180,6 @@ async function timedSearchViaPool(
                     }
                 }
 
-                // 3. EXTRACT KNOWLEDGE PANEL
                 let knowledgePanel: any = null;
                 const kpContainer = document.querySelector('.kp-sidebar, #rhs, .rhs, .kp-blk, .KPDxwd');
                 if (kpContainer) {
@@ -206,7 +211,6 @@ async function timedSearchViaPool(
                     }
                 }
 
-                // 4. EXTRACT PEOPLE ALSO ASK (PAA)
                 const peopleAlsoAsk: any[] = [];
                 document.querySelectorAll('[jsname="N760bc"], [data-init-query], .cb76Od, .E3VR9e').forEach((el) => {
                     const headerText = cleanText(el.textContent);
@@ -223,10 +227,8 @@ async function timedSearchViaPool(
                     }
                 });
 
-                // 5. EXTRACT DIRECT ANSWERS (WEATHER, TRANSLATION, DICTIONARY, CALCULATOR)
                 let directAnswer: any = null;
 
-                // Calculator
                 const calcResult = document.querySelector('#cwos');
                 if (calcResult) {
                     const calcEq = document.querySelector('.rN17ge, .SwHCTb');
@@ -237,7 +239,6 @@ async function timedSearchViaPool(
                     };
                 }
 
-                // Weather
                 const weatherTemp = document.querySelector('#wob_tm, .vk_bk.wob-t');
                 if (weatherTemp && !directAnswer) {
                     const tempVal = weatherTemp.textContent ? weatherTemp.textContent.trim() : '';
@@ -279,7 +280,6 @@ async function timedSearchViaPool(
                     };
                 }
 
-                // Time / Timezone
                 const timeVal = document.querySelector('.vk_bk, .gsrt.vk_bk');
                 if (timeVal && timeVal.textContent && timeVal.textContent.includes(':') && !directAnswer) {
                     const timeZone = document.querySelector('.vk_gy, .vk_sh');
@@ -290,7 +290,6 @@ async function timedSearchViaPool(
                     };
                 }
 
-                // Dictionary
                 const dictWord = document.querySelector('.v9i61e, [data-attrid="kc:/common/dictionary:definition"]');
                 if (dictWord && !directAnswer) {
                     const dictMean = document.querySelector('.LT1Tbd, .lr_dct_ent');
@@ -301,7 +300,6 @@ async function timedSearchViaPool(
                     };
                 }
 
-                // Translation
                 const transTarget = document.querySelector('#tw-target-text');
                 if (transTarget && !directAnswer) {
                     const transSource = document.querySelector('#tw-source-text-ta');
@@ -312,7 +310,6 @@ async function timedSearchViaPool(
                     };
                 }
 
-                // 6. EXTRACT NEWS / STORIES
                 const news: any[] = [];
                 document.querySelectorAll('g-card, .YLwUee, .WlydOe, .MjjYud').forEach((el) => {
                     const a = el.querySelector('a');
@@ -335,107 +332,158 @@ async function timedSearchViaPool(
                     }
                 });
 
-                // 7. EXTRACT VIDEOS
                 const videos: any[] = [];
-                document.querySelectorAll('g-card, .V2Ew3b, .z3HNeb, .MjjYud').forEach((el) => {
-                    const a = el.querySelector('a');
-                    if (!a) return;
-                    const href = a.getAttribute('href') || '';
-                    const link = decodeGoogleLink(href);
-                    const isVideo = link.includes('youtube.com') || link.includes('vimeo.com') || el.querySelector('.vP1iyc') || el.querySelector('.J1y2db');
-                    if (isVideo && !seen.has(link)) {
-                        const h3 = el.querySelector('h3, .mCBkyc, .z3HNeb');
-                        const durEl = el.querySelector('.vP1iyc, .J1y2db');
-                        const uploadedEl = el.querySelector('.ap3aec, .PCvXJ');
+                document.querySelectorAll('g-card, .V2Ew3b, .z3HNeb, .MjjYud, [data-curl], .EyBRub, .hIwNKe').forEach((el) => {
+                    let a = el.querySelector('a');
+                    if (!a && el.tagName === 'A') {
+                        a = el as HTMLAnchorElement;
+                    }
+                    const href = a ? (a.getAttribute('href') || '') : '';
+                    const dataCurl = el.getAttribute('data-curl') || '';
+                    const targetLink = decodeGoogleLink(dataCurl || href);
+                    if (!targetLink) return;
+
+                    const isVideo = targetLink.includes('youtube.com') || targetLink.includes('vimeo.com') || targetLink.includes('tiktok.com') || el.querySelector('.vP1iyc') || el.querySelector('.J1y2db') || el.getAttribute('data-pubr') || el.querySelector('.O1KYjb');
+                    if (isVideo && !seen.has(targetLink)) {
+                        seen.add(targetLink);
+                        const h3 = el.querySelector('h3, h1, .mCBkyc, .z3HNeb, .WQWxe');
+                        const durEl = el.querySelector('.vP1iyc, .J1y2db, .ZwRhJd');
+                        const uploadedEl = el.querySelector('.ap3aec, .PCvXJ, .PLq9Je, .DKsccc');
+
+                        let duration = durEl ? cleanText(durEl.textContent) : undefined;
+                        let uploadedAt = uploadedEl ? cleanText(uploadedEl.textContent) : undefined;
+
+                        const ariaEl = el.querySelector('[aria-label]');
+                        if (ariaEl) {
+                            const label = ariaEl.getAttribute('aria-label') || '';
+                            if (label && !duration) {
+                                const durationMatch = label.match(/(\d+:\d+)/);
+                                if (durationMatch) duration = durationMatch[1];
+                            }
+                        }
+
+                        const pubr = el.getAttribute('data-pubr');
+                        const srcEl = el.querySelector('.NUnG9b, .h1UuCc, .ap3aec, .sjVJQd, .KrMNbf');
+                        const source = pubr ? cleanText(pubr) : (srcEl ? cleanText(srcEl.textContent) : (targetLink.includes('youtube.com') ? 'YouTube' : 'Video'));
+
                         if (h3) {
                             videos.push({
                                 title: cleanText(h3.textContent),
-                                source: link.includes('youtube.com') ? 'YouTube' : 'Video',
-                                duration: durEl ? cleanText(durEl.textContent) : undefined,
-                                uploadedAt: uploadedEl ? cleanText(uploadedEl.textContent) : undefined,
-                                link
+                                source,
+                                duration,
+                                uploadedAt,
+                                link: targetLink
                             });
                         }
                     }
                 });
 
-                // 8. EXTRACT IMAGES (both JS-enabled and JS-disabled, inline & traditional)
                 const images: any[] = [];
                 const seenImages = new Set<string>();
 
-                // Method A: CSS class-independent heading-based images block parsing
-                document.querySelectorAll('span, div, h2, h3').forEach((el) => {
-                    const text = el.textContent ? el.textContent.trim() : '';
-                    if (text === 'Images') {
-                        let parent = el.parentElement;
-                        while (parent && parent.querySelectorAll('img').length < 3 && parent.tagName !== 'BODY') {
-                            parent = parent.parentElement;
+                // Method A: Script-based high-res image extraction for images category
+                if (categoryParam === 'images') {
+                    const pageHtml = document.documentElement.innerHTML;
+                    const imgRegex = /\[0\s*,\s*"([^"]+)"\s*,\s*\[\s*"([^"]+)"\s*,\s*(\d+)\s*,\s*(\d+)\s*\]\s*,\s*\[\s*"([^"]+)"\s*,\s*(\d+)\s*,\s*(\d+)\s*\]/g;
+                    let imgMatch;
+                    while ((imgMatch = imgRegex.exec(pageHtml)) !== null) {
+                        const imgUrl = imgMatch[5].replace(/\\u003d/g, '=').replace(/\\u0026/g, '&');
+                        if (seenImages.has(imgUrl)) continue;
+                        seenImages.add(imgUrl);
+
+                        const nextChunk = pageHtml.substring(imgMatch.index, imgMatch.index + 2000);
+                        const metaRegex = /"2003"\s*:\s*\[\s*null\s*,\s*"[^"]*"\s*,\s*"([^"]+)"\s*,\s*"([^"]+)"/;
+                        const metaMatch = metaRegex.exec(nextChunk);
+
+                        let sourceUrl = '';
+                        let title = '';
+                        if (metaMatch) {
+                            sourceUrl = metaMatch[1].replace(/\\u003d/g, '=').replace(/\\u0026/g, '&');
+                            title = metaMatch[2];
                         }
-                        if (parent) {
-                            parent.querySelectorAll('img').forEach((img: any) => {
-                                const alt = img.getAttribute('alt') || '';
-                                const imageUrl = img.getAttribute('src') || '';
-                                if (!imageUrl) return;
 
-                                let p = img.parentElement;
-                                let sourceUrl = '';
-                                while (p && p !== parent && p.tagName !== 'BODY') {
-                                    const anchor = p.querySelector('a');
-                                    if (anchor) {
-                                        const href = anchor.getAttribute('href') || '';
-                                        if (href) {
-                                            sourceUrl = decodeGoogleLink(href);
-                                            break;
-                                        }
-                                    }
-                                    p = p.parentElement;
-                                }
-
-                                if (sourceUrl && !seenImages.has(imageUrl)) {
-                                    seenImages.add(imageUrl);
-                                    images.push({
-                                        alt: cleanText(alt),
-                                        sourceUrl,
-                                        imageUrl
-                                    });
-                                }
-                            });
-                        }
-                    }
-                });
-
-                // Method B: Traditional imgres fallback links (e.g. JS-disabled/fallback page)
-                document.querySelectorAll('a[href*="imgres"]').forEach((el) => {
-                    const img = el.querySelector('img');
-                    const alt = img ? img.getAttribute('alt') || '' : '';
-                    const href = el.getAttribute('href') || '';
-
-                    let sourceUrl = '';
-                    let imageUrl = '';
-                    try {
-                        const urlObj = new URL(href, window.location.href);
-                        imageUrl = urlObj.searchParams.get('imgurl') || '';
-                        sourceUrl = urlObj.searchParams.get('imgrefurl') || '';
-                    } catch (e) {
-                        const imgMatch = href.match(/[?&]imgurl=([^&]+)/);
-                        const refMatch = href.match(/[?&]imgrefurl=([^&]+)/);
-                        if (imgMatch) imageUrl = decodeURIComponent(imgMatch[1]);
-                        if (refMatch) sourceUrl = decodeURIComponent(refMatch[1]);
-                    }
-
-                    sourceUrl = decodeGoogleLink(sourceUrl || href);
-                    if (sourceUrl && imageUrl && !seenImages.has(imageUrl)) {
-                        seenImages.add(imageUrl);
                         images.push({
-                            alt: cleanText(alt),
-                            sourceUrl,
-                            imageUrl: imageUrl || undefined
+                            alt: cleanText(title || 'Image'),
+                            sourceUrl: sourceUrl || imgUrl,
+                            imageUrl: imgUrl
                         });
                     }
-                });
+                }
 
+                // Method B: DOM-based fallback if no script-based images are found or for non-images category
+                if (images.length === 0) {
+                    // Method B.1: CSS class-independent heading-based images block parsing
+                    document.querySelectorAll('span, div, h2, h3').forEach((el) => {
+                        const text = el.textContent ? el.textContent.trim() : '';
+                        if (text === 'Images') {
+                            let parent = el.parentElement;
+                            while (parent && parent.querySelectorAll('img').length < 3 && parent.tagName !== 'BODY') {
+                                parent = parent.parentElement;
+                            }
+                            if (parent) {
+                                parent.querySelectorAll('img').forEach((img: any) => {
+                                    const alt = img.getAttribute('alt') || '';
+                                    const imageUrl = img.getAttribute('src') || '';
+                                    if (!imageUrl) return;
 
-                // 9. EXTRACT SHOPPING RESULTS
+                                    let p = img.parentElement;
+                                    let sourceUrl = '';
+                                    while (p && p !== parent && p.tagName !== 'BODY') {
+                                        const anchor = p.querySelector('a');
+                                        if (anchor) {
+                                            const href = anchor.getAttribute('href') || '';
+                                            if (href) {
+                                                sourceUrl = decodeGoogleLink(href);
+                                                break;
+                                            }
+                                        }
+                                        p = p.parentElement;
+                                    }
+
+                                    if (sourceUrl && !seenImages.has(imageUrl)) {
+                                        seenImages.add(imageUrl);
+                                        images.push({
+                                            alt: cleanText(alt),
+                                            sourceUrl,
+                                            imageUrl
+                                        });
+                                    }
+                                });
+                            }
+                        }
+                    });
+
+                    // Method B.2: Traditional imgres fallback links (e.g. JS-disabled/fallback page)
+                    document.querySelectorAll('a[href*="imgres"]').forEach((el) => {
+                        const img = el.querySelector('img');
+                        const alt = img ? img.getAttribute('alt') || '' : '';
+                        const href = el.getAttribute('href') || '';
+
+                        let sourceUrl = '';
+                        let imageUrl = '';
+                        try {
+                            const urlObj = new URL(href, window.location.href);
+                            imageUrl = urlObj.searchParams.get('imgurl') || '';
+                            sourceUrl = urlObj.searchParams.get('imgrefurl') || '';
+                        } catch (e) {
+                            const imgMatch = href.match(/[?&]imgurl=([^&]+)/);
+                            const refMatch = href.match(/[?&]imgrefurl=([^&]+)/);
+                            if (imgMatch) imageUrl = decodeURIComponent(imgMatch[1]);
+                            if (refMatch) sourceUrl = decodeURIComponent(refMatch[1]);
+                        }
+
+                        sourceUrl = decodeGoogleLink(sourceUrl || href);
+                        if (sourceUrl && imageUrl && !seenImages.has(imageUrl)) {
+                            seenImages.add(imageUrl);
+                            images.push({
+                                alt: cleanText(alt),
+                                sourceUrl,
+                                imageUrl: imageUrl || undefined
+                            });
+                        }
+                    });
+                }
+
                 const shopping: any[] = [];
                 document.querySelectorAll('.sh-dgr__grid-cell, .sh-dlr__list-result, .sh-np__click-target').forEach((el) => {
                     const a = el.querySelector('a');
@@ -453,7 +501,6 @@ async function timedSearchViaPool(
                     }
                 });
 
-                // 10. EXTRACT LOCAL RESULTS
                 const localResults: any[] = [];
                 document.querySelectorAll('.rllt__card, .Vk2fBe').forEach((el) => {
                     const titleEl = el.querySelector('[role="heading"], .dbg0pd');
@@ -472,7 +519,6 @@ async function timedSearchViaPool(
                     }
                 });
 
-                // 11. EXTRACT RELATED SEARCHES
                 const relatedSearches: string[] = [];
                 document.querySelectorAll('a.title, .s75cqc, .card-section a, .E3VR9e').forEach((el) => {
                     const headerText = cleanText(el.textContent);
@@ -492,85 +538,94 @@ async function timedSearchViaPool(
                     }
                 });
 
-                // 12. EXTRACT ORGANIC SEARCH RESULTS
-                document.querySelectorAll('h3').forEach((h3) => {
-                    const headingText = cleanText(h3.textContent);
-                    if (
-                        headingText === 'Search Results' ||
-                        headingText === 'Weather Result' ||
-                        headingText === 'Web results' ||
-                        headingText === 'Featured snippet' ||
-                        headingText.includes('People also ask')
-                    ) {
-                        return;
-                    }
-
-                    const container = h3.closest('.g, .MjjYud, .xpd, .Gx5Zad') || h3.parentElement;
-                    if (!container) return;
-
-                    const a = container.tagName === 'A' ? container : container.querySelector('a');
-                    if (!a) return;
-
-                    const rawLink = a.getAttribute('href') || '';
-                    const link = decodeGoogleLink(rawLink);
-
-                    if (!link || link.includes('google.com') || link.includes('sorry/index') || seen.has(link)) return;
-                    seen.add(link);
-
-                    let snippet = '';
-                    for (const s of ['.VwiC3b', '.lEBKkf', '.lyLwlc', '[data-sncf]', '.IsZvec', '.ilUpNd.H66NU.aSRlid', '.H66NU', '.lQigmf']) {
-                        const sn = container.querySelector(s);
-                        if (sn && sn.textContent && sn.textContent.trim()) {
-                            const txt = cleanText(sn.textContent);
-                            if (txt !== cleanText(h3.textContent) && !txt.includes('www.') && txt.length > 10) {
-                                snippet = txt;
-                                break;
-                            }
+                if (categoryParam === 'all') {
+                    document.querySelectorAll('h3').forEach((h3) => {
+                        const headingText = cleanText(h3.textContent);
+                        if (
+                            headingText === 'Search Results' ||
+                            headingText === 'Weather Result' ||
+                            headingText === 'Web results' ||
+                            headingText === 'Featured snippet' ||
+                            headingText.includes('People also ask')
+                        ) {
+                            return;
                         }
-                    }
 
-                    if (!snippet) {
-                        container.querySelectorAll('div, span, p').forEach((sub) => {
-                            if (!snippet && sub.className && sub.textContent && sub.children.length === 0) {
-                                const txt = cleanText(sub.textContent);
-                                if (txt.length > 30 && !txt.includes('www.') && txt !== cleanText(h3.textContent)) {
+                        const container = h3.closest('.g, .MjjYud, .xpd, .Gx5Zad') || h3.parentElement;
+                        if (!container) return;
+
+                        const a = container.tagName === 'A' ? container : container.querySelector('a');
+                        if (!a) return;
+
+                        const rawLink = a.getAttribute('href') || '';
+                        const link = decodeGoogleLink(rawLink);
+
+                        if (!link || link.includes('google.com') || link.includes('sorry/index') || seen.has(link)) return;
+                        seen.add(link);
+
+                        let snippet = '';
+                        for (const s of ['.VwiC3b', '.lEBKkf', '.lyLwlc', '[data-sncf]', '.IsZvec', '.ilUpNd.H66NU.aSRlid', '.H66NU', '.lQigmf']) {
+                            const sn = container.querySelector(s);
+                            if (sn && sn.textContent && sn.textContent.trim()) {
+                                const txt = cleanText(sn.textContent);
+                                if (txt !== cleanText(h3.textContent) && !txt.includes('www.') && txt.length > 10) {
                                     snippet = txt;
+                                    break;
                                 }
                             }
+                        }
+
+                        if (!snippet) {
+                            container.querySelectorAll('div, span, p').forEach((sub) => {
+                                if (!snippet && sub.className && sub.textContent && sub.children.length === 0) {
+                                    const txt = cleanText(sub.textContent);
+                                    if (txt.length > 30 && !txt.includes('www.') && txt !== cleanText(h3.textContent)) {
+                                        snippet = txt;
+                                    }
+                                }
+                            });
+                        }
+
+                        const dispEl = container.querySelector('.TbwUpd, .byrV5b, .ylgVCe, .BamJPe');
+                        const displayedLink = dispEl ? cleanText(dispEl.textContent) : undefined;
+
+                        const favEl = container.querySelector('img.H1u2de, img.XNo5Ab, .wb41ae img');
+                        const favicon = favEl ? favEl.getAttribute('src') || undefined : undefined;
+
+                        organic.push({
+                            title: cleanText(h3.textContent),
+                            link,
+                            snippet,
+                            displayedLink,
+                            favicon
                         });
-                    }
-
-                    const dispEl = container.querySelector('.TbwUpd, .byrV5b, .ylgVCe, .BamJPe');
-                    const displayedLink = dispEl ? cleanText(dispEl.textContent) : undefined;
-
-                    const favEl = container.querySelector('img.H1u2de, img.XNo5Ab, .wb41ae img');
-                    const favicon = favEl ? favEl.getAttribute('src') || undefined : undefined;
-
-                    organic.push({
-                        title: cleanText(h3.textContent),
-                        link,
-                        snippet,
-                        displayedLink,
-                        favicon
                     });
-                });
+                }
+
+                // Strict Category Tab Filtering / Isolation
+                const cleanOrganic = categoryParam === 'all' ? organic : [];
+                const cleanNews = categoryParam === 'news' ? news : [];
+                const cleanVideos = categoryParam === 'videos' ? videos : [];
+                const cleanImages = categoryParam === 'images' ? images : [];
+                const cleanShopping = categoryParam === 'shopping' ? shopping : [];
+                const cleanLocalResults = categoryParam === 'maps' ? localResults : [];
 
                 return {
                     captcha: false,
-                    organic,
-                    aiResponse,
-                    featuredSnippet,
-                    knowledgePanel,
-                    peopleAlsoAsk: peopleAlsoAsk.length > 0 ? peopleAlsoAsk : undefined,
-                    directAnswer,
-                    news: news.length > 0 ? news : undefined,
-                    videos: videos.length > 0 ? videos : undefined,
-                    images: images.length > 0 ? images : undefined,
-                    shopping: shopping.length > 0 ? shopping : undefined,
-                    relatedSearches: relatedSearches.length > 0 ? relatedSearches : undefined,
-                    localResults: localResults.length > 0 ? localResults : undefined
+                    organic: cleanOrganic,
+                    aiResponse: categoryParam === 'all' ? aiResponse : null,
+                    featuredSnippet: categoryParam === 'all' ? featuredSnippet : null,
+                    knowledgePanel: categoryParam === 'all' ? knowledgePanel : null,
+                    peopleAlsoAsk: categoryParam === 'all' ? peopleAlsoAsk : undefined,
+                    directAnswer: categoryParam === 'all' ? directAnswer : null,
+                    news: cleanNews.length > 0 ? cleanNews : undefined,
+                    videos: cleanVideos.length > 0 ? cleanVideos : undefined,
+                    images: cleanImages.length > 0 ? cleanImages : undefined,
+                    shopping: cleanShopping.length > 0 ? cleanShopping : undefined,
+                    relatedSearches: categoryParam === 'all' ? relatedSearches : undefined,
+                    localResults: cleanLocalResults.length > 0 ? cleanLocalResults : undefined
                 };
-            });
+            }, categoryKey);
             console.log(`⏱️  page.evaluate (Data extraction) took:     ${Math.round(performance.now() - tEval)} ms`);
 
             if (results.captcha) {
@@ -636,7 +691,8 @@ async function timedSearchViaPool(
 
 async function main() {
     const query = process.argv[2] || 'weather in tokyo';
-    const response = await timedSearchViaPool(query, 1, false);
+    const category = process.argv[3] || 'all';
+    const response = await timedSearchViaPool(query, 1, false, category);
     console.log(response)
     process.exit(0);
 }

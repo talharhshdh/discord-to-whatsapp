@@ -15,6 +15,7 @@ import TTSPanel from './components/TTSPanel';
 import PlacesPanel from './components/PlacesPanel';
 import GoogleClonePanel from './components/GoogleClonePanel';
 import WebProxyPanel from './components/WebProxyPanel';
+import PoolPanel from './components/PoolPanel';
 
 
 const NAV: { id: NavSection; label: string; icon: string }[] = [
@@ -22,6 +23,7 @@ const NAV: { id: NavSection; label: string; icon: string }[] = [
   { id: 'web-proxy', label: 'Web Proxy',      icon: '🌍' },
   { id: 'search',    label: 'Browser Search', icon: '🔍' },
   { id: 'places',    label: 'Maps Places',    icon: '🗺️' },
+  { id: 'pool',      label: 'Browser Pool',   icon: '🕸️' },
   { id: 'sessions',  label: 'Dev Sessions',  icon: '🖥️' },
   { id: 'manager',   label: 'Session Manager', icon: '📊' },
   { id: 'android',   label: 'Android',       icon: '📱' },
@@ -372,6 +374,7 @@ export default function App() {
                 {section === 'llm' && <LLMPanel />}
                 {section === 'search' && <SearchPanel />}
                 {section === 'places' && <PlacesPanel />}
+                {section === 'pool' && <PoolPanel />}
                 {section === 'tts' && <TTSPanel />}
                 {section === 'web-proxy' && <WebProxyPanel />}
 

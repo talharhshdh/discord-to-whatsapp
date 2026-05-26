@@ -75,6 +75,20 @@ async function postFormBinary(path: string, form: FormData): Promise<Blob> {
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
+export interface BrowserPoolItem {
+  workerId: string;
+  cdpUrl: string;
+  status: 'active' | 'stale' | 'dead';
+  registeredAt: string;
+  lastHeartbeat: string;
+  secondsSinceHeartbeat: number;
+  isCached: boolean;
+}
+export interface BrowserPoolPayload {
+  total: number;
+  active: number;
+  browsers: BrowserPoolItem[];
+}
 export interface ToolUrl {
   label: string; url: string; username?: string; password?: string; registeredAt: string;
 }
@@ -292,10 +306,15 @@ export const api = {
   exportYtCookies: () =>
     post<{ success: boolean; message: string; cookiesPath?: string }>('/api/browser/export-cookies', {}),
 
-  browserSearch: (text: string, pageNumber: number, engine: 'auto' | 'cdp' | 'selenium' = 'auto', includeAI = false) =>
-    post<BrowserSearchResult>('/api/browser/search', { text, pageNumber, engine, includeAI }),
+  browserSearch: (text: string, pageNumber: number, engine: 'auto' | 'cdp' | 'selenium' = 'auto', includeAI = false, category = 'all') =>
+    post<BrowserSearchResult>('/api/browser/search', { text, pageNumber, engine, includeAI, category }),
   restartBrowsers: () =>
     post<{ ok: boolean; message: string }>('/api/browsers/restart', {}),
+  getBrowserPool: () =>
+    authFetch(`${BASE}/api/browsers/pool`).then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json() as Promise<BrowserPoolPayload>;
+    }),
   placesSearch: (query: string, pageNumber = 1, deepScrape = false) =>
     post<PlacesSearchResult>('/api/browser/places', { query, pageNumber, deepScrape }),
 

@@ -15,7 +15,7 @@
     "/api/browser/search": {
       "post": {
         "summary": "Google Web Search",
-        "description": "Performs a Google web search using either the distributed browser pool, local Chromium CDP connection, or SeleniumBase backup.",
+        "description": "Performs a Google web search using either the distributed browser pool, local Chromium CDP connection, or SeleniumBase backup. Isolates results by category tab.",
         "operationId": "googleSearch",
         "requestBody": {
           "required": true,
@@ -27,7 +27,7 @@
                   "text": {
                     "type": "string",
                     "description": "The search query query string.",
-                    "example": "kalia"
+                    "example": "xxxtentacion"
                   },
                   "pageNumber": {
                     "type": "integer",
@@ -47,6 +47,13 @@
                     "description": "Whether to extract and include Google's AI Overview or featured snippets in the response.",
                     "default": false,
                     "example": false
+                  },
+                  "category": {
+                    "type": "string",
+                    "description": "The category filter tab to isolate and parse specific result sets.",
+                    "enum": ["all", "images", "videos", "news", "shopping"],
+                    "default": "all",
+                    "example": "all"
                   }
                 },
                 "required": ["text"]
@@ -56,7 +63,7 @@
         },
         "responses": {
           "200": {
-            "description": "Search completed successfully.",
+            "description": "Search completed successfully with rich result schema based on category isolation.",
             "content": {
               "application/json": {
                 "schema": {
@@ -64,24 +71,34 @@
                   "properties": {
                     "organic": {
                       "type": "array",
-                      "description": "The list of standard organic Google search results.",
+                      "description": "The list of standard organic Google search results (returned in 'all' category).",
                       "items": {
                         "type": "object",
                         "properties": {
                           "title": {
                             "type": "string",
                             "description": "The title of the search result card.",
-                            "example": "Bathroom, kitchen, fittings, unique design - Kalia"
+                            "example": "XXXTENTACION - Look At Me! (Official Audio) - YouTube"
                           },
                           "link": {
                             "type": "string",
-                            "description": "The absolute URL link of the search result card.",
-                            "example": "https://www.kaliastyle.com/us_en/"
+                            "description": "The absolute URL link of the search result.",
+                            "example": "https://www.youtube.com/watch?v=WmjPPKP8EBw"
                           },
                           "snippet": {
                             "type": "string",
-                            "description": "The summary snippet shown on the Google search page.",
-                            "example": ""
+                            "description": "The summary snippet shown on the search page.",
+                            "example": "Official Audio for \"Look At Me!\" by XXXTENTACION."
+                          },
+                          "displayedLink": {
+                            "type": "string",
+                            "description": "The friendly/breadcrumb display URL shown on Google.",
+                            "example": "youtube.com › watch"
+                          },
+                          "favicon": {
+                            "type": "string",
+                            "description": "URL to the icon associated with the search result source.",
+                            "example": "https://www.google.com/s2/favicons?sz=64&domain=youtube.com"
                           }
                         }
                       }
@@ -89,8 +106,134 @@
                     "aiResponse": {
                       "type": "string",
                       "nullable": true,
-                      "description": "The raw HTML or plain text of the Google AI Overview or featured snippet card.",
+                      "description": "The HTML markup or raw text of Google's AI Overview response.",
                       "example": null
+                    },
+                    "featuredSnippet": {
+                      "type": "object",
+                      "nullable": true,
+                      "description": "Featured highlight block answering the query directly with source citation.",
+                      "properties": {
+                        "title": { "type": "string", "example": "XXXTENTACION Biography" },
+                        "link": { "type": "string", "example": "https://www.biography.com/musicians/xxxtentacion" },
+                        "snippet": { "type": "string", "example": "Jahseh Dwayne Ricardo Onfroy, known professionally as XXXTentacion..." }
+                      }
+                    },
+                    "knowledgePanel": {
+                      "type": "object",
+                      "nullable": true,
+                      "description": "Structured metadata panel describing a person, place, or entity.",
+                      "properties": {
+                        "title": { "type": "string", "example": "XXXTentacion" },
+                        "subtitle": { "type": "string", "example": "American rapper" },
+                        "description": { "type": "string", "example": "Jahseh Dwayne Ricardo Onfroy, known professionally as XXXTentacion, was an American rapper and singer-songwriter." },
+                        "sourceUrl": { "type": "string", "example": "https://en.wikipedia.org/wiki/XXXTentacion" },
+                        "attributes": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "label": { "type": "string", "example": "Born" },
+                              "value": { "type": "string", "example": "January 23, 1998, Plantation, FL" }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "peopleAlsoAsk": {
+                      "type": "array",
+                      "description": "Related questions scraped from the People Also Ask section.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "question": { "type": "string", "example": "What was XXXTentacion's biggest hit?" }
+                        }
+                      }
+                    },
+                    "directAnswer": {
+                      "type": "object",
+                      "nullable": true,
+                      "description": "Direct dynamic responses like calculation answers, currency, or local time.",
+                      "properties": {
+                        "type": { "type": "string", "example": "calculator" },
+                        "answer": { "type": "string", "example": "42" },
+                        "details": { "type": "string", "example": "6 * 7" }
+                      }
+                    },
+                    "news": {
+                      "type": "array",
+                      "description": "Scraped articles returned in 'news' category.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "title": { "type": "string", "example": "How XXXTentacion's Album Changed the Sound of SoundCloud" },
+                          "source": { "type": "string", "example": "Pitchfork" },
+                          "time": { "type": "string", "example": "2 days ago" },
+                          "link": { "type": "string", "example": "https://pitchfork.com/news/1739-xxxtentacion" }
+                        }
+                      }
+                    },
+                    "videos": {
+                      "type": "array",
+                      "description": "Scraped videos returned in 'videos' category.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "title": { "type": "string", "example": "XXXTENTACION - SAD! (Official Music Video)" },
+                          "source": { "type": "string", "example": "YouTube" },
+                          "duration": { "type": "string", "example": "2:46" },
+                          "uploadedAt": { "type": "string", "example": "Mar 2, 2018" },
+                          "link": { "type": "string", "example": "https://www.youtube.com/watch?v=pgN-vvVVxLk" }
+                        }
+                      }
+                    },
+                    "images": {
+                      "type": "array",
+                      "description": "High-resolution target image links scraped in 'images' category.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "alt": { "type": "string", "example": "XXXTentacion posing for portrait" },
+                          "sourceUrl": { "type": "string", "example": "https://www.rollingstone.com/music/music-news/xxxtentacion-murder-trial-1234676456/" },
+                          "imageUrl": { "type": "string", "example": "https://www.rollingstone.com/wp-content/uploads/2023/02/XXXTentacion.jpg" }
+                        }
+                      }
+                    },
+                    "shopping": {
+                      "type": "array",
+                      "description": "E-commerce product items scraped in 'shopping' category.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "title": { "type": "string", "example": "XXXTentacion - ? Vinyl LP" },
+                          "price": { "type": "string", "example": "$29.98" },
+                          "merchant": { "type": "string", "example": "Amazon.com" },
+                          "link": { "type": "string", "example": "https://www.amazon.com/dp/B07DY2M3QZ" }
+                        }
+                      }
+                    },
+                    "relatedSearches": {
+                      "type": "array",
+                      "description": "A list of suggested queries related to the current query.",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": ["xxxtentacion albums", "xxxtentacion age", "xxxtentacion real name"]
+                    },
+                    "localResults": {
+                      "type": "array",
+                      "description": "Google Map/Local business listing cards returned in 'maps' category.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "title": { "type": "string", "example": "XXXTentacion Memorial Site" },
+                          "rating": { "type": "string", "example": "4.8" },
+                          "reviewsCount": { "type": "string", "example": "(1,280)" },
+                          "address": { "type": "string", "example": "3901 N Federal Hwy, Boca Raton, FL" },
+                          "phone": { "type": "string", "example": "(561) 555-0199" },
+                          "link": { "type": "string", "example": "https://maps.google.com/?cid=12345" }
+                        }
+                      }
                     }
                   }
                 }
