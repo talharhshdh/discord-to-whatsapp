@@ -27,7 +27,7 @@ jobs:
 
           echo "📊 Currently running Browser Workers workflows: $RUNNING_COUNT"
 
-          if [ "$RUNNING_COUNT" -gt 2 ]; then
+          if [ "$RUNNING_COUNT" -gt 3 ]; then
             echo "⚠️ Too many concurrent browser worker runs ($RUNNING_COUNT). Exiting."
             exit 1
           fi

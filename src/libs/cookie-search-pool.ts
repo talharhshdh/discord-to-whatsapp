@@ -64,7 +64,12 @@ class CookieSearchPool {
       const acquired = await acquirePage(browser);
       conn = acquired.conn;
       page = acquired.page;
-      await page.goto('https://www.google.com', { waitUntil: 'networkidle2', timeout: 30000 });
+      await page.goto('https://www.google.com', { waitUntil: 'domcontentloaded', timeout: 30000 });
+      const html = await page.content();
+      if (this.isCaptcha(html)) {
+        browserPool.recordCaptcha(browser.workerId);
+        throw new Error('CAPTCHA detected on google.com home page');
+      }
       const cookies = await page.cookies();
       const cookieStr = cookies.map((c: any) => `${c.name}=${c.value}`).join('; ');
       this.cookiesMap.set(browser.workerId, cookieStr);
@@ -100,6 +105,25 @@ class CookieSearchPool {
     }
   }
 
+  private clearAndRefreshCookiesInBackground(browser: any): void {
+    const workerId = browser.workerId;
+    if (this.cookieFetchPromises.has(workerId)) {
+      return;
+    }
+    const promise = (async () => {
+      try {
+        await this.clearCookiesForWorker(browser);
+        return await this.fetchCookiesForWorker(browser);
+      } catch (err: any) {
+        console.error(`[CookieSearchPool Background] Failed to refresh cookies for ${workerId}:`, err.message);
+        throw err;
+      }
+    })().finally(() => {
+      this.cookieFetchPromises.delete(workerId);
+    });
+    this.cookieFetchPromises.set(workerId, promise);
+  }
+
   private async performFetch(url: string, cookie: string): Promise<string> {
     const resp = await fetch(url, {
       headers: {
@@ -118,7 +142,7 @@ class CookieSearchPool {
         "cookie": cookie,
         "Referer": "https://www.google.com/"
       },
-      signal: AbortSignal.timeout(10000)
+      signal: AbortSignal.timeout(4000)
     });
 
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -147,7 +171,11 @@ class CookieSearchPool {
       targetUrl += '&udm=3';
     }
 
-    for (const browser of activeBrowsers) {
+    const maxAttempts = activeBrowsers.length;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const browser = browserPool.getNext();
+      if (!browser) break;
+
       try {
         let cookie = this.cookiesMap.get(browser.workerId);
         if (!cookie) {
@@ -157,21 +185,18 @@ class CookieSearchPool {
         let html = '';
         try {
           html = await this.performFetch(targetUrl, cookie);
-        } catch (err) {
-          cookie = await this.getCookiesForWorker(browser);
-          html = await this.performFetch(targetUrl, cookie);
+        } catch (err: any) {
+          console.warn(`[CookieSearchPool] Fetch failed on browser ${browser.workerId}:`, err.message);
+          this.cookiesMap.delete(browser.workerId);
+          continue;
         }
 
         if (this.isCaptcha(html)) {
-          await this.clearCookiesForWorker(browser);
-          cookie = await this.getCookiesForWorker(browser);
-          html = await this.performFetch(targetUrl, cookie);
-
-          if (this.isCaptcha(html)) {
-            console.warn(`[CookieSearchPool] CAPTCHA persists on browser ${browser.workerId}. Trying next browser...`);
-            browserPool.recordCaptcha(browser.workerId);
-            continue;
-          }
+          console.warn(`[CookieSearchPool] CAPTCHA detected on browser ${browser.workerId}. Trying next browser...`);
+          this.cookiesMap.delete(browser.workerId);
+          this.clearAndRefreshCookiesInBackground(browser);
+          browserPool.recordCaptcha(browser.workerId);
+          continue;
         }
 
         const $ = cheerio.load(html);
