@@ -24,6 +24,7 @@ async function timedSearchViaPool(
     includeAI: boolean = false,
     category: string = 'all',
 ) {
+    console.log("starting server")
     const normCategory = category.toLowerCase().trim();
     let categoryKey = 'all';
     if (normCategory === 'videos' || normCategory === 'video') {
@@ -653,9 +654,7 @@ async function timedSearchViaPool(
             if (results.relatedSearches) console.log(`    Found ${results.relatedSearches.length} related searches.`);
             if (results.localResults) console.log(`    Found ${results.localResults.length} local results.`);
 
-            const html = await page.content();
-            fs.writeFileSync('debug-google.html', html);
-            console.log(`💾  Dumped HTML to debug-google.html.`);
+
 
             return {
                 organic: results.organic,
