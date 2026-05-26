@@ -9,7 +9,7 @@ import {
 } from '../libs/page-pool';
 import type { WorkerConnection } from '../libs/page-pool';
 
-const WORKER_URL = 'https://auto-podcasts-collective-summit.trycloudflare.com';
+const WORKER_URL = 'https://execute-teams-ideal-conceptual.trycloudflare.com';
 const WORKER_ID = 'browser-worker-auto-podcasts';
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36';
 

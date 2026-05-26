@@ -32,6 +32,10 @@ export interface RemoteBrowser {
   registeredAt: number;    // Date.now() ms
   lastHeartbeat: number;   // Date.now() ms — updated on every heartbeat
   status: 'active' | 'stale' | 'dead';
+  runId?: string;
+  captchaTimes: number[];
+  tempBlockedUntil?: number;
+  blockCount: number;
 }
 
 export type WebhookEvent = 'register' | 'heartbeat' | 'deregister';
@@ -40,6 +44,7 @@ export interface WebhookPayload {
   event: WebhookEvent;
   workerId: string;
   cdpUrl: string;
+  runId?: string;
   timestamp: string;       // ISO-8601
 }
 
@@ -71,7 +76,7 @@ class BrowserPool {
   // ── Lifecycle ──────────────────────────────────────────────────────────
 
   /** Register a new remote browser (or update existing — idempotent upsert). */
-  register(workerId: string, cdpUrl: string): void {
+  register(workerId: string, cdpUrl: string, runId?: string): void {
     const now = Date.now();
     const existing = this.browsers.get(workerId);
     let browserEntry: RemoteBrowser;
@@ -79,6 +84,7 @@ class BrowserPool {
       existing.cdpUrl = cdpUrl;
       existing.lastHeartbeat = now;
       existing.status = 'active';
+      if (runId) existing.runId = runId;
       browserEntry = existing;
     } else {
       browserEntry = {
@@ -87,6 +93,9 @@ class BrowserPool {
         registeredAt: now,
         lastHeartbeat: now,
         status: 'active',
+        runId,
+        captchaTimes: [],
+        blockCount: 0,
       };
       this.browsers.set(workerId, browserEntry);
     }
@@ -96,11 +105,12 @@ class BrowserPool {
   }
 
   /** Update heartbeat timestamp for a known worker. Returns false if unknown. */
-  heartbeat(workerId: string): boolean {
+  heartbeat(workerId: string, runId?: string): boolean {
     const entry = this.browsers.get(workerId);
     if (!entry) return false;
     entry.lastHeartbeat = Date.now();
     entry.status = 'active';
+    if (runId) entry.runId = runId;
     return true;
   }
 
@@ -121,7 +131,11 @@ class BrowserPool {
 
   /** Return only active browsers. */
   getActive(): RemoteBrowser[] {
-    return Array.from(this.browsers.values()).filter((b) => b.status === 'active');
+    const now = Date.now();
+    return Array.from(this.browsers.values()).filter((b) => 
+      b.status === 'active' && 
+      (!b.tempBlockedUntil || b.tempBlockedUntil <= now)
+    );
   }
 
   /** Round-robin pick from active browsers. Returns null if none available. */
@@ -171,6 +185,71 @@ class BrowserPool {
     }
   }
 
+  /** Record a CAPTCHA and block/evict the worker if threshold reached. */
+  recordCaptcha(workerId: string): void {
+    const entry = this.browsers.get(workerId);
+    if (!entry) return;
+
+    const now = Date.now();
+    entry.captchaTimes.push(now);
+    const windowMs = 5 * 60 * 1000; // 5 minute window
+    entry.captchaTimes = entry.captchaTimes.filter((t) => now - t < windowMs);
+
+    console.warn(`[BrowserPool] CAPTCHA recorded for worker ${workerId}. Count in last 5m: ${entry.captchaTimes.length}`);
+
+    if (entry.captchaTimes.length >= 10) {
+      entry.blockCount += 1;
+      const cooldownMs = 5 * 60 * 1000; // 5 minute cooldown
+      entry.tempBlockedUntil = now + cooldownMs;
+      entry.captchaTimes = []; // Clear for next cycle
+      console.error(`[BrowserPool] Worker ${workerId} temporarily blocked for 5 minutes (temp-block count: ${entry.blockCount}) due to excessive CAPTCHAs.`);
+
+      if (entry.blockCount >= 2) {
+        console.error(`[BrowserPool] Worker ${workerId} has reached max temp-blocks. Permanently removing.`);
+        this.deregister(workerId);
+      }
+    }
+  }
+
+  /** Cancel the GitHub Actions workflow run for a worker and deregister all its browsers. */
+  async stopWorker(runId: string): Promise<boolean> {
+    const pat = process.env.GITHUB_PAT || process.env.PAT_TOKEN;
+    const repo = process.env.GITHUB_REPO || 'talharhshdh/discord-to-whatsapp';
+
+    if (!pat || !runId) {
+      console.warn(`[BrowserPool] Cannot stop worker run ${runId} (missing token or runId).`);
+      return false;
+    }
+
+    try {
+      console.log(`[BrowserPool] Cancelling GitHub Action run: ${runId}`);
+      const resp = await fetch(`https://api.github.com/repos/${repo}/actions/runs/${runId}/cancel`, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/vnd.github+json',
+          Authorization: `Bearer ${pat}`,
+          'X-GitHub-Api-Version': '2022-11-28',
+        }
+      });
+      if (resp.ok) {
+        console.log(`[BrowserPool] GitHub Action run ${runId} cancelled successfully.`);
+      } else {
+        console.warn(`[BrowserPool] GitHub Action run cancel returned status: ${resp.status}`);
+      }
+    } catch (e) {
+      console.error(`[BrowserPool] Failed to cancel GitHub Actions run ${runId}:`, e);
+    }
+
+    // Now deregister all browsers with this runId
+    for (const [id, entry] of this.browsers) {
+      if (entry.runId === runId) {
+        console.log(`[BrowserPool] Deregistering worker ${id} associated with cancelled run ${runId}`);
+        this.deregister(id);
+      }
+    }
+    return true;
+  }
+
   /** Trigger a restart of all browser workers via GitHub Actions. */
   async restartWorkers(): Promise<void> {
     const now = Date.now();
@@ -196,6 +275,7 @@ class BrowserPool {
         },
         body: JSON.stringify({ event_type: 'spawn-browsers' }),
       });
+      console.log(`[BrowserPool] Spawning browser workers dispatched successfully.`);
     } catch (e) {
       // Error suppressed
     }
@@ -214,6 +294,14 @@ class BrowserPool {
       } else if (elapsed > STALE_TIMEOUT_MS && entry.status === 'active') {
         entry.status = 'stale';
       }
+    }
+
+    // Auto-scaling: If active browsers drop below 3, and total browsers are below 15 (max limit of jobs for workers), trigger new spawn.
+    const activeCount = this.getActive().length;
+    const MAX_TOTAL_BROWSERS = 15;
+    if (activeCount < 3 && this.browsers.size < MAX_TOTAL_BROWSERS) {
+      console.warn(`[BrowserPool] Active browsers dropped below 3 (active: ${activeCount}, total: ${this.browsers.size}). Triggering new worker spawn...`);
+      this.restartWorkers();
     }
   }
 }
@@ -969,6 +1057,7 @@ export async function searchViaPool(
       browserPool.recordFailure();
 
       if (msg.includes('CAPTCHA_DETECTED')) {
+        browserPool.recordCaptcha(browser.workerId);
         if (page) {
           try {
             const client = await page.target().createCDPSession();

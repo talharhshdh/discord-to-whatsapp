@@ -339,7 +339,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   const usernameEnv = process.env.DASHBOARD_USERNAME;
   const passwordEnv = process.env.DASHBOARD_PASSWORD;
 
-  if (url.startsWith('/api/') && url !== '/api/auth/login' && url !== '/api/browser/search' && url !== '/api/browsers/webhook') {
+  if (url.startsWith('/api/') && url !== '/api/auth/login' && url !== '/api/browser/search' && url !== '/api/browser/cookie-search' && url !== '/api/browsers/webhook') {
     if (usernameEnv && passwordEnv) {
       const expectedToken = Buffer.from(`${usernameEnv}:${passwordEnv}`).toString('base64');
       let providedToken: string | null = null;
@@ -1128,7 +1128,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   if (method === 'POST' && url === '/api/browsers/webhook') {
     try {
       const body = await parseJsonBody(req) as unknown as WebhookPayload;
-      const { event, workerId, cdpUrl } = body;
+      const { event, workerId, cdpUrl, runId } = body;
 
       if (!event || !workerId) {
         return err(res, 'event and workerId are required', 400);
@@ -1137,12 +1137,12 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       switch (event) {
         case 'register':
           if (!cdpUrl) return err(res, 'cdpUrl is required for register', 400);
-          browserPool.register(workerId, cdpUrl);
+          browserPool.register(workerId, cdpUrl, runId);
           json(res, { ok: true, message: 'Registered', poolSize: browserPool.size });
           break;
 
         case 'heartbeat': {
-          const known = browserPool.heartbeat(workerId);
+          const known = browserPool.heartbeat(workerId, runId);
           if (!known) {
             // Worker not in pool — tell it to re-register
             return json(res, { ok: false, message: 'Unknown worker — please re-register' }, 404);
@@ -1159,6 +1159,18 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         default:
           return err(res, `Unknown event: ${event}`, 400);
       }
+    } catch (e) { err(res, (e as Error).message); }
+    return;
+  }
+
+  // ── POST /api/browsers/stop-worker ───────────────────────────────────────
+  if (method === 'POST' && url === '/api/browsers/stop-worker') {
+    try {
+      const body = await parseJsonBody(req);
+      const runId = body['runId'] as string;
+      if (!runId) return err(res, 'runId is required', 400);
+      const success = await browserPool.stopWorker(runId);
+      json(res, { success, message: `Stop signal sent for worker run ${runId}` });
     } catch (e) { err(res, (e as Error).message); }
     return;
   }

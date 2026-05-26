@@ -41,7 +41,7 @@ cleanup() {
       HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
         -X POST "$WEBHOOK_URL" \
         -H "Content-Type: application/json" \
-        -d "{\"event\":\"deregister\",\"workerId\":\"${WORKER_ID}\",\"cdpUrl\":\"${TUNNEL_URL}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
+        -d "{\"event\":\"deregister\",\"workerId\":\"${WORKER_ID}\",\"cdpUrl\":\"${TUNNEL_URL}\",\"runId\":\"${GITHUB_RUN_ID:-}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
         2>/dev/null || echo "000")
       if [ "$HTTP_CODE" = "200" ]; then
         break
@@ -137,7 +137,7 @@ for attempt in $(seq 1 20); do
   HTTP_CODE=$(curl -s -o /tmp/register-resp.txt -w "%{http_code}" --max-time 15 \
     -X POST "$WEBHOOK_URL" \
     -H "Content-Type: application/json" \
-    -d "{\"event\":\"register\",\"workerId\":\"${WORKER_ID}\",\"cdpUrl\":\"${TUNNEL_URL}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
+    -d "{\"event\":\"register\",\"workerId\":\"${WORKER_ID}\",\"cdpUrl\":\"${TUNNEL_URL}\",\"runId\":\"${GITHUB_RUN_ID:-}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
     2>/dev/null || echo "000")
 
   if [ "$HTTP_CODE" = "200" ]; then
@@ -186,7 +186,7 @@ while true; do
   HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 \
     -X POST "$WEBHOOK_URL" \
     -H "Content-Type: application/json" \
-    -d "{\"event\":\"heartbeat\",\"workerId\":\"${WORKER_ID}\",\"cdpUrl\":\"${TUNNEL_URL}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
+    -d "{\"event\":\"heartbeat\",\"workerId\":\"${WORKER_ID}\",\"cdpUrl\":\"${TUNNEL_URL}\",\"runId\":\"${GITHUB_RUN_ID:-}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
     2>/dev/null || echo "000")
 
   if [ "$HTTP_CODE" = "200" ]; then
@@ -196,7 +196,7 @@ while true; do
     curl -s -o /dev/null --max-time 15 \
       -X POST "$WEBHOOK_URL" \
       -H "Content-Type: application/json" \
-      -d "{\"event\":\"register\",\"workerId\":\"${WORKER_ID}\",\"cdpUrl\":\"${TUNNEL_URL}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
+      -d "{\"event\":\"register\",\"workerId\":\"${WORKER_ID}\",\"cdpUrl\":\"${TUNNEL_URL}\",\"runId\":\"${GITHUB_RUN_ID:-}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
       2>/dev/null || true
     CONSECUTIVE_FAILURES=0
   else

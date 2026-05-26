@@ -13,6 +13,7 @@ auth_info/*
 # Logs
 *.log
 src/libs/test-google-scripts.js
+src/libs/test-cookie-search.js
 npm-debug.log*
 
 # Docker

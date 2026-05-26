@@ -57,6 +57,7 @@ jobs:
         run: |
           source .env
           export DASHBOARD_DOMAIN="${DASHBOARD_DOMAIN}"
+          export GITHUB_RUN_ID="${{ github.run_id }}"
           export WORKER_ID="browser-worker-${{ matrix.worker }}-$(hostname | cut -c1-6)-$(head -c4 /dev/urandom | xxd -p)"
           export MAX_RUNTIME=18000
           export HEARTBEAT_INTERVAL=60

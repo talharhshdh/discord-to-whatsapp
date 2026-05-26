@@ -7,6 +7,45 @@ const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 
 class CookieSearchPool {
   private cookiesMap = new Map<string, string>(); // workerId -> cookie string
+  private cookieFetchPromises = new Map<string, Promise<string>>();
+
+  constructor() {
+    this.startPreWarmingLoop();
+  }
+
+  private startPreWarmingLoop(): void {
+    const interval = setInterval(async () => {
+      try {
+        const activeBrowsers = browserPool.getActive();
+        for (const browser of activeBrowsers) {
+          const existingCookie = this.cookiesMap.get(browser.workerId);
+          if (!existingCookie) {
+            console.log(`[CookieSearchPool Background] Pre-warming cookies for worker ${browser.workerId}...`);
+            await this.getCookiesForWorker(browser).catch((e) => {
+              console.error(`[CookieSearchPool Background] Failed to pre-warm cookies for ${browser.workerId}:`, e.message);
+            });
+          }
+        }
+      } catch (err) {
+        // ignore
+      }
+    }, 2 * 60 * 1000);
+
+    if (interval && typeof interval === 'object' && 'unref' in interval) {
+      (interval as NodeJS.Timeout).unref();
+    }
+  }
+
+  private async getCookiesForWorker(browser: any): Promise<string> {
+    let promise = this.cookieFetchPromises.get(browser.workerId);
+    if (!promise) {
+      promise = this.fetchCookiesForWorker(browser).finally(() => {
+        this.cookieFetchPromises.delete(browser.workerId);
+      });
+      this.cookieFetchPromises.set(browser.workerId, promise);
+    }
+    return promise;
+  }
 
   private isCaptcha(html: string): boolean {
     return (
@@ -112,24 +151,25 @@ class CookieSearchPool {
       try {
         let cookie = this.cookiesMap.get(browser.workerId);
         if (!cookie) {
-          cookie = await this.fetchCookiesForWorker(browser);
+          cookie = await this.getCookiesForWorker(browser);
         }
 
         let html = '';
         try {
           html = await this.performFetch(targetUrl, cookie);
         } catch (err) {
-          cookie = await this.fetchCookiesForWorker(browser);
+          cookie = await this.getCookiesForWorker(browser);
           html = await this.performFetch(targetUrl, cookie);
         }
 
         if (this.isCaptcha(html)) {
           await this.clearCookiesForWorker(browser);
-          cookie = await this.fetchCookiesForWorker(browser);
+          cookie = await this.getCookiesForWorker(browser);
           html = await this.performFetch(targetUrl, cookie);
 
           if (this.isCaptcha(html)) {
             console.warn(`[CookieSearchPool] CAPTCHA persists on browser ${browser.workerId}. Trying next browser...`);
+            browserPool.recordCaptcha(browser.workerId);
             continue;
           }
         }
