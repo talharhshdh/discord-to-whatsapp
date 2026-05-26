@@ -855,7 +855,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
             }
             const token = params.get('token');
             res.writeHead(302, {
-              'Location': `/api/web-proxy/${encoded}${token ? `?token=${encodeURIComponent(token)}` : ''}`
+              'Location': `/api/web-proxy/${encoded}/${token ? `?token=${encodeURIComponent(token)}` : ''}`
             });
             res.end();
             return;
