@@ -52,14 +52,14 @@ export interface WebhookPayload {
 // Constants
 // ---------------------------------------------------------------------------
 
-/** If no heartbeat for 2 min → mark stale (skip for new search requests). */
-const STALE_TIMEOUT_MS = 2 * 60 * 1000;
+/** If no heartbeat for 75 s → mark stale (skip for new search requests). */
+const STALE_TIMEOUT_MS = 75 * 1000;
 
-/** If no heartbeat for 5 min → remove entirely. */
-const DEAD_TIMEOUT_MS = 5 * 60 * 1000;
+/** If no heartbeat for 2 min → remove entirely. */
+const DEAD_TIMEOUT_MS = 120 * 1000;
 
 /** Background cleanup interval. */
-const CLEANUP_INTERVAL_MS = 30 * 1000;
+const CLEANUP_INTERVAL_MS = 15 * 1000;
 
 // ---------------------------------------------------------------------------
 // BrowserPool
@@ -72,11 +72,12 @@ class BrowserPool {
   private failureTimestamps: number[] = [];
   private lastRestartTime = 0;
   private readonly RESTART_COOLDOWN_MS = 2 * 60 * 1000;
+  public onRegister?: (browser: RemoteBrowser) => void;
 
   // ── Lifecycle ──────────────────────────────────────────────────────────
 
   /** Register a new remote browser (or update existing — idempotent upsert). */
-  register(workerId: string, cdpUrl: string, runId?: string): void {
+  register(workerId: string, cdpUrl: string, runId?: string, skipWarmup = false): void {
     const now = Date.now();
     const existing = this.browsers.get(workerId);
     let browserEntry: RemoteBrowser;
@@ -101,7 +102,13 @@ class BrowserPool {
     }
 
     // Eagerly connect to the browser and open an idle page for caching
-    warmupWorker(browserEntry);
+    if (!skipWarmup) {
+      warmupWorker(browserEntry);
+    }
+
+    if (this.onRegister) {
+      this.onRegister(browserEntry);
+    }
   }
 
   /** Update heartbeat timestamp for a known worker. Returns false if unknown. */
@@ -126,14 +133,39 @@ class BrowserPool {
 
   /** Return all browsers (any status). */
   getAll(): RemoteBrowser[] {
+    const now = Date.now();
+    for (const id of Array.from(this.browsers.keys())) {
+      const entry = this.browsers.get(id);
+      if (entry) {
+        const elapsed = now - entry.lastHeartbeat;
+        if (elapsed > DEAD_TIMEOUT_MS) {
+          this.browsers.delete(id);
+          invalidateWorkerConnection(id);
+        } else if (elapsed > STALE_TIMEOUT_MS) {
+          entry.status = 'stale';
+        }
+      }
+    }
     return Array.from(this.browsers.values());
   }
 
   /** Return only active browsers. */
   getActive(): RemoteBrowser[] {
     const now = Date.now();
-    return Array.from(this.browsers.values()).filter((b) => 
-      b.status === 'active' && 
+    for (const id of Array.from(this.browsers.keys())) {
+      const entry = this.browsers.get(id);
+      if (entry) {
+        const elapsed = now - entry.lastHeartbeat;
+        if (elapsed > DEAD_TIMEOUT_MS) {
+          this.browsers.delete(id);
+          invalidateWorkerConnection(id);
+        } else if (elapsed > STALE_TIMEOUT_MS) {
+          entry.status = 'stale';
+        }
+      }
+    }
+    return Array.from(this.browsers.values()).filter((b) =>
+      b.status === 'active' &&
       (!b.tempBlockedUntil || b.tempBlockedUntil <= now)
     );
   }
@@ -280,7 +312,6 @@ class BrowserPool {
       // Error suppressed
     }
   }
-
   // ── Internal cleanup pass ──────────────────────────────────────────────
 
   private cleanup(): void {
@@ -375,12 +406,14 @@ export async function searchViaPool(
       continue;
     }
 
+
+
     let conn: WorkerConnection | null = null;
     let page: any = null;
     let pageErrored = false;
 
     try {
-      const acquired = await acquirePage(browser);
+      const acquired = await acquirePage(browser, true);
       conn = acquired.conn;
       page = acquired.page;
 
@@ -1035,6 +1068,14 @@ export async function searchViaPool(
           .map(line => line.trim())
           .filter(line => line.length > 0)
           .join('\n');
+      }
+
+      // Warm up the other active browsers in the background since this query succeeded
+      const otherBrowsers = activeBrowsers.filter(b => b.workerId !== browser.workerId);
+      for (const b of otherBrowsers) {
+        if (!isWorkerCached(b.workerId)) {
+          warmupWorker(b);
+        }
       }
 
       return {

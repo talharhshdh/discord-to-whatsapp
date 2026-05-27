@@ -1,5 +1,5 @@
-import { browserPool } from './browser-pool';
-import { acquirePage, releasePage } from './page-pool';
+import { browserPool, searchViaPool } from './browser-pool';
+import { acquirePage, releasePage, isWorkerCached, warmupWorker } from './page-pool';
 import type { WorkerConnection } from './page-pool';
 import * as cheerio from 'cheerio';
 
@@ -11,6 +11,12 @@ class CookieSearchPool {
 
   constructor() {
     this.startPreWarmingLoop();
+    browserPool.onRegister = (browser) => {
+      console.log(`[CookieSearchPool] Eagerly pre-warming cookies for newly registered worker ${browser.workerId}...`);
+      this.getCookiesForWorker(browser).catch((e) => {
+        console.error(`[CookieSearchPool] Eagerly pre-warming cookies failed for ${browser.workerId}:`, e.message);
+      });
+    };
   }
 
   private startPreWarmingLoop(): void {
@@ -58,15 +64,28 @@ class CookieSearchPool {
 
 
 
-  private async fetchCookiesForWorker(browser: any): Promise<string> {
+  private async fetchCookiesForWorker(browser: any, failFast = false): Promise<string> {
     let conn: WorkerConnection | null = null;
     let page: any = null;
     let pageErrored = false;
     try {
-      const acquired = await acquirePage(browser);
+      const acquired = await acquirePage(browser, failFast);
       conn = acquired.conn;
       page = acquired.page;
       await page.goto('https://www.google.com', { waitUntil: 'domcontentloaded', timeout: 30000 });
+
+      // Check and handle cookie consent wall if present
+      try {
+        const consentBtn = await page.$('#L2AGLb, #introAgreeButton, button[aria-label="Accept all"], button[aria-label="I agree"]');
+        if (consentBtn) {
+          console.log(`[CookieSearchPool] Consent wall detected for ${browser.workerId}. Clicking to accept cookies...`);
+          await consentBtn.click();
+          await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 10000 }).catch(() => {});
+        }
+      } catch (consentErr: any) {
+        console.warn(`[CookieSearchPool] Warning: Failed to handle cookie consent button:`, consentErr.message);
+      }
+
       const html = await page.content();
       if (this.isCaptcha(html)) {
         browserPool.recordCaptcha(browser.workerId);
@@ -86,12 +105,12 @@ class CookieSearchPool {
     }
   }
 
-  private async clearCookiesForWorker(browser: any): Promise<void> {
+  private async clearCookiesForWorker(browser: any, failFast = false): Promise<void> {
     let conn: WorkerConnection | null = null;
     let page: any = null;
     let pageErrored = false;
     try {
-      const acquired = await acquirePage(browser);
+      const acquired = await acquirePage(browser, failFast);
       conn = acquired.conn;
       page = acquired.page;
       const client = await page.target().createCDPSession();
@@ -156,9 +175,10 @@ class CookieSearchPool {
     text: string,
     pageNumber: number = 1,
     category: string = 'all'
-  ): Promise<{ organic: Array<{ title: string; link: string; snippet: string }>, aiResponse: string | null, captcha?: boolean, error?: string }> {
+  ): Promise<{ organic: Array<{ title: string; link: string; snippet: string }>, aiResponse: string | null, captcha?: boolean, error?: string, html?: string }> {
     const activeBrowsers = browserPool.getActive();
     if (activeBrowsers.length === 0) {
+      browserPool.restartWorkers();
       throw new Error('No active browsers available in pool');
     }
 
@@ -175,9 +195,18 @@ class CookieSearchPool {
     }
 
     const maxAttempts = activeBrowsers.length;
+    const hasAnyCached = activeBrowsers.some(b => isWorkerCached(b.workerId));
+    let lastHtml = '';
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const browser = browserPool.getNext();
       if (!browser) break;
+
+      // If this browser isn't cached, but there are other cached browsers available, skip this one
+      // and run a background warmup so it's ready for future requests.
+      if (hasAnyCached && !isWorkerCached(browser.workerId)) {
+        warmupWorker(browser);
+        continue;
+      }
 
       try {
         let cookie = this.cookiesMap.get(browser.workerId);
@@ -191,23 +220,45 @@ class CookieSearchPool {
           const fetchResult = await this.performFetch(targetUrl, cookie);
           html = fetchResult.text;
           finalUrl = fetchResult.finalUrl;
+          lastHtml = html;
         } catch (err: any) {
           console.warn(`[CookieSearchPool] Fetch failed on browser ${browser.workerId}:`, err.message);
           this.cookiesMap.delete(browser.workerId);
           continue;
         }
 
-        const isRedirectedToBlock = finalUrl && (
+        let isRedirectedToBlock = finalUrl && (
           finalUrl.includes('consent.google.com') ||
           finalUrl.includes('/sorry/')
         );
 
         if (isRedirectedToBlock || this.isCaptcha(html)) {
-          console.warn(`[CookieSearchPool] CAPTCHA/Consent redirect detected on browser ${browser.workerId} (finalUrl: ${finalUrl}). Trying next browser...`);
+          console.warn(`[CookieSearchPool] CAPTCHA/Consent redirect detected on browser ${browser.workerId} (finalUrl: ${finalUrl}). Retrying with fresh cookies on same browser...`);
           this.cookiesMap.delete(browser.workerId);
-          this.clearAndRefreshCookiesInBackground(browser);
-          browserPool.recordCaptcha(browser.workerId);
-          continue;
+          
+          try {
+            await this.clearCookiesForWorker(browser, true);
+            cookie = await this.fetchCookiesForWorker(browser, true);
+            
+            const fetchResult = await this.performFetch(targetUrl, cookie);
+            html = fetchResult.text;
+            finalUrl = fetchResult.finalUrl;
+            lastHtml = html;
+
+            isRedirectedToBlock = finalUrl && (
+              finalUrl.includes('consent.google.com') ||
+              finalUrl.includes('/sorry/')
+            );
+
+            if (isRedirectedToBlock || this.isCaptcha(html)) {
+              console.warn(`[CookieSearchPool] CAPTCHA still detected on browser ${browser.workerId} after retry. Trying next browser...`);
+              browserPool.recordCaptcha(browser.workerId);
+              continue;
+            }
+          } catch (retryErr: any) {
+            console.error(`[CookieSearchPool] Retry cookie refresh failed for ${browser.workerId}:`, retryErr.message);
+            continue;
+          }
         }
 
         const $ = cheerio.load(html);
@@ -273,18 +324,28 @@ class CookieSearchPool {
           continue;
         }
 
-        return { organic, aiResponse: null };
+        // Warm up the other active browsers in the background since this query succeeded
+        const otherBrowsers = activeBrowsers.filter(b => b.workerId !== browser.workerId);
+        for (const b of otherBrowsers) {
+          if (!isWorkerCached(b.workerId)) {
+            warmupWorker(b);
+          }
+        }
+
+        return { organic, aiResponse: null, html };
       } catch (e) {
         console.error(`[CookieSearchPool] Search failed on browser ${browser.workerId}:`, e);
       }
     }
 
     console.error('[CookieSearchPool] All browsers in pool returned CAPTCHA or failed.');
+    browserPool.restartWorkers();
     return {
       organic: [],
       aiResponse: null,
       captcha: true,
-      error: 'Google Search CAPTCHA detected on all active browsers and could not be bypassed.'
+      error: 'Google Search CAPTCHA detected on all active browsers and could not be bypassed.',
+      html: lastHtml
     };
   }
 }

@@ -49,6 +49,7 @@ export const MAX_WORKER_CDP_FAILURES = 3;
  */
 export async function acquirePage(
   browser: RemoteBrowser,
+  failFast = false,
 ): Promise<{ conn: WorkerConnection; page: any }> {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const puppeteer = require('puppeteer-core');
@@ -66,17 +67,21 @@ export async function acquirePage(
       connPromise = (async () => {
         let versionResp: any = null;
         let lastErr: any = null;
-        for (let attempt = 1; attempt <= 5; attempt++) {
+        const maxAttempts = failFast ? 1 : 5;
+        const timeoutMs = failFast ? 3000 : 10_000;
+        const retryDelayMs = 1500;
+
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
           try {
             versionResp = await fetch(`${browser.cdpUrl}/json/version`, {
-              signal: AbortSignal.timeout(10_000),
+              signal: AbortSignal.timeout(timeoutMs),
             });
             if (versionResp.ok) break;
           } catch (err: any) {
             lastErr = err;
           }
-          if (attempt < 5) {
-            await new Promise((resolve) => setTimeout(resolve, 2000));
+          if (attempt < maxAttempts) {
+            await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
           }
         }
         if (!versionResp || !versionResp.ok) {
