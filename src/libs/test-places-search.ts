@@ -20,8 +20,8 @@ import type { Browser, Page } from 'puppeteer-core';
 // Config
 // ---------------------------------------------------------------------------
 
-const CLOUDFLARE_BASE = process.env.BROWSER_BASE_URL ?? 'https://journey-heating-wives-awareness.trycloudflare.com';
-const TEST_QUERY = process.env.TEST_QUERY ?? 'pizza places in NY';
+const CLOUDFLARE_BASE = process.env.BROWSER_BASE_URL ?? 'https://demographic-means-basket-professional.trycloudflare.com';
+const TEST_QUERY = process.env.TEST_QUERY ?? 'Software houses in Rawalpindi';
 const MAX_SCROLL_ROUNDS = 20;
 const SCROLL_WAIT_MS = 2_500;
 
@@ -36,6 +36,8 @@ interface CardData {
   priceLevel: string | null;
   category: string | null;
   address: string | null;
+  phone: string | null;
+  website: string | null;
   description: string | null;
   openNow: boolean | null;
   openStatus: string | null;  // full hours string e.g. "Open · Closes 5 AM"
@@ -43,6 +45,7 @@ interface CardData {
   lat: number | null;
   lng: number | null;
   placeId: string | null;
+  firstReview: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -75,9 +78,6 @@ function extractAllCards(): CardData[] {
     seen.add(name);
 
     // ── Link + coordinates + place ID ─────────────────────────────────────
-    // Href format:
-    //   /maps/place/<Name>/data=...!3d<lat>!4d<lng>...
-    //   or contains 0x<hex>:0x<hex> as a place identifier
     const linkEl = card.querySelector<HTMLAnchorElement>('a.hfpxzc, a[href*="maps/place"]');
     const mapsUrl = linkEl?.href || null;
 
@@ -91,25 +91,20 @@ function extractAllCards(): CardData[] {
     const placeIdMatch = mapsUrl?.match(/0x[0-9a-f]+:0x[0-9a-f]+/i);
     const placeId = placeIdMatch ? placeIdMatch[0] : null;
 
-    // ── Rating row: ".AJB7ye" contains "4.6(6,999) · $20–70"  ────────────
-    const ratingRowText = card.querySelector<HTMLElement>('.AJB7ye')?.innerText?.trim() ?? '';
-    // Rating: first floating-point number
-    const ratingM = ratingRowText.match(/^(\d+\.\d+)/);
-    const rating = ratingM ? parseFloat(ratingM[1]) : null;
+    // ── Rating + Reviews ──────────────────────────────────────────────────
+    const ratingRowText = card.querySelector<HTMLElement>('.AJB7ye')?.textContent?.trim() ?? '';
+    const ratingEl = card.querySelector('.MW4etd');
+    const rating = ratingEl ? parseFloat(ratingEl.textContent?.trim() || '') : null;
 
-    // Review count: digits inside parentheses
-    const reviewM = ratingRowText.match(/\(([\d,]+)\)/);
-    const reviewCount = reviewM ? parseInt(reviewM[1].replace(/,/g, ''), 10) : null;
+    const reviewEl = card.querySelector('.UY7F9');
+    const reviewText = reviewEl ? reviewEl.textContent?.replace(/[()]/g, '').trim() : '';
+    const reviewCount = reviewText ? parseInt(reviewText.replace(/,/g, ''), 10) : null;
 
     // Price level: dollar sign(s) or range like "$20–70" → pick $ symbols
     const priceM = ratingRowText.match(/·\s*(\$+|\$[\d,–]+)/);
     const priceLevel = priceM ? priceM[1] : null;
 
     // ── Info lines via .W4Efsd hierarchy ─────────────────────────────────
-    // Structure: outer .W4Efsd > children .W4Efsd rows
-    // Row 0: "Category · 🦽 · Address"
-    // Row 1: "Editorial description"    (optional)
-    // Row 2: "Open/Closed · hours"     (optional)
     const outerW4 = card.querySelector<HTMLElement>('.W4Efsd .W4Efsd');
     const infoRows = outerW4
       ? Array.from(outerW4.parentElement?.querySelectorAll<HTMLElement>(':scope > .W4Efsd') ?? [])
@@ -124,6 +119,17 @@ function extractAllCards(): CardData[] {
     // Address: last segment of row 0 after last ·
     const row0Parts = row0Text.split('·');
     const address = row0Parts.length > 1 ? row0Parts[row0Parts.length - 1].trim() || null : null;
+
+    // ── Phone ───────────────────────────────────────────────────────────
+    const phone = card.querySelector('.UsdlK')?.textContent?.trim() || null;
+
+    // ── Website ─────────────────────────────────────────────────────────
+    const websiteEl = card.querySelector<HTMLAnchorElement>('a[data-value="Website"], a[aria-label*="website"], a[aria-label*="Website"]');
+    const website = websiteEl?.href || null;
+
+    // ── First Review ────────────────────────────────────────────────────
+    const reviewRaw = card.querySelector('.ah5Ghc, .Ahnjwc')?.textContent?.trim() || null;
+    const firstReview = reviewRaw ? reviewRaw.replace(/^["'“”]|["'“”]$/g, '').trim() : null;
 
     // Find description and open-status from remaining rows
     let description: string | null = null;
@@ -151,6 +157,8 @@ function extractAllCards(): CardData[] {
       priceLevel,
       category,
       address,
+      phone,
+      website,
       description,
       openNow,
       openStatus,
@@ -158,56 +166,55 @@ function extractAllCards(): CardData[] {
       lat,
       lng,
       placeId,
+      firstReview,
     });
   });
 
   return cards;
 }
 
-/** Scroll the [role="feed"] panel to load more results, returns true while new cards appear */
+/** Scroll the [role="main"] panel to load more results, returns true while new cards appear */
 async function scrollFeedForMore(page: Page): Promise<{ loaded: number; total: number; reachedEnd: boolean }> {
-  let prevCount = 0;
+  let prevHeight = 0;
   let stableRounds = 0;
   let scrollRound = 0;
+  const maxRounds = 120;
+  const waitMs = 400;
 
-  while (scrollRound < MAX_SCROLL_ROUNDS) {
-    const { count, scrolledTo, scrollHeight } = await page.evaluate(() => {
-      const feed = document.querySelector<HTMLElement>('[role="feed"]');
-      if (!feed) return { count: 0, scrolledTo: 0, scrollHeight: 0 };
-      feed.scrollTop = feed.scrollHeight;
+  while (scrollRound < maxRounds) {
+    const { count, scrollHeight } = await page.evaluate(() => {
+      const el = document.querySelector('[role="main"]')?.firstElementChild?.firstElementChild as HTMLElement;
+      if (!el) return { count: 0, scrollHeight: 0 };
+      
+      // Scroll to the bottom
+      el.scrollTop = el.scrollHeight;
+      el.dispatchEvent(new Event('scroll', { bubbles: true }));
+      
       return {
         count: document.querySelectorAll('[role="article"]').length,
-        scrolledTo: feed.scrollTop,
-        scrollHeight: feed.scrollHeight,
+        scrollHeight: el.scrollHeight
       };
     });
 
-    console.log(
-      `   Scroll ${scrollRound + 1}: ${count} cards visible | scrollTop=${Math.round(scrolledTo)}/${scrollHeight}`,
-    );
+    console.log(`   Scroll ${scrollRound + 1}: ${count} cards visible | scrollHeight=${scrollHeight}`);
 
-    await new Promise((r) => setTimeout(r, SCROLL_WAIT_MS));
-
-    const afterCount = await page.evaluate(
-      () => document.querySelectorAll('[role="article"]').length,
-    );
-
-    if (afterCount === prevCount) {
+    if (scrollHeight === prevHeight) {
       stableRounds++;
-      if (stableRounds >= 2) {
-        console.log('   ↳ No new cards after 2 stable rounds — all loaded.');
-        return { loaded: afterCount - prevCount, total: afterCount, reachedEnd: true };
+      if (stableRounds >= 5) {
+        console.log(`   ↳ scrollHeight remained stable at ${scrollHeight} for 5 rounds. Reached end.`);
+        return { loaded: count, total: count, reachedEnd: true };
       }
     } else {
       stableRounds = 0;
     }
 
-    prevCount = afterCount;
+    prevHeight = scrollHeight;
     scrollRound++;
+    await new Promise((r) => setTimeout(r, waitMs));
   }
 
-  const total = await page.evaluate(() => document.querySelectorAll('[role="article"]').length);
-  return { loaded: total, total, reachedEnd: false };
+  const finalCount = await page.evaluate(() => document.querySelectorAll('[role="article"]').length);
+  return { loaded: finalCount, total: finalCount, reachedEnd: false };
 }
 
 // ---------------------------------------------------------------------------
@@ -232,20 +239,13 @@ async function main() {
   const pages = await browser.pages();
   const page: Page = pages[0] ?? await browser.newPage();
 
+  await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36');
+
   const encodedQuery = encodeURIComponent(TEST_QUERY);
   const mapsUrl = `https://www.google.com/maps/search/${encodedQuery}`;
 
   console.log(`\n🔍 Navigating to: ${mapsUrl}`);
   await page.goto(mapsUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
-
-  // Wait for first results
-  console.log('⌛ Waiting for results panel...');
-  await page.waitForSelector('[role="feed"]', { timeout: 15_000 }).catch(() => {
-    console.warn('⚠️  [role="feed"] not found within 15s — proceeding anyway');
-  });
-
-  // Short settle wait
-  await new Promise((r) => setTimeout(r, 1_500));
 
   // ── Detect captcha ───────────────────────────────────────────────────────
   const hasCaptcha = await page.evaluate(() =>
@@ -286,6 +286,9 @@ async function main() {
   let withOpenStatus = 0;
   let withPrice = 0;
   let withDesc = 0;
+  let withPhone = 0;
+  let withWebsite = 0;
+  let withFirstReview = 0;
 
   cards.forEach((c, i) => {
     if (c.rating !== null) withRating++;
@@ -295,12 +298,17 @@ async function main() {
     if (c.openNow !== null) withOpenStatus++;
     if (c.priceLevel !== null) withPrice++;
     if (c.description !== null) withDesc++;
+    if (c.phone !== null) withPhone++;
+    if (c.website !== null) withWebsite++;
+    if (c.firstReview !== null) withFirstReview++;
 
     console.log(`[${String(i + 1).padStart(2, '0')}] ${c.name}`);
     console.log(`     Rating: ${c.rating ?? 'N/A'} | Reviews: ${c.reviewCount ?? 'N/A'} | Price: ${c.priceLevel ?? 'N/A'}`);
     console.log(`     Category: ${c.category ?? 'N/A'} | Address: ${c.address ?? 'N/A'}`);
     if (c.description) console.log(`     Desc: ${c.description}`);
     console.log(`     Open: ${c.openNow === null ? 'N/A' : c.openNow ? '✅ Open' : '❌ Closed'} | Status: ${c.openStatus ?? 'N/A'}`);
+    console.log(`     Phone: ${c.phone ?? 'N/A'} | Website: ${c.website ?? 'N/A'}`);
+    if (c.firstReview) console.log(`     First Review: "${c.firstReview}"`);
     console.log(`     Coords: ${c.lat ?? 'N/A'}, ${c.lng ?? 'N/A'} | PlaceID: ${c.placeId ?? 'N/A'}`);
     console.log(`     URL: ${c.mapsUrl?.substring(0, 80) ?? 'N/A'}...`);
     console.log('');
@@ -315,6 +323,9 @@ async function main() {
   console.log(`  PlaceID:     ${withPlaceId}/${cards.length}`);
   console.log(`  OpenStatus:  ${withOpenStatus}/${cards.length}`);
   console.log(`  Description: ${withDesc}/${cards.length}`);
+  console.log(`  Phone:       ${withPhone}/${cards.length}`);
+  console.log(`  Website:     ${withWebsite}/${cards.length}`);
+  console.log(`  FirstReview: ${withFirstReview}/${cards.length}`);
   console.log('══════════════════════════════════════════════════════\n');
 
   await browser.disconnect();

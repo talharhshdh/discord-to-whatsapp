@@ -176,6 +176,7 @@ class DiscordWhatsAppBridge {
    * populates this via the contacts.upsert / contacts.update events.
    */
   private lidToJid = new Map<string, string>();
+  private googleSearchKeeperInterval: NodeJS.Timeout | null = null;
 
   constructor() {
     // Initialize Discord client (not started — WhatsApp/Discord disabled)
@@ -513,9 +514,45 @@ class DiscordWhatsAppBridge {
         }
         lol('📤 Dashboard URL sent to all admins.');
       }
+      this.startGoogleSearchKeeper();
     } catch (err) {
       console.error('❌ Failed to start dashboard or notify admins:', err);
     }
+  }
+
+  private startGoogleSearchKeeper(): void {
+    const domain = process.env.DASHBOARD_DOMAIN || 'services.ufone-claim.site';
+    const intervalMs = 4 * 60 * 1000; // 4 minutes
+
+    const performSearch = async () => {
+      try {
+        lol(`🔍 Keeping Google Search API warm: hitting https://${domain}/api/browser/search`);
+        const response = await fetch(`https://${domain}/api/browser/search`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            text: 'Test',
+            pageNumber: 1,
+            engine: 'auto',
+            includeAI: false,
+            category: 'all'
+          })
+        });
+        
+        if (response.ok) {
+          lol(`🔍 Google Search API keep-alive response: ${response.status} OK`);
+        } else {
+          console.warn(`⚠️ Google Search API keep-alive failed with status: ${response.status}`);
+        }
+      } catch (e) {
+        console.error('❌ Error keeping Google Search API warm:', e);
+      }
+    };
+
+    // Set the interval to run every 4 minutes
+    this.googleSearchKeeperInterval = setInterval(performSearch, intervalMs);
   }
 
   private async sendTestMessage(): Promise<void> {
@@ -1756,6 +1793,10 @@ class DiscordWhatsAppBridge {
 
   public async stop(): Promise<void> {
     lol('🛑 Shutting down bridge...');
+    if (this.googleSearchKeeperInterval) {
+      clearInterval(this.googleSearchKeeperInterval);
+      this.googleSearchKeeperInterval = null;
+    }
     // Don't logout from WhatsApp, just close the socket to preserve session
     if (this.whatsappSocket) {
       this.whatsappSocket.end(undefined);

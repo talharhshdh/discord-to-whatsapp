@@ -73,6 +73,8 @@ export interface PlaceResult {
   amenities: string[];
   /** "People also search for" related place names (deep-scrape only) */
   relatedPlaces: string[];
+  /** First review snippet if visible on the card */
+  firstReview: string | null;
 }
 
 export interface PlacesSearchResult {
@@ -137,6 +139,8 @@ function extractAllCards(): Array<{
   priceLevel: string | null;
   category: string | null;
   address: string | null;
+  phone: string | null;
+  website: string | null;
   description: string | null;
   openNow: boolean | null;
   todaysHours: string | null;
@@ -145,6 +149,7 @@ function extractAllCards(): Array<{
   lat: number | null;
   lng: number | null;
   placeId: string | null;
+  firstReview: string | null;
 }> {
   const results: ReturnType<typeof extractAllCards> = [];
   const seen = new Set<string>();
@@ -169,14 +174,14 @@ function extractAllCards(): Array<{
     const pidM = mapsUrl?.match(/0x[0-9a-f]+:0x[0-9a-f]+/i);
     const placeId = pidM ? pidM[0] : null;
 
-    // ── Rating row (.AJB7ye) text: "4.6(6,999) · $20–70" ──────────────
-    const ratingRowText = card.querySelector<HTMLElement>('.AJB7ye')?.innerText?.trim() ?? '';
+    // ── Rating + Reviews ──────────────────────────────────────────────────
+    const ratingRowText = card.querySelector<HTMLElement>('.AJB7ye')?.textContent?.trim() ?? '';
+    const ratingEl = card.querySelector('.MW4etd');
+    const rating = ratingEl ? parseFloat(ratingEl.textContent?.trim() || '') : null;
 
-    const ratingM = ratingRowText.match(/^(\d+\.\d+)/);
-    const rating = ratingM ? parseFloat(ratingM[1]) : null;
-
-    const reviewM = ratingRowText.match(/\(([\d,]+)\)/);
-    const reviewCount = reviewM ? parseInt(reviewM[1].replace(/,/g, ''), 10) : null;
+    const reviewEl = card.querySelector('.UY7F9');
+    const reviewText = reviewEl ? reviewEl.textContent?.replace(/[()]/g, '').trim() : '';
+    const reviewCount = reviewText ? parseInt(reviewText.replace(/,/g, ''), 10) : null;
 
     // Price: anything after last · e.g. "$20–70" or "$$"
     const priceM = ratingRowText.match(/·\s*(\$[^\s·]+)/);
@@ -197,10 +202,21 @@ function extractAllCards(): Array<{
       : [];
 
     // Row 0: "Category · ♿ · Address"
-    const row0Text = infoRows[0]?.innerText?.trim() ?? '';
+    const row0Text = infoRows[0]?.textContent?.trim() ?? '';
     const row0Parts = row0Text.split('·').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
     const category = row0Parts[0] || null;
     const address = row0Parts.length > 1 ? row0Parts[row0Parts.length - 1] || null : null;
+
+    // ── Phone ───────────────────────────────────────────────────────────
+    const phone = card.querySelector('.UsdlK')?.textContent?.trim() || null;
+
+    // ── Website ─────────────────────────────────────────────────────────
+    const websiteEl = card.querySelector<HTMLAnchorElement>('a[data-value="Website"], a[aria-label*="website"], a[aria-label*="Website"]');
+    const website = websiteEl?.href || null;
+
+    // ── First Review ────────────────────────────────────────────────────
+    const reviewRaw = card.querySelector('.ah5Ghc, .Ahnjwc')?.textContent?.trim() || null;
+    const firstReview = reviewRaw ? reviewRaw.replace(/^["'“”]|["'“”]$/g, '').trim() : null;
 
     // Remaining rows: description and open-status
     let description: string | null = null;
@@ -228,6 +244,8 @@ function extractAllCards(): Array<{
       priceLevel,
       category,
       address,
+      phone,
+      website,
       description,
       openNow,
       todaysHours: openStatus,
@@ -236,6 +254,7 @@ function extractAllCards(): Array<{
       lat,
       lng,
       placeId,
+      firstReview,
     });
   });
 
@@ -378,6 +397,7 @@ function extractPlaceFromPanel(): PlaceResult {
     isClaimed,
     amenities,
     relatedPlaces,
+    firstReview: null,
   };
 }
 
@@ -398,50 +418,42 @@ function extractPlaceFromPanel(): PlaceResult {
 async function scrollFeedForMore(
   page: any,
 ): Promise<{ loaded: number; total: number; reachedEnd: boolean }> {
-  const total: number = await page.evaluate(async () => {
-    const feed = document.querySelector<HTMLElement>('[role="feed"]');
-    if (!feed) return 0;
+  let prevHeight = 0;
+  let stableRounds = 0;
+  let scrollRound = 0;
+  const maxRounds = 30;
+  const waitMs = 2000;
 
-    // ── Resolve the real scrollable container ──────────────────────────
-    function findScroller(): HTMLElement {
-      feed!.scrollTop = feed!.scrollHeight + 9999;
-      if (feed!.scrollTop > 0) return feed!;
+  while (scrollRound < maxRounds) {
+    const { count, scrollHeight } = await page.evaluate(() => {
+      const el = document.querySelector('[role="main"]')?.firstElementChild?.firstElementChild as HTMLElement;
+      if (!el) return { count: 0, scrollHeight: 0 };
+      
+      // Scroll to the bottom
+      el.scrollTop = el.scrollHeight;
+      
+      return {
+        count: document.querySelectorAll('[role="article"]').length,
+        scrollHeight: el.scrollHeight
+      };
+    });
 
-      let el: HTMLElement | null = feed!.parentElement;
-      while (el && el !== document.documentElement) {
-        const ov = getComputedStyle(el).overflowY;
-        if ((ov === 'scroll' || ov === 'auto') && el.scrollHeight > el.clientHeight) {
-          return el;
-        }
-        el = el.parentElement;
+    if (scrollHeight === prevHeight) {
+      stableRounds++;
+      if (stableRounds >= 3) {
+        break;
       }
-      return document.documentElement as unknown as HTMLElement;
+    } else {
+      stableRounds = 0;
     }
 
-    const scroller = findScroller();
-    let previousCount = 0;
-    let retries = 0;
-    const MAX_RETRIES = 30; // 3 s max wait (30 × 100 ms)
+    prevHeight = scrollHeight;
+    scrollRound++;
+    await new Promise((r) => setTimeout(r, waitMs));
+  }
 
-    while (true) {
-      const currentCount = document.querySelectorAll('[role="article"]').length;
-
-      if (currentCount === previousCount) {
-        retries++;
-        if (retries >= MAX_RETRIES) break;
-      } else {
-        retries = 0;
-        previousCount = currentCount;
-      }
-
-      scroller.scrollTop = scroller.scrollHeight;
-      await new Promise((r) => setTimeout(r, 100));
-    }
-
-    return document.querySelectorAll('[role="article"]').length;
-  });
-
-  return { loaded: total, total, reachedEnd: true };
+  const finalCount = await page.evaluate(() => document.querySelectorAll('[role="article"]').length);
+  return { loaded: finalCount, total: finalCount, reachedEnd: true };
 }
 
 
@@ -518,8 +530,9 @@ export async function searchPlacesViaPool(
         const results: PlaceResult[] = pageSlice.map(
           (c: ReturnType<typeof extractAllCards>[number]) => ({
             ...c,
-            phone: null,
-            website: null,
+            phone: c.phone || null,
+            website: c.website || null,
+            firstReview: c.firstReview || null,
             weeklyHours: null,
             photosCount: null,
             hasPopularTimes: false,
@@ -716,8 +729,9 @@ export async function searchPlacesStream(
             .filter((c) => !seenNames.has(c.name))
             .map((c) => ({
               ...c,
-              phone: null,
-              website: null,
+              phone: c.phone || null,
+              website: c.website || null,
+              firstReview: c.firstReview || null,
               weeklyHours: null,
               photosCount: null,
               hasPopularTimes: false,
@@ -747,7 +761,7 @@ export async function searchPlacesStream(
         // eslint-disable-next-line no-new-func
         const extractAllCardsBrowser = new Function(`return (${extractFn})`)() as () => unknown[];
 
-        const feed = document.querySelector<HTMLElement>('[role="feed"]');
+        const feed = document.querySelector('[role="main"]')?.firstElementChild?.firstElementChild as HTMLElement;
         if (!feed) return;
 
         const emitCards = (window as any).__emitCards as (cards: unknown[]) => void;
@@ -1102,6 +1116,7 @@ export async function searchViaGoogleSearchUrl(
           lat: c.lat,
           lng: c.lng,
           placeId: c.placeId,
+          firstReview: null,
         }),
       );
 
@@ -1279,6 +1294,7 @@ export async function searchViaGoogleSearchStream(
             lat: c.lat,
             lng: c.lng,
             placeId: c.placeId,
+            firstReview: null,
           }));
 
         newCards.forEach((c) => seenNames.add(c.name));

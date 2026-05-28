@@ -18,7 +18,7 @@ import { searchPlacesStream } from './google-places-search';
 // Config
 // ---------------------------------------------------------------------------
 
-const BROWSER_URL = (process.env.BROWSER_BASE_URL ?? 'https://critics-historical-stability-invited.trycloudflare.com').trim();
+const BROWSER_URL = (process.env.BROWSER_BASE_URL ?? 'https://edwards-supervisors-admitted-browse.trycloudflare.com').trim();
 const TEST_QUERY = process.env.TEST_QUERY ?? 'pizza places in NY';
 
 // ---------------------------------------------------------------------------
