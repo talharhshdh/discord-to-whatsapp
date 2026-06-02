@@ -522,6 +522,7 @@ export async function searchViaPool(
       const startParam = (pageNumber - 1) * 10;
       let targetUrl = `https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}&num=10&hl=en&gbv=2&pws=0`;
       if (categoryKey === 'images') {
+        await new Promise((resolve, _) => setTimeout(() => { resolve(0) }, 200))
         targetUrl += '&udm=2';
       } else if (categoryKey === 'videos') {
         targetUrl += '&udm=7';
@@ -531,15 +532,17 @@ export async function searchViaPool(
         targetUrl += '&udm=3';
       }
 
+
       const client = await page.target().createCDPSession();
       await client.send('Page.navigate', { url: targetUrl });
       await client.detach();
 
       // Wait dynamically for either results, footer, or CAPTCHA elements to load.
       // We avoid generic 'a' or 'a[href^="http"]' tags to prevent premature resolution on the header.
+
       await page
         .waitForSelector('h3, a[href*="/url?q="], a[href*="imgres"], footer, form[action*="/sorry/"], #captcha, .g-recaptcha', {
-          timeout: 100,
+          timeout: 200,
         })
         .catch(() => { /* timeout is fine */ });
 
