@@ -51,7 +51,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
     setActiveQuery(searchQuery);
 
     try {
-      const res = await api.browserSearch(searchQuery, targetPage, 'auto', false, tabCategory);
+      const res = await api.browserSearch(searchQuery, targetPage, 'auto', true, tabCategory);
       setResult(res);
       setPage(targetPage);
     } catch (err: any) {
@@ -377,6 +377,23 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                 {/* 4A. TAB = ALL: Render organic results + PAA + carousels */}
                 {activeTab === 'all' && (
                   <div className="space-y-6">
+                    {/* AI Overview (SGE) */}
+                    {result.aiResponse && (
+                      <div className={`p-6 rounded-2xl border shadow-md transition-all ${darkMode
+                        ? 'bg-[#1b1b22]/40 border-[#00d4aa]/30 text-white'
+                        : 'bg-emerald-50/10 border-emerald-200 text-gray-800'
+                        }`}>
+                        <div className="flex items-center gap-2 mb-3">
+                          <span className="text-[#00d4aa] text-lg">✨</span>
+                          <h4 className={`font-bold text-sm tracking-wider uppercase font-sans ${darkMode ? 'text-[#00d4aa]' : 'text-emerald-700'}`}>AI Overview</h4>
+                        </div>
+                        <div
+                          className={`text-sm leading-relaxed whitespace-pre-wrap ${darkMode ? 'text-white/80' : 'text-slate-800'}`}
+                          dangerouslySetInnerHTML={{ __html: result.aiResponse }}
+                        />
+                      </div>
+                    )}
+
                     {/* Organic List */}
                     <div className="space-y-4">
                       {result.organic.length === 0 ? (
