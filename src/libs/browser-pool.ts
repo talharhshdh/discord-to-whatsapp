@@ -488,8 +488,10 @@ export async function searchViaPool(
       await client.send('Page.navigate', { url: targetUrl });
       await client.detach();
 
+      // Wait dynamically for either results, footer, or CAPTCHA elements to load.
+      // We avoid generic 'a' or 'a[href^="http"]' tags to prevent premature resolution on the header.
       await page
-        .waitForSelector('#search, .Gx5Zad.xpd, .xpd, h3, a', {
+        .waitForSelector('h3, a[href*="/url?q="], a[href*="imgres"], footer, form[action*="/sorry/"], #captcha, .g-recaptcha', {
           timeout: 100,
         })
         .catch(() => { /* timeout is fine */ });
@@ -1033,23 +1035,14 @@ export async function searchViaPool(
       let results = await extractResults(categoryKey);
 
       if (!results.captcha && !hasCategoryResults(results)) {
+        // Fallback: wait up to 500ms for a CAPTCHA/sorry form to load if results are empty
         await page
-          .waitForSelector('#search .g, #rso .g, .MjjYud .g, .Gx5Zad.xpd, .xpd, h3, a[href^="http"], a[href*="/url?q="]', {
-            timeout: 15_000,
+          .waitForSelector('form[action="/sorry/index"], #captcha, .g-recaptcha', {
+            timeout: 100,
           })
           .catch(() => { /* timeout is fine */ });
 
         results = await extractResults(categoryKey);
-
-        if (!results.captcha && !hasCategoryResults(results)) {
-          await page
-            .waitForSelector('form[action="/sorry/index"], #captcha, .g-recaptcha', {
-              timeout: 5_000,
-            })
-            .catch(() => { /* timeout is fine */ });
-
-          results = await extractResults(categoryKey);
-        }
       }
 
       if (results.captcha) {

@@ -1244,16 +1244,23 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
           googleUrl += '&udm=3';
         }
         await page.goto(googleUrl, { waitUntil: 'domcontentloaded' });
-        await new Promise(r => setTimeout(r, 3000));
+        // Wait dynamically for elements to load
+        await page.waitForSelector('#search, .g, h3, form[action*="/sorry/"], #captcha, .g-recaptcha', { timeout: 100 }).catch(() => { });
 
         // Click "Show more" buttons only when AI response is requested
         if (includeAI) {
           try {
-            await page.evaluate(() => {
+            const hasButtons = await page.evaluate(() => {
               const btns = document.querySelectorAll('[jsname="VwDHjd"], [aria-label="Show more"], .LGOjhe, .cUnQKe');
-              btns.forEach(b => (b as HTMLElement).click());
+              if (btns.length > 0) {
+                btns.forEach(b => (b as HTMLElement).click());
+                return true;
+              }
+              return false;
             });
-            await new Promise(r => setTimeout(r, 1500));
+            if (hasButtons) {
+              await new Promise(r => setTimeout(r, 1000));
+            }
           } catch { }
         }
 

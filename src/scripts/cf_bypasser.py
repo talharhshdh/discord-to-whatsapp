@@ -181,19 +181,29 @@ def google_search(req: SearchRequest):
             sb.uc_open_with_reconnect(
                 f"https://www.google.com/search?q={req.text}&start={start}", 5
             )
-            try:
-                sb.uc_gui_click_captcha()
-            except Exception:
-                pass
-            sb.sleep(4)
+            # Wait dynamically up to 4.0s (checking every 200ms) for page elements to load
+            for _ in range(20):
+                if (sb.is_element_visible("#search") or 
+                    sb.is_element_visible(".g") or 
+                    sb.is_element_visible("h3") or 
+                    sb.is_element_visible("form[action*='/sorry/']") or 
+                    sb.is_element_visible("#captcha") or 
+                    sb.is_element_visible(".g-recaptcha")):
+                    break
+                sb.sleep(0.2)
 
             # Click "Show more" buttons to expand AI overview
             try:
-                sb.execute_script("""
+                has_buttons = sb.execute_script("""
                     var btns = document.querySelectorAll('[jsname="VwDHjd"], [aria-label="Show more"], .LGOjhe, .cUnQKe');
-                    btns.forEach(function(b) { b.click(); });
+                    if (btns.length > 0) {
+                        btns.forEach(function(b) { b.click(); });
+                        return true;
+                    }
+                    return false;
                 """)
-                sb.sleep(1.5)
+                if has_buttons:
+                    sb.sleep(1.0)
             except Exception:
                 pass
 
