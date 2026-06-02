@@ -1,40 +1,79 @@
 import React, { useState } from 'react';
 import { api } from './api';
 import { useUrls, useCountdown, NavSection } from './hooks';
-import SessionsPanel from './components/SessionsPanel';
-import SessionsManagerPanel from './components/SessionsManagerPanel';
-import AIToolsPanel from './components/AIToolsPanel';
-import MediaPanel from './components/MediaPanel';
-import YoutubePanel from './components/YoutubePanel';
-import MoviesPanel from './components/MoviesPanel';
-import URLsPanel from './components/URLsPanel';
-import AndroidPanel from './components/AndroidPanel';
-import LLMPanel from './components/LLMPanel';
-import SearchPanel from './components/SearchPanel';
-import TTSPanel from './components/TTSPanel';
-import PlacesPanel from './components/PlacesPanel';
-import GoogleClonePanel from './components/GoogleClonePanel';
-import WebProxyPanel from './components/WebProxyPanel';
-import PoolPanel from './components/PoolPanel';
+const SessionsPanel = React.lazy(() => import('./components/SessionsPanel'));
+const SessionsManagerPanel = React.lazy(() => import('./components/SessionsManagerPanel'));
+const AIToolsPanel = React.lazy(() => import('./components/AIToolsPanel'));
+const MediaPanel = React.lazy(() => import('./components/MediaPanel'));
+const YoutubePanel = React.lazy(() => import('./components/YoutubePanel'));
+const MoviesPanel = React.lazy(() => import('./components/MoviesPanel'));
+const URLsPanel = React.lazy(() => import('./components/URLsPanel'));
+const AndroidPanel = React.lazy(() => import('./components/AndroidPanel'));
+const LLMPanel = React.lazy(() => import('./components/LLMPanel'));
+const SearchPanel = React.lazy(() => import('./components/SearchPanel'));
+const TTSPanel = React.lazy(() => import('./components/TTSPanel'));
+const PlacesPanel = React.lazy(() => import('./components/PlacesPanel'));
+const GoogleClonePanel = React.lazy(() => import('./components/GoogleClonePanel'));
+const WebProxyPanel = React.lazy(() => import('./components/WebProxyPanel'));
+const PoolPanel = React.lazy(() => import('./components/PoolPanel'));
 
 
-const NAV: { id: NavSection; label: string; icon: string }[] = [
-  { id: 'google',    label: 'Google Clone',   icon: '🌐' },
-  { id: 'web-proxy', label: 'Web Proxy',      icon: '🌍' },
-  { id: 'search',    label: 'Browser Search', icon: '🔍' },
-  { id: 'places',    label: 'Maps Places',    icon: '🗺️' },
-  { id: 'pool',      label: 'Browser Pool',   icon: '🕸️' },
-  { id: 'sessions',  label: 'Dev Sessions',  icon: '🖥️' },
-  { id: 'manager',   label: 'Session Manager', icon: '📊' },
-  { id: 'android',   label: 'Android',       icon: '📱' },
-  { id: 'ai-tools',  label: 'AI Tools',      icon: '🧠' },
-  { id: 'media',     label: 'Media DL',      icon: '📥' },
-  { id: 'youtube',   label: 'YouTube',        icon: '▶️' },
-  { id: 'movies',    label: 'Movies',         icon: '🎬' },
-  { id: 'urls',      label: 'Live URLs',      icon: '🔗' },
-  { id: 'llm',       label: 'Local LLM',      icon: '🧠' },
-  { id: 'tts',       label: 'Voice / TTS',    icon: '🎙️' },
+
+interface NavItem {
+  id: NavSection;
+  label: string;
+  icon: string;
+}
+
+interface NavCategory {
+  title: string;
+  icon: string;
+  items: NavItem[];
+}
+
+const NAV_CATEGORIES: NavCategory[] = [
+  {
+    title: 'Public Sandbox',
+    icon: '🌍',
+    items: [
+      { id: 'google',    label: 'Google Clone',   icon: '🌐' },
+      { id: 'web-proxy', label: 'Web Proxy',      icon: '🌍' },
+    ]
+  },
+  {
+    title: 'Browser & Search',
+    icon: '🔍',
+    items: [
+      { id: 'search',    label: 'Browser Search', icon: '🔍' },
+      { id: 'places',    label: 'Maps Places',    icon: '🗺️' },
+      { id: 'pool',      label: 'Browser Pool',   icon: '🕸️' },
+    ]
+  },
+  {
+    title: 'Control Center',
+    icon: '🖥️',
+    items: [
+      { id: 'sessions',  label: 'Dev Sessions',   icon: '🖥️' },
+      { id: 'manager',   label: 'Session Manager', icon: '📊' },
+      { id: 'android',   label: 'Android',        icon: '📱' },
+      { id: 'urls',      label: 'Live URLs',      icon: '🔗' },
+    ]
+  },
+  {
+    title: 'AI & Media',
+    icon: '✨',
+    items: [
+      { id: 'ai-tools',  label: 'AI Tools',       icon: '🧠' },
+      { id: 'media',     label: 'Media DL',       icon: '📥' },
+      { id: 'youtube',   label: 'YouTube',        icon: '▶️' },
+      { id: 'movies',    label: 'Movies',         icon: '🎬' },
+      { id: 'llm',       label: 'Local LLM',      icon: '🧠' },
+      { id: 'tts',       label: 'Voice / TTS',    icon: '🎙️' },
+    ]
+  }
 ];
+
+const NAV: NavItem[] = NAV_CATEGORIES.flatMap(cat => cat.items);
 
 export default function App() {
   const getInitialSection = (): NavSection => {
@@ -73,7 +112,7 @@ export default function App() {
   const [loginError, setLoginError] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
 
-  const { data, refresh } = useUrls();
+  const { data, refresh } = useUrls(isAuthenticated);
   const cd = useCountdown(data?.sessionRemainingSeconds ?? 5 * 3600);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -219,7 +258,11 @@ export default function App() {
   }
 
   if (section === 'google') {
-    return <GoogleClonePanel isStandalone={true} />;
+    return (
+      <React.Suspense fallback={<div className="flex items-center justify-center min-h-screen bg-[#070b14] text-white/50">Loading Google Clone...</div>}>
+        <GoogleClonePanel isStandalone={true} />
+      </React.Suspense>
+    );
   }
 
   return (
@@ -294,33 +337,45 @@ export default function App() {
 
         <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
           {/* Desktop Sidebar */}
-          <nav className="w-56 flex-shrink-0 glass border-r border-white/[0.07] p-3 space-y-1 hidden md:block overflow-y-auto scrollbar-thin">
-            {NAV.map(n => (
-              <button
-                key={n.id}
-                onClick={() => handleNavClick(n.id)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                  section === n.id
-                    ? 'bg-[#6c63ff]/20 text-white border border-[#6c63ff]/30'
-                    : 'text-white/40 hover:text-white hover:bg-white/[0.05]'
-                }`}
-              >
-                <span>{n.icon}</span>
-                {n.label}
-                {n.id === 'urls' && data?.tools && Object.keys(data.tools).length > 0 && (
-                  <span className="ml-auto text-xs bg-teal-500/20 text-teal-400 rounded-full px-1.5 py-0.5">
-                    {Object.keys(data.tools).length}
-                  </span>
-                )}
-              </button>
+          <nav className="w-60 flex-shrink-0 glass border-r border-white/[0.07] p-4 space-y-5 hidden md:block overflow-y-auto scrollbar-thin">
+            {NAV_CATEGORIES.map(category => (
+              <div key={category.title} className="space-y-1.5">
+                <h3 className="text-[10px] font-black uppercase tracking-wider text-white/25 px-2 flex items-center gap-1.5">
+                  <span>{category.icon}</span>
+                  {category.title}
+                </h3>
+                <div className="space-y-0.5">
+                  {category.items.map(n => (
+                    <button
+                      key={n.id}
+                      onClick={() => handleNavClick(n.id)}
+                      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-200 ${
+                        section === n.id
+                          ? 'bg-gradient-to-r from-[#6c63ff]/20 to-[#00d4aa]/10 text-white border border-[#6c63ff]/30 shadow-lg shadow-[#6c63ff]/5'
+                          : 'text-white/50 hover:text-white hover:bg-white/[0.04]'
+                      }`}
+                    >
+                      <span className="text-sm">{n.icon}</span>
+                      <span className="truncate">{n.label}</span>
+                      {n.id === 'urls' && data?.tools && Object.keys(data.tools).length > 0 && (
+                        <span className="ml-auto text-[10px] bg-teal-500/20 text-teal-400 font-bold rounded-full px-1.5 py-0.5">
+                          {Object.keys(data.tools).length}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
             ))}
 
-            <div className="pt-4 border-t border-white/[0.06] mt-2">
+            <div className="pt-4 border-t border-white/[0.06] mt-4">
               {data?.sessionStartedAt && (
-                <p className="text-[10px] text-white/20 px-3 leading-relaxed">
-                  Started<br />
-                  {new Date(data.sessionStartedAt).toLocaleTimeString()}
-                </p>
+                <div className="px-3 py-2 bg-white/[0.02] border border-white/[0.04] rounded-xl space-y-0.5">
+                  <p className="text-[9px] uppercase font-bold tracking-wider text-white/30">Session Started</p>
+                  <p className="text-xs font-mono text-white/60">
+                    {new Date(data.sessionStartedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                </div>
               )}
             </div>
           </nav>
@@ -336,25 +391,35 @@ export default function App() {
                   <h3 className="font-bold text-white text-sm">Navigation</h3>
                   <button onClick={() => setIsMenuOpen(false)} className="text-white/40 text-xl">✕</button>
                 </div>
-                <div className="flex-1 overflow-y-auto space-y-1 pr-1">
-                  {NAV.map(n => (
-                    <button
-                      key={n.id}
-                      onClick={() => handleNavClick(n.id)}
-                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
-                        section === n.id
-                          ? 'bg-[#6c63ff]/20 text-white border border-[#6c63ff]/30'
-                          : 'text-white/40 hover:text-white hover:bg-white/[0.05]'
-                      }`}
-                    >
-                      <span className="text-lg">{n.icon}</span>
-                      {n.label}
-                      {n.id === 'urls' && data?.tools && Object.keys(data.tools).length > 0 && (
-                        <span className="ml-auto text-xs bg-teal-500/20 text-teal-400 rounded-full px-2 py-0.5">
-                          {Object.keys(data.tools).length}
-                        </span>
-                      )}
-                    </button>
+                <div className="flex-1 overflow-y-auto space-y-5 pr-1 scrollbar-thin">
+                  {NAV_CATEGORIES.map(category => (
+                    <div key={category.title} className="space-y-1.5">
+                      <h4 className="text-[10px] font-black uppercase tracking-wider text-white/35 px-2 flex items-center gap-1.5">
+                        <span>{category.icon}</span>
+                        {category.title}
+                      </h4>
+                      <div className="space-y-0.5">
+                        {category.items.map(n => (
+                          <button
+                            key={n.id}
+                            onClick={() => handleNavClick(n.id)}
+                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                              section === n.id
+                                ? 'bg-gradient-to-r from-[#6c63ff]/20 to-[#00d4aa]/10 text-white border border-[#6c63ff]/30'
+                                : 'text-white/45 hover:text-white hover:bg-white/[0.05]'
+                            }`}
+                          >
+                            <span className="text-base">{n.icon}</span>
+                            <span className="truncate">{n.label}</span>
+                            {n.id === 'urls' && data?.tools && Object.keys(data.tools).length > 0 && (
+                              <span className="ml-auto text-xs bg-teal-500/20 text-teal-400 rounded-full px-2 py-0.5">
+                                {Object.keys(data.tools).length}
+                              </span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   ))}
                 </div>
                 <div className="mt-4 pt-4 border-t border-white/[0.06]">
@@ -381,21 +446,22 @@ export default function App() {
               </div>
 
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                {section === 'sessions' && <SessionsPanel />}
-                {section === 'manager' && <SessionsManagerPanel />}
-                {section === 'android' && <AndroidPanel />}
-                {section === 'ai-tools' && <AIToolsPanel />}
-                {section === 'media' && <MediaPanel />}
-                {section === 'youtube' && <YoutubePanel />}
-                {section === 'movies' && <MoviesPanel />}
-                {section === 'urls' && <URLsPanel tools={data?.tools ?? {}} />}
-                {section === 'llm' && <LLMPanel />}
-                {section === 'search' && <SearchPanel />}
-                {section === 'places' && <PlacesPanel />}
-                {section === 'pool' && <PoolPanel />}
-                {section === 'tts' && <TTSPanel />}
-                {section === 'web-proxy' && <WebProxyPanel />}
-
+                <React.Suspense fallback={<div className="flex items-center justify-center p-12 text-white/50">Loading panel...</div>}>
+                  {section === 'sessions' && <SessionsPanel />}
+                  {section === 'manager' && <SessionsManagerPanel />}
+                  {section === 'android' && <AndroidPanel />}
+                  {section === 'ai-tools' && <AIToolsPanel />}
+                  {section === 'media' && <MediaPanel />}
+                  {section === 'youtube' && <YoutubePanel />}
+                  {section === 'movies' && <MoviesPanel />}
+                  {section === 'urls' && <URLsPanel tools={data?.tools ?? {}} />}
+                  {section === 'llm' && <LLMPanel />}
+                  {section === 'search' && <SearchPanel />}
+                  {section === 'places' && <PlacesPanel />}
+                  {section === 'pool' && <PoolPanel />}
+                  {section === 'tts' && <TTSPanel />}
+                  {section === 'web-proxy' && <WebProxyPanel />}
+                </React.Suspense>
               </div>
             </div>
           </main>

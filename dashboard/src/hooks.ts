@@ -1,20 +1,22 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api, UrlsPayload } from './api';
 
-export function useUrls(intervalMs = 15000) {
+export function useUrls(enabled = true, intervalMs = 15000) {
   const [data, setData] = useState<UrlsPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
+    if (!enabled) return;
     try { setData(await api.getUrls()); setError(null); }
     catch (e) { setError((e as Error).message); }
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
+    if (!enabled) return;
     refresh();
     const id = setInterval(refresh, intervalMs);
     return () => clearInterval(id);
-  }, [refresh, intervalMs]);
+  }, [refresh, enabled, intervalMs]);
 
   return { data, error, refresh };
 }
