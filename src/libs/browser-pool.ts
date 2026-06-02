@@ -298,6 +298,53 @@ class BrowserPool {
     }
 
     try {
+      // Get all active runs of browser-worker.yml
+      const listUrl = `https://api.github.com/repos/${repo}/actions/workflows/browser-worker.yml/runs?per_page=100`;
+      const response = await fetch(listUrl, {
+        headers: {
+          Accept: 'application/vnd.github+json',
+          Authorization: `Bearer ${pat}`,
+          'X-GitHub-Api-Version': '2022-11-28',
+        },
+      });
+
+      if (response.ok) {
+        const data = (await response.json()) as any;
+        const activeRuns = (data.workflow_runs || []).filter(
+          (run: any) => run.status !== 'completed'
+        );
+
+        if (activeRuns.length > 0) {
+          // Sort active runs by created_at in ascending order (oldest first)
+          const sortedRuns = [...activeRuns].sort((a: any, b: any) =>
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          );
+          const oldestRun = sortedRuns[0];
+
+          console.log(`[BrowserPool] Stopping the oldest active browser worker run (ID: ${oldestRun.id})...`);
+          const cancelUrl = `https://api.github.com/repos/${repo}/actions/runs/${oldestRun.id}/cancel`;
+          try {
+            await fetch(cancelUrl, {
+              method: 'POST',
+              headers: {
+                Accept: 'application/vnd.github+json',
+                Authorization: `Bearer ${pat}`,
+                'X-GitHub-Api-Version': '2022-11-28',
+              },
+            });
+            console.log(`[BrowserPool] Successfully cancelled oldest run ${oldestRun.id}.`);
+          } catch (err) {
+            console.error(`[BrowserPool] Failed to cancel run ${oldestRun.id}:`, err);
+          }
+          // Small wait for GitHub Actions API to process cancellation
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+      }
+    } catch (e) {
+      console.error(`[BrowserPool] Error cancelling old runs:`, e);
+    }
+
+    try {
       await fetch(`https://api.github.com/repos/${repo}/dispatches`, {
         method: 'POST',
         headers: {
@@ -327,10 +374,10 @@ class BrowserPool {
       }
     }
 
-    // Auto-scaling: If active browsers drop below 3, and total browsers are below 15 (max limit of jobs for workers), trigger new spawn.
+    // Auto-scaling: If active browsers drop below 3, and total browsers are below 30 (max limit of jobs for workers), trigger new spawn.
     const activeCount = this.getActive().length;
-    const MAX_TOTAL_BROWSERS = 15;
-    if (activeCount < 3 && this.browsers.size < MAX_TOTAL_BROWSERS) {
+    const MAX_TOTAL_BROWSERS = 30;
+    if (activeCount < 7 && this.browsers.size < MAX_TOTAL_BROWSERS) {
       console.warn(`[BrowserPool] Active browsers dropped below 3 (active: ${activeCount}, total: ${this.browsers.size}). Triggering new worker spawn...`);
       this.restartWorkers();
     }

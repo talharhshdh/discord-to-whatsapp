@@ -51,7 +51,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
     setActiveQuery(searchQuery);
 
     try {
-      const res = await api.browserSearch(searchQuery, targetPage, 'auto', false, tabCategory);
+      const res = await api.cookieSearch(searchQuery, targetPage, tabCategory);
       setResult(res);
       setPage(targetPage);
     } catch (err: any) {
