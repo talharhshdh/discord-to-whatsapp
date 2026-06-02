@@ -87,6 +87,17 @@ export default function App() {
 
   const [section, setSection] = React.useState<NavSection>(getInitialSection());
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredCategories = NAV_CATEGORIES.map(category => {
+    const filteredItems = category.items.filter(item =>
+      item.label.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+    return {
+      ...category,
+      items: filteredItems,
+    };
+  }).filter(category => category.items.length > 0);
   
   // Theme state
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -338,35 +349,60 @@ export default function App() {
         <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
           {/* Desktop Sidebar */}
           <nav className="w-60 flex-shrink-0 glass border-r border-white/[0.07] p-4 space-y-5 hidden md:block overflow-y-auto scrollbar-thin">
-            {NAV_CATEGORIES.map(category => (
-              <div key={category.title} className="space-y-1.5">
-                <h3 className="text-[10px] font-black uppercase tracking-wider text-white/25 px-2 flex items-center gap-1.5">
-                  <span>{category.icon}</span>
-                  {category.title}
-                </h3>
-                <div className="space-y-0.5">
-                  {category.items.map(n => (
-                    <button
-                      key={n.id}
-                      onClick={() => handleNavClick(n.id)}
-                      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-200 ${
-                        section === n.id
-                          ? 'bg-gradient-to-r from-[#6c63ff]/20 to-[#00d4aa]/10 text-white border border-[#6c63ff]/30 shadow-lg shadow-[#6c63ff]/5'
-                          : 'text-white/50 hover:text-white hover:bg-white/[0.04]'
-                      }`}
-                    >
-                      <span className="text-sm">{n.icon}</span>
-                      <span className="truncate">{n.label}</span>
-                      {n.id === 'urls' && data?.tools && Object.keys(data.tools).length > 0 && (
-                        <span className="ml-auto text-[10px] bg-teal-500/20 text-teal-400 font-bold rounded-full px-1.5 py-0.5">
-                          {Object.keys(data.tools).length}
-                        </span>
-                      )}
-                    </button>
-                  ))}
+            {/* Sidebar Search */}
+            <div className="relative px-1">
+              <span className="absolute inset-y-0 left-4 flex items-center text-white/30 text-xs">🔍</span>
+              <input
+                type="text"
+                placeholder="Search tools..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="w-full bg-white/[0.04] border border-white/[0.08] hover:border-white/15 focus:border-[#6c63ff]/40 rounded-xl pl-8 pr-7 py-2 text-xs text-white placeholder-white/35 focus:outline-none transition-all"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute inset-y-0 right-3 flex items-center text-white/40 hover:text-white text-xs"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            <div className="space-y-4">
+              {filteredCategories.map(category => (
+                <div key={category.title} className="space-y-1.5">
+                  <h3 className="text-[10px] font-black uppercase tracking-wider text-white/25 px-2 flex items-center gap-1.5">
+                    <span>{category.icon}</span>
+                    {category.title}
+                  </h3>
+                  <div className="space-y-0.5">
+                    {category.items.map(n => (
+                      <button
+                        key={n.id}
+                        onClick={() => handleNavClick(n.id)}
+                        className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-200 ${
+                          section === n.id
+                            ? 'bg-gradient-to-r from-[#6c63ff]/20 to-[#00d4aa]/10 text-white border border-[#6c63ff]/30 shadow-lg shadow-[#6c63ff]/5'
+                            : 'text-white/50 hover:text-white hover:bg-white/[0.04]'
+                        }`}
+                      >
+                        <span className="text-sm">{n.icon}</span>
+                        <span className="truncate">{n.label}</span>
+                        {n.id === 'urls' && data?.tools && Object.keys(data.tools).length > 0 && (
+                          <span className="ml-auto text-[10px] bg-teal-500/20 text-teal-400 font-bold rounded-full px-1.5 py-0.5">
+                            {Object.keys(data.tools).length}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+              {filteredCategories.length === 0 && (
+                <p className="text-[11px] text-white/30 text-center py-4">No tools found</p>
+              )}
+            </div>
 
             <div className="pt-4 border-t border-white/[0.06] mt-4">
               {data?.sessionStartedAt && (
@@ -387,12 +423,33 @@ export default function App() {
                 className="absolute right-0 top-0 bottom-0 w-64 bg-[#0d1424] border-l border-white/[0.07] p-4 flex flex-col shadow-2xl"
                 onClick={e => e.stopPropagation()}
               >
-                <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center justify-between mb-4">
                   <h3 className="font-bold text-white text-sm">Navigation</h3>
                   <button onClick={() => setIsMenuOpen(false)} className="text-white/40 text-xl">✕</button>
                 </div>
+
+                {/* Mobile Search */}
+                <div className="relative mb-5">
+                  <span className="absolute inset-y-0 left-3 flex items-center text-white/30 text-xs">🔍</span>
+                  <input
+                    type="text"
+                    placeholder="Search tools..."
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    className="w-full bg-white/[0.04] border border-white/[0.08] hover:border-white/15 focus:border-[#6c63ff]/40 rounded-xl pl-8 pr-7 py-2 text-xs text-white placeholder-white/35 focus:outline-none transition-all"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="absolute inset-y-0 right-3 flex items-center text-white/40 hover:text-white text-xs"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
                 <div className="flex-1 overflow-y-auto space-y-5 pr-1 scrollbar-thin">
-                  {NAV_CATEGORIES.map(category => (
+                  {filteredCategories.map(category => (
                     <div key={category.title} className="space-y-1.5">
                       <h4 className="text-[10px] font-black uppercase tracking-wider text-white/35 px-2 flex items-center gap-1.5">
                         <span>{category.icon}</span>
@@ -421,6 +478,9 @@ export default function App() {
                       </div>
                     </div>
                   ))}
+                  {filteredCategories.length === 0 && (
+                    <p className="text-xs text-white/30 text-center py-4">No tools found</p>
+                  )}
                 </div>
                 <div className="mt-4 pt-4 border-t border-white/[0.06]">
                   <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-green-500/5 border border-green-500/10 text-green-400 text-[10px]">
