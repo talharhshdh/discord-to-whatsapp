@@ -1275,6 +1275,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
             for (const sel of aiSelectors) {
               const el = document.querySelector(sel);
               if (el && (el as HTMLElement).innerText?.trim().length > 20) {
+                const txt = (el as HTMLElement).innerText;
+                if (txt.includes('AI Overview is not available') || txt.includes("Can't generate an AI overview")) {
+                  continue;
+                }
                 aiResponse = (el as HTMLElement).innerHTML || (el as HTMLElement).innerText.trim();
                 break;
               }

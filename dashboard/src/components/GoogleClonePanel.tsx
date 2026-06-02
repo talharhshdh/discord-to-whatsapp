@@ -7,7 +7,7 @@ import {
   Loader2
 } from 'lucide-react';
 
-type SearchTab = 'all' | 'images' | 'videos' | 'news' | 'shopping';
+type SearchTab = 'all' | 'images' | 'videos';
 
 interface GoogleClonePanelProps {
   isStandalone?: boolean;
@@ -261,7 +261,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
 
             {/* Navigation Tabs */}
             <div className="flex gap-4 overflow-x-auto scrollbar-none font-sans text-sm">
-              {(['all', 'images', 'videos', 'news', 'shopping'] as SearchTab[]).map(tab => (
+              {(['all', 'images', 'videos'] as SearchTab[]).map(tab => (
                 <button
                   key={tab}
                   onClick={() => {
@@ -275,8 +275,6 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                   {tab === 'all' && <Globe className="w-4 h-4" />}
                   {tab === 'images' && <Image className="w-4 h-4" />}
                   {tab === 'videos' && <Video className="w-4 h-4" />}
-                  {tab === 'news' && <Newspaper className="w-4 h-4" />}
-                  {tab === 'shopping' && <ShoppingBag className="w-4 h-4" />}
                   <span>{tab}</span>
                 </button>
               ))}
@@ -583,81 +581,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                   </div>
                 )}
 
-                {/* 4D. TAB = NEWS: Top news articles */}
-                {activeTab === 'news' && (
-                  <div className="space-y-4">
-                    <h4 className={`font-bold text-sm uppercase tracking-wider mb-3 ${darkMode ? 'text-white/40' : 'text-gray-500'}`}>Top News Stories</h4>
-                    {!result.news || result.news.length === 0 ? (
-                      <div className={`text-center py-16 text-sm ${darkMode ? 'text-white/30' : 'text-gray-400'}`}>No recent news reports found for this query.</div>
-                    ) : (
-                      result.news.map((item, idx) => (
-                        <div
-                          key={idx}
-                          className={`p-5 rounded-2xl border transition-all hover:border-white/10 ${darkMode ? 'bg-[#1b1b22] border-white/[0.06]' : 'bg-white border-gray-200'
-                            }`}
-                        >
-                          <div className={`flex items-center gap-2 mb-2 text-[10px] font-mono ${darkMode ? 'text-white/40' : 'text-gray-500'}`}>
-                            <span className="font-bold text-[#6c63ff] uppercase">{item.source}</span>
-                            <span>·</span>
-                            <span>{item.time}</span>
-                          </div>
-                          <a
-                            href={item.link}
-                            target="_blank"
-                            rel="noreferrer"
-                            className={`text-base font-bold hover:underline block leading-snug mb-2 ${darkMode ? 'text-white hover:text-blue-400' : 'text-gray-900 hover:text-blue-700'}`}
-                          >
-                            {item.title}
-                          </a>
-                          <a
-                            href={item.link}
-                            target="_blank"
-                            rel="noreferrer"
-                            className={`text-[10px] truncate block ${darkMode ? 'text-white/20' : 'text-gray-400'}`}
-                          >
-                            {item.link}
-                          </a>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
 
-                {/* 4E. TAB = SHOPPING: Products catalog */}
-                {activeTab === 'shopping' && (
-                  <div className="space-y-4">
-                    <h4 className={`font-bold text-sm uppercase tracking-wider mb-3 ${darkMode ? 'text-white/40' : 'text-gray-500'}`}>Google Shopping Results</h4>
-                    {!result.shopping || result.shopping.length === 0 ? (
-                      <div className={`text-center py-16 text-sm ${darkMode ? 'text-white/30' : 'text-gray-400'}`}>No matching shopping products found.</div>
-                    ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        {result.shopping.map((prod, idx) => (
-                          <div
-                            key={idx}
-                            className={`p-5 rounded-2xl border transition-all flex flex-col justify-between gap-4 ${darkMode ? 'bg-[#1b1b22] border-white/[0.06]' : 'bg-white border-gray-200'
-                              }`}
-                          >
-                            <div>
-                              <div className="text-2xl font-black text-emerald-500 font-mono mb-2">{prod.price}</div>
-                              <h5 className={`text-sm font-bold leading-snug mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{prod.title}</h5>
-                              <div className={`text-xs font-semibold ${darkMode ? 'text-white/40' : 'text-gray-500'}`}>{prod.merchant}</div>
-                            </div>
-                            <a
-                              href={prod.link}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="w-full text-center py-2.5 rounded-xl bg-blue-500 hover:bg-blue-600 text-white font-semibold text-xs transition-colors block"
-                            >
-                              View Product
-                            </a>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Maps Tab Removed */}
 
                 {/* 5. Related Queries (Clickable to perform new search) */}
                 {result.relatedSearches && result.relatedSearches.length > 0 && (
@@ -767,26 +691,9 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                   </div>
                 )}
 
-                {/* B. Shopping Products Preview in sidebar */}
-                {result.shopping && result.shopping.length > 0 && activeTab !== 'shopping' && (
-                  <div className={`p-5 rounded-2xl border space-y-4 transition-all ${darkMode ? 'bg-[#1b1b22] border-white/[0.06]' : 'bg-white border-gray-200 shadow-sm'
-                    }`}>
-                    <h5 className={`font-extrabold text-xs uppercase tracking-wider ${darkMode ? 'text-white/40' : 'text-gray-500'}`}>Related Products</h5>
-                    <div className={`divide-y space-y-3 ${darkMode ? 'divide-white/5' : 'divide-gray-200'}`}>
-                      {result.shopping.slice(0, 3).map((prod, idx) => (
-                        <div key={idx} className="pt-3 first:pt-0 flex flex-col gap-1">
-                          <span className="text-sm font-black text-emerald-500">{prod.price}</span>
-                          <a href={prod.link} target="_blank" rel="noreferrer" className={`text-xs font-semibold leading-snug hover:underline block ${darkMode ? 'text-white hover:text-blue-400' : 'text-gray-800 hover:text-blue-700'}`}>
-                            {prod.title}
-                          </a>
-                          <span className={`text-[10px] font-semibold ${darkMode ? 'text-white/30' : 'text-gray-500'}`}>{prod.merchant}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
 
-           
+
+
 
               </div>
 

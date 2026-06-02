@@ -332,6 +332,10 @@ class CookieSearchPool {
         ]) {
           const el = $(sel).first();
           if (el.length && cleanText(el.text()).length > 20) {
+            const txt = el.text();
+            if (txt.includes('AI Overview is not available') || txt.includes("Can't generate an AI overview")) {
+              continue;
+            }
             if (
               el.find('[href*="/maps/"]').length ||
               el.find('.YzSd').length ||

@@ -579,6 +579,10 @@ export async function searchViaPool(
         ]) {
           const el = document.querySelector(sel);
           if (el && (el as HTMLElement).innerText?.trim().length > 20) {
+            const txt = (el as HTMLElement).innerText;
+            if (txt.includes('AI Overview is not available') || txt.includes("Can't generate an AI overview")) {
+              continue;
+            }
             // Filter out maps/places listing blocks incorrectly matched by generic card wrapper selectors
             if (
               el.querySelector('[href*="/maps/"]') ||
