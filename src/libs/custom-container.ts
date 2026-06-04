@@ -15,7 +15,8 @@ export async function startCustomContainer(
   domainMode: 'quick' | 'custom' = 'quick',
   customDomain?: string,
   requestedHostPort?: number,
-  tunnelToken?: string
+  tunnelToken?: string,
+  existingSessionId?: string
 ): Promise<{ url?: string; containerName?: string; error?: string }> {
   try {
     // Check docker version first to verify docker is installed
@@ -25,9 +26,11 @@ export async function startCustomContainer(
       return { error: 'Docker is not installed or not running on the host system.' };
     }
 
-    const hash = crypto.randomBytes(4).toString('hex');
-    const sessionId = `docker-${hash}`;
-    const webhookSecret = crypto.randomBytes(16).toString('hex');
+    const hash = existingSessionId ? existingSessionId.replace(/^docker-/, '') : crypto.randomBytes(4).toString('hex');
+    const sessionId = existingSessionId || `docker-${hash}`;
+    const webhookSecret = existingSessionId 
+      ? (sessionManager.getSession(existingSessionId)?.metadata?.webhookSecret || crypto.randomBytes(16).toString('hex'))
+      : crypto.randomBytes(16).toString('hex');
     const cleanName = (name || 'custom-app').replace(/[^a-zA-Z0-9_-]/g, '_');
     const containerName = `docker-custom-${cleanName}-${hash}`;
     const hostPort = requestedHostPort && requestedHostPort > 0 ? requestedHostPort : nextPort++;
@@ -70,7 +73,12 @@ export async function startCustomContainer(
 
         tunnelProcess.on('close', (code: any) => {
           console.log(`[Docker Deploy] Named tunnel closed with code ${code}`);
-          sessionManager.removeSession(sessionId);
+          const currentSession = sessionManager.getSession(sessionId);
+          if (currentSession?.metadata?.tunnelPid === tunnelProcess.pid) {
+            sessionManager.removeSession(sessionId);
+          } else {
+            console.log(`[Docker Deploy] Old tunnel closed for session ${sessionId}, ignoring removal.`);
+          }
         });
       }
 
@@ -137,7 +145,12 @@ export async function startCustomContainer(
 
       tunnelProcess.on('close', (code) => {
         console.log(`[Docker Deploy] Cloudflare tunnel process closed with code ${code}`);
-        sessionManager.removeSession(sessionId);
+        const currentSession = sessionManager.getSession(sessionId);
+        if (currentSession?.metadata?.tunnelPid === tunnelProcess.pid) {
+          sessionManager.removeSession(sessionId);
+        } else {
+          console.log(`[Docker Deploy] Old quick tunnel closed for session ${sessionId}, ignoring removal.`);
+        }
       });
 
       setTimeout(async () => {
@@ -220,7 +233,12 @@ export async function restoreDockerContainers(): Promise<void> {
           ]);
 
           tunnelProcess.on('close', () => {
-            sessionManager.removeSession(session.id);
+            const currentSession = sessionManager.getSession(session.id);
+            if (currentSession?.metadata?.tunnelPid === tunnelProcess.pid) {
+              sessionManager.removeSession(session.id);
+            } else {
+              console.log(`[Docker Restore] Old tunnel closed for session ${session.id}, ignoring removal.`);
+            }
           });
 
           session.metadata = {
@@ -256,7 +274,12 @@ export async function restoreDockerContainers(): Promise<void> {
       });
 
       tunnelProcess.on('close', () => {
-        sessionManager.removeSession(session.id);
+        const currentSession = sessionManager.getSession(session.id);
+        if (currentSession?.metadata?.tunnelPid === tunnelProcess.pid) {
+          sessionManager.removeSession(session.id);
+        } else {
+          console.log(`[Docker Restore] Old quick tunnel closed for session ${session.id}, ignoring removal.`);
+        }
       });
 
       // Bind dynamic tunnel process object to in-memory session (if desired)

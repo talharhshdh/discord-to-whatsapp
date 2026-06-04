@@ -608,6 +608,74 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     return;
   }
 
+  // ── POST /api/sessions/docker/update ──────────────────────────────────────
+  if (method === 'POST' && url === '/api/sessions/docker/update') {
+    try {
+      const body = await parseJsonBody(req);
+      const sessionId = body['sessionId'] as string;
+      const image = body['image'] as string;
+      const port = Number(body['port']);
+      const env = (body['env'] || {}) as Record<string, string>;
+      const name = body['name'] as string | undefined;
+      const domainMode = (body['domainMode'] || 'quick') as 'quick' | 'custom';
+      const customDomain = body['customDomain'] as string | undefined;
+      const hostPort = body['hostPort'] ? Number(body['hostPort']) : undefined;
+      const tunnelToken = body['tunnelToken'] as string | undefined;
+
+      if (!sessionId) return err(res, 'sessionId is required', 400);
+      if (!image) return err(res, 'image is required', 400);
+      if (!port || isNaN(port)) return err(res, 'port is required and must be a number', 400);
+
+      const { sessionManager } = require('./session-manager');
+      const session = sessionManager.getSession(sessionId);
+      if (!session || session.type !== 'docker-container') {
+        return err(res, 'Docker session not found', 404);
+      }
+
+      // Stop current running container
+      const oldContainerName = session.metadata?.containerName;
+      if (oldContainerName) {
+        const { exec } = require('child_process');
+        const util = require('util');
+        const execAsync = util.promisify(exec);
+        try {
+          console.log(`[Docker Update] Stopping old container ${oldContainerName}...`);
+          await execAsync(`docker stop ${oldContainerName}`);
+        } catch (e) {
+          console.warn('Failed to stop old container:', e);
+        }
+      }
+
+      // Kill current tunnel process
+      const oldTunnelPid = session.metadata?.tunnelPid;
+      if (oldTunnelPid) {
+        try {
+          console.log(`[Docker Update] Killing old tunnel process PID ${oldTunnelPid}...`);
+          process.kill(oldTunnelPid);
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      // Start new container with same sessionId
+      const result = await startCustomContainer(
+        image,
+        port,
+        env,
+        name,
+        domainMode,
+        customDomain,
+        hostPort,
+        tunnelToken,
+        sessionId
+      );
+
+      if (result.error) return err(res, result.error);
+      json(res, result);
+    } catch (e) { err(res, (e as Error).message); }
+    return;
+  }
+
   // ── GET/POST /api/webhook/docker/<sessionId> ───────────────────────────────
   if ((method === 'GET' || method === 'POST') && url.startsWith('/api/webhook/docker/')) {
     try {
