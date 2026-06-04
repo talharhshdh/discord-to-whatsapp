@@ -10,7 +10,7 @@ import path from 'path';
 
 export interface Session {
   id: string;
-  type: 'browser' | 'terminal' | 'vscode' | 'android' | 'custom-browser';
+  type: 'browser' | 'terminal' | 'vscode' | 'android' | 'custom-browser' | 'docker-container';
   url: string;
   username?: string;
   password?: string;
@@ -20,6 +20,7 @@ export interface Session {
     containerName?: string;
     targetUrl?: string; // For custom-browser
     tunnelProcess?: ChildProcess;
+    tunnelPid?: number;
     cloudflaredUrl?: string; // Store cloudflared tunnel URL
   };
 }

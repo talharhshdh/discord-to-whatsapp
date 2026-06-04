@@ -45,6 +45,8 @@ import type { WebhookPayload } from './browser-pool';
 import { searchPlacesViaPool, searchPlacesStream, searchViaGoogleSearchUrl, searchViaGoogleSearchStream } from './google-places-search';
 import { acquirePage, releasePage } from './page-pool';
 import { cookieSearchPool } from './cookie-search-pool';
+import { saveStateToR2 } from './r2-sync';
+import { startCustomContainer } from './custom-container';
 
 const Corrosion = require('corrosion');
 const webProxy = new Corrosion({
@@ -293,6 +295,83 @@ function binary(res: ServerResponse, buffer: Buffer, mimeType: string, filename:
   res.end(buffer);
 }
 
+// ── Environment Variable Helpers ──────────────────────────────────────────────
+
+function readEnvFile(): Record<string, string> {
+  const envPath = join(__dirname, '..', '..', '.env');
+  const config: Record<string, string> = {};
+  if (!existsSync(envPath)) return config;
+
+  const content = readFileSync(envPath, 'utf8');
+  const lines = content.split('\n');
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+
+    const firstEq = trimmed.indexOf('=');
+    if (firstEq === -1) continue;
+
+    const key = trimmed.substring(0, firstEq).trim();
+    let val = trimmed.substring(firstEq + 1).trim();
+
+    if (val.startsWith('"') && val.endsWith('"')) {
+      val = val.slice(1, -1);
+    } else if (val.startsWith("'") && val.endsWith("'")) {
+      val = val.slice(1, -1);
+    }
+
+    config[key] = val;
+  }
+
+  return config;
+}
+
+function writeEnvFile(newConfig: Record<string, string>): void {
+  const envPath = join(__dirname, '..', '..', '.env');
+  const existingConfig = readEnvFile();
+  const mergedConfig = { ...existingConfig, ...newConfig };
+
+  let currentContent = '';
+  if (existsSync(envPath)) {
+    currentContent = readFileSync(envPath, 'utf8');
+  }
+
+  const lines = currentContent.split('\n');
+  const writtenKeys = new Set<string>();
+  const outputLines: string[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('#') || !trimmed) {
+      outputLines.push(line);
+      continue;
+    }
+
+    const firstEq = trimmed.indexOf('=');
+    if (firstEq === -1) {
+      outputLines.push(line);
+      continue;
+    }
+
+    const key = trimmed.substring(0, firstEq).trim();
+    if (key in mergedConfig) {
+      outputLines.push(`${key}=${mergedConfig[key]}`);
+      writtenKeys.add(key);
+    } else {
+      outputLines.push(line);
+    }
+  }
+
+  for (const [key, val] of Object.entries(mergedConfig)) {
+    if (!writtenKeys.has(key)) {
+      outputLines.push(`${key}=${val}`);
+    }
+  }
+
+  writeFileSync(envPath, outputLines.join('\n'), 'utf8');
+}
+
 // ── Route handler ─────────────────────────────────────────────────────────────
 
 async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -462,6 +541,25 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       const result = await startBrowser();
       if (result.error) return err(res, result.error);
       if (result.url) registerUrl('browser', '🌐 Cloud Browser', result.url, { username: result.username, password: result.password });
+      json(res, result);
+    } catch (e) { err(res, (e as Error).message); }
+    return;
+  }
+
+  // ── POST /api/sessions/docker ─────────────────────────────────────────────
+  if (method === 'POST' && url === '/api/sessions/docker') {
+    try {
+      const body = await parseJsonBody(req);
+      const image = body['image'] as string;
+      const port = Number(body['port']);
+      const env = (body['env'] || {}) as Record<string, string>;
+      const name = body['name'] as string | undefined;
+
+      if (!image) return err(res, 'image is required', 400);
+      if (!port || isNaN(port)) return err(res, 'port is required and must be a number', 400);
+
+      const result = await startCustomContainer(image, port, env, name);
+      if (result.error) return err(res, result.error);
       json(res, result);
     } catch (e) { err(res, (e as Error).message); }
     return;
@@ -831,6 +929,29 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         const { stopAndroidEmulator } = require('./android-emulator');
         const result = await stopAndroidEmulator();
         json(res, result);
+      } else if (session.type === 'docker-container') {
+        const containerName = session.metadata?.containerName;
+        if (containerName) {
+          const { exec } = require('child_process');
+          const util = require('util');
+          const execAsync = util.promisify(exec);
+          try {
+            await execAsync(`docker stop ${containerName}`);
+          } catch (e) {
+            console.error('Failed to stop docker container:', e);
+          }
+        }
+        // Kill tunnel process
+        const tunnelPid = session.metadata?.tunnelPid;
+        if (tunnelPid) {
+          try {
+            process.kill(tunnelPid);
+          } catch (e) {
+            // ignore
+          }
+        }
+        sessionManager.removeSession(sessionId);
+        json(res, { success: true, message: 'Docker container stopped and resources cleaned up.' });
       } else {
         json(res, { success: false, message: 'Cannot stop this session type yet' });
       }
@@ -1120,6 +1241,62 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       if (!res.headersSent) err(res, (e as Error).message);
       else if (!res.writableEnded) res.end();
     }
+    return;
+  }
+
+  // ── GET /api/config ────────────────────────────────────────────────────────
+  if (method === 'GET' && url === '/api/config') {
+    try {
+      const config = readEnvFile();
+      const responseConfig: Record<string, string> = {};
+      for (const [k, v] of Object.entries(config)) {
+        if (['R2_SECRET_ACCESS_KEY', 'R2_ACCESS_KEY_ID'].includes(k)) {
+          responseConfig[k] = '••••••••••••••••';
+        } else {
+          responseConfig[k] = v;
+        }
+      }
+      json(res, responseConfig);
+    } catch (e) { err(res, (e as Error).message); }
+    return;
+  }
+
+  // ── POST /api/config ───────────────────────────────────────────────────────
+  if (method === 'POST' && url === '/api/config') {
+    try {
+      const body = await parseJsonBody(req) as Record<string, string>;
+      const cleanedConfig: Record<string, string> = {};
+      for (const [k, v] of Object.entries(body)) {
+        if (v === '••••••••••••••••') {
+          continue;
+        }
+        cleanedConfig[k] = v;
+      }
+
+      writeEnvFile(cleanedConfig);
+
+      // Update in-memory process.env
+      for (const [k, v] of Object.entries(cleanedConfig)) {
+        process.env[k] = v;
+      }
+
+      console.log('[Dashboard Config] Environment variables saved. Syncing to R2...');
+      saveStateToR2().catch(e => {
+        console.error('❌ Background R2 sync failed:', e);
+      });
+
+      json(res, { success: true, message: 'Configuration saved and R2 sync triggered.' });
+    } catch (e) { err(res, (e as Error).message); }
+    return;
+  }
+
+  // ── POST /api/config/sync ──────────────────────────────────────────────────
+  if (method === 'POST' && url === '/api/config/sync') {
+    try {
+      console.log('[Dashboard Config] Manual R2 sync triggered...');
+      const result = await saveStateToR2();
+      json(res, result);
+    } catch (e) { err(res, (e as Error).message); }
     return;
   }
 

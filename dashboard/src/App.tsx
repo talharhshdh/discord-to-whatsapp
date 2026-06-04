@@ -16,6 +16,7 @@ const PlacesPanel = React.lazy(() => import('./components/PlacesPanel'));
 const GoogleClonePanel = React.lazy(() => import('./components/GoogleClonePanel'));
 const WebProxyPanel = React.lazy(() => import('./components/WebProxyPanel'));
 const PoolPanel = React.lazy(() => import('./components/PoolPanel'));
+const ConfigPanel = React.lazy(() => import('./components/ConfigPanel'));
 
 
 
@@ -57,6 +58,7 @@ const NAV_CATEGORIES: NavCategory[] = [
       { id: 'manager',   label: 'Session Manager', icon: '📊' },
       { id: 'android',   label: 'Android',        icon: '📱' },
       { id: 'urls',      label: 'Live URLs',      icon: '🔗' },
+      { id: 'config',    label: 'Configurations', icon: '⚙️' },
     ]
   },
   {
@@ -521,6 +523,7 @@ export default function App() {
                   {section === 'pool' && <PoolPanel />}
                   {section === 'tts' && <TTSPanel />}
                   {section === 'web-proxy' && <WebProxyPanel />}
+                  {section === 'config' && <ConfigPanel />}
                 </React.Suspense>
               </div>
             </div>

@@ -171,6 +171,40 @@ async function startBrowserInstance(targetUrl?: string): Promise<{
       console.error('⚠️ socat sidecar failed to start (CDP may be unavailable):', e);
     }
 
+    // ── Mode 1b: Multiplexed / exposed through main tunnel ──────────────────────
+    if (BROWSER_DOMAIN && !BROWSER_TUNNEL_TOKEN) {
+      const cloudflareUrl = `https://${BROWSER_DOMAIN}`;
+      const instanceId = targetUrl || 'general';
+      browserInstances.set(instanceId, {
+        url: cloudflareUrl,
+        username,
+        password,
+        port,
+        cdpPort,
+        containerName,
+        tunnelProcess: null as any,
+        targetUrl,
+      });
+
+      if (targetUrl) {
+        const sessions = sessionManager.getSessionsByType('custom-browser');
+        const session = sessions.find(s => s.metadata?.targetUrl === targetUrl);
+        if (session) {
+          sessionManager.updateSessionMetadata(session.id, { cloudflaredUrl: cloudflareUrl });
+        }
+      }
+
+      (async () => {
+        const signedIn = await signIntoGoogle(cdpPort);
+        if (signedIn) {
+          const cookieResult = await exportYouTubeCookies();
+          console.log(`[Auto] Cookie export: ${cookieResult.message}`);
+        }
+      })().catch(e => console.error('[Auto] Google/Cookie pipeline error:', e));
+
+      return { url: cloudflareUrl, username, password };
+    }
+
     // ── Mode 1: Named tunnel with fixed custom domain ──────────────────────────
     if (BROWSER_TUNNEL_TOKEN && BROWSER_DOMAIN) {
       return new Promise((resolve) => {
@@ -509,7 +543,7 @@ export async function stopBrowser(sessionId?: string): Promise<{ success: boolea
 
       const instance = browserInstances.get(session.metadata?.targetUrl || '');
       if (instance) {
-        instance.tunnelProcess.kill();
+        if (instance.tunnelProcess) instance.tunnelProcess.kill();
         await execAsync(`docker rm -f ${instance.containerName}-cdp-proxy`).catch(() => { });
         await execAsync(`docker stop ${instance.containerName}`);
         browserInstances.delete(session.metadata?.targetUrl || '');
@@ -524,7 +558,7 @@ export async function stopBrowser(sessionId?: string): Promise<{ success: boolea
         return { success: false, message: 'No general browser running' };
       }
 
-      general.tunnelProcess.kill();
+      if (general.tunnelProcess) general.tunnelProcess.kill();
       await execAsync(`docker rm -f ${general.containerName}-cdp-proxy`).catch(() => { });
       await execAsync(`docker stop ${general.containerName}`);
       browserInstances.delete('general');

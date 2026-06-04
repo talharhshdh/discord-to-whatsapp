@@ -2,9 +2,14 @@
  *
  * The React build is served statically by the same dashboard-server that
  * handles all /api/* routes. Both are exposed through the same Cloudflare
- * tunnel, so the browser always hits the right origin — no base URL config needed.
+ * tunnel — no base URL config needed.
  */
-export const BASE = 'https://services.ufone-claim.site';
+export let BASE = '';
+
+export function setBase(url: string) {
+  BASE = url;
+}
+
 function getAuthHeaders(): Record<string, string> {
   const token = localStorage.getItem('dashboard_token');
   return token ? { 'Authorization': `Basic ${token}` } : {};
@@ -261,6 +266,8 @@ export const api = {
   startTerminal: () => post<SessionResult>('/api/sessions/terminal', {}),
   startVSCode: () => post<SessionResult>('/api/sessions/vscode', {}),
   startBrowser: () => post<SessionResult>('/api/sessions/browser', {}),
+  startDocker: (image: string, port: number, env: Record<string, string>, name?: string) =>
+    post<SessionResult>('/api/sessions/docker', { image, port, env, name }),
 
   removeBg: (file: File) => {
     const fd = new FormData(); fd.append('file', file);
@@ -431,4 +438,14 @@ export const api = {
 
   ttsDesign: (text: string, style: string, language: string = 'Auto') =>
     postBinary('/api/tts/design', { text, style, language }),
+
+  // ── Configuration ─────────────────────────────────────────────────────────
+  getConfig: () => authFetch(`${BASE}/api/config`).then(r => {
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json() as Promise<Record<string, string>>;
+  }),
+  saveConfig: (config: Record<string, string>) =>
+    post<{ success: boolean; message: string }>('/api/config', config),
+  syncConfig: () =>
+    post<{ success: boolean; message: string }>('/api/config/sync', {}),
 };

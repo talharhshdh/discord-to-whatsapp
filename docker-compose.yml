@@ -7,9 +7,10 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    ports:
+      - "4000:4000" # Expose the control panel dashboard port
     volumes:
-      # Persist WhatsApp authentication
+      # Persist WhatsApp authentication state
       - ./auth_info:/app/auth_info
-    # Optional: if you need to expose ports
-    # ports:
-    #   - "3000:3000"
+      # Optional: persist the local .env changes back to the host machine
+      - ./.env:/app/.env

@@ -24,6 +24,12 @@ export default function SessionsManagerPanel() {
   const [customUrl, setCustomUrl] = useState('');
   const [result, setResult] = useState('');
 
+  // Custom Docker deploy states
+  const [dockerImage, setDockerImage] = useState('');
+  const [dockerPort, setDockerPort] = useState('80');
+  const [dockerName, setDockerName] = useState('');
+  const [dockerEnv, setDockerEnv] = useState('');
+
   const loadSessions = async () => {
     try {
       const res = await fetch(`${BASE}/api/sessions/all`);
@@ -89,6 +95,60 @@ export default function SessionsManagerPanel() {
     }
   };
 
+  const deployCustomContainer = async () => {
+    if (!dockerImage) {
+      setResult('❌ Please enter a Docker Image URI');
+      return;
+    }
+    const portNum = parseInt(dockerPort, 10);
+    if (isNaN(portNum) || portNum <= 0) {
+      setResult('❌ Please enter a valid container port number');
+      return;
+    }
+
+    setLoading(true);
+    setResult('');
+    try {
+      // Parse env variables
+      const envObj: Record<string, string> = {};
+      dockerEnv.split('\n').forEach(line => {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) return;
+        const eqIdx = trimmed.indexOf('=');
+        if (eqIdx !== -1) {
+          const k = trimmed.substring(0, eqIdx).trim();
+          const v = trimmed.substring(eqIdx + 1).trim();
+          envObj[k] = v;
+        }
+      });
+
+      const res = await fetch(`${BASE}/api/sessions/docker`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          image: dockerImage,
+          port: portNum,
+          env: envObj,
+          name: dockerName || undefined
+        }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        setResult(`❌ ${data.error}`);
+      } else {
+        setResult(`✅ Docker container started!\n\n🌐 Live URL: ${data.url}\n🐋 Container: ${data.containerName}`);
+        setDockerImage('');
+        setDockerName('');
+        setDockerEnv('');
+        await loadSessions();
+      }
+    } catch (err: any) {
+      setResult(`❌ Error: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const totalSessions = sessions.length + browsers.length + (android ? 1 : 0);
   
   // Group sessions by type
@@ -96,6 +156,7 @@ export default function SessionsManagerPanel() {
   const terminalSessions = sessions.filter(s => s.type === 'terminal');
   const vscodeSessions = sessions.filter(s => s.type === 'vscode');
   const browserSessions = sessions.filter(s => s.type === 'browser');
+  const dockerSessions = sessions.filter(s => s.type === 'docker-container');
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -124,7 +185,7 @@ export default function SessionsManagerPanel() {
       )}
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
         <div className="glass rounded-xl p-3 sm:p-4 border border-white/[0.07]">
           <div className="text-white/40 text-[10px] sm:text-xs mb-1">Total</div>
           <div className="text-xl sm:text-2xl font-bold text-white">{totalSessions}</div>
@@ -140,6 +201,10 @@ export default function SessionsManagerPanel() {
         <div className="glass rounded-xl p-3 sm:p-4 border border-white/[0.07]">
           <div className="text-white/40 text-[10px] sm:text-xs mb-1">Browsers</div>
           <div className="text-xl sm:text-2xl font-bold text-teal-400">{customBrowserSessions.length + browsers.length}</div>
+        </div>
+        <div className="glass rounded-xl p-3 sm:p-4 border border-white/[0.07]">
+          <div className="text-white/40 text-[10px] sm:text-xs mb-1">Docker Apps</div>
+          <div className="text-xl sm:text-2xl font-bold text-indigo-400">{dockerSessions.length}</div>
         </div>
         <div className="glass rounded-xl p-3 sm:p-4 border border-white/[0.07] col-span-2 sm:col-span-1">
           <div className="text-white/40 text-[10px] sm:text-xs mb-1">Android</div>
@@ -170,6 +235,110 @@ export default function SessionsManagerPanel() {
           Creates an isolated browser session that opens only this URL
         </p>
       </div>
+
+      {/* Deploy Custom Docker Container */}
+      <div className="glass rounded-2xl p-5 border border-white/[0.07] space-y-3">
+        <h3 className="text-sm font-semibold text-white">🐋 Deploy Custom Docker Container</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <div className="flex flex-col space-y-1">
+            <span className="text-[10px] text-white/40 font-bold uppercase text-xs">Image URI</span>
+            <input
+              type="text"
+              value={dockerImage}
+              onChange={(e) => setDockerImage(e.target.value)}
+              placeholder="e.g. ghost:alpine or nginx:latest"
+              className="px-3 py-2 rounded-lg bg-white/[0.05] border border-white/10 text-white text-sm focus:outline-none focus:border-teal-500"
+            />
+          </div>
+          <div className="flex flex-col space-y-1">
+            <span className="text-[10px] text-white/40 font-bold uppercase text-xs">Container Port</span>
+            <input
+              type="number"
+              value={dockerPort}
+              onChange={(e) => setDockerPort(e.target.value)}
+              placeholder="Container port (e.g. 2368)"
+              className="px-3 py-2 rounded-lg bg-white/[0.05] border border-white/10 text-white text-sm focus:outline-none focus:border-teal-500"
+            />
+          </div>
+          <div className="flex flex-col space-y-1">
+            <span className="text-[10px] text-white/40 font-bold uppercase text-xs">Instance Name (Optional)</span>
+            <input
+              type="text"
+              value={dockerName}
+              onChange={(e) => setDockerName(e.target.value)}
+              placeholder="e.g. my-ghost-blog"
+              className="px-3 py-2 rounded-lg bg-white/[0.05] border border-white/10 text-white text-sm focus:outline-none focus:border-teal-500"
+            />
+          </div>
+        </div>
+        <div className="flex flex-col space-y-1">
+          <span className="text-[10px] text-white/40 font-bold uppercase text-xs">Environment Variables</span>
+          <textarea
+            value={dockerEnv}
+            onChange={(e) => setDockerEnv(e.target.value)}
+            placeholder="KEY=VALUE (one per line, e.g. NODE_ENV=production)"
+            rows={3}
+            className="w-full px-3 py-2 rounded-lg bg-white/[0.05] border border-white/10 text-white text-sm focus:outline-none focus:border-teal-500 font-mono"
+          />
+        </div>
+        <div className="flex justify-end">
+          <button
+            onClick={deployCustomContainer}
+            disabled={loading}
+            className="px-4 py-2 rounded-lg bg-indigo-500/20 border border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/30 disabled:opacity-50 transition-all text-sm font-medium"
+          >
+            {loading ? '⏳ Deploying Container...' : '🚀 Run Instance'}
+          </button>
+        </div>
+        <p className="text-xs text-white/40">
+          Pulls the image from Docker Hub, spins up a secure container, and generates a Cloudflare tunnel URL instantly.
+        </p>
+      </div>
+
+      {/* Custom Docker Sessions */}
+      {dockerSessions.length > 0 && (
+        <div className="glass rounded-2xl p-5 border border-white/[0.07]">
+          <h3 className="text-sm font-semibold text-white mb-3">🐋 Running Custom Docker Instances</h3>
+          <div className="space-y-2">
+            {dockerSessions.map((session) => (
+              <div key={session.id} className="bg-white/[0.03] rounded-lg p-3 border border-white/[0.05]">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0 space-y-2">
+                    <div className="text-white text-sm font-medium truncate">
+                      {session.metadata?.targetUrl || 'Custom Container'}
+                    </div>
+                    <div className="text-xs text-white/60 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-white/40">🔗 Live URL:</span>
+                        <button
+                          onClick={() => copyToClipboard(session.metadata?.cloudflaredUrl || session.url)}
+                          className="text-teal-400 hover:text-teal-300 truncate flex-1 text-left font-mono"
+                        >
+                          {session.metadata?.cloudflaredUrl || session.url}
+                        </button>
+                      </div>
+                      {session.metadata?.containerName && (
+                        <div className="text-white/40">📦 Container Name: <span className="font-mono text-white/80 select-all">{session.metadata.containerName}</span></div>
+                      )}
+                      {session.metadata?.port && (
+                        <div className="text-white/40">🔌 Local Host Port: {session.metadata.port}</div>
+                      )}
+                      <div className="text-white/40">⏱️ Started: {new Date(session.startedAt).toLocaleString()}</div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => stopSession(session.id, session.type)}
+                    disabled={loading}
+                    className="px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 disabled:opacity-50 transition-all text-xs font-semibold"
+                  >
+                    Stop / Terminate
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Terminal Sessions */}
       {terminalSessions.length > 0 && (
