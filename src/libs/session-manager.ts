@@ -7,6 +7,7 @@
 import { ChildProcess } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import { saveStateToR2 } from './r2-sync';
 
 export interface Session {
   id: string;
@@ -17,11 +18,18 @@ export interface Session {
   startedAt: Date;
   metadata?: {
     port?: number;
+    hostPort?: number;
     containerName?: string;
     targetUrl?: string; // For custom-browser
+    image?: string;
+    env?: Record<string, string>;
+    domainMode?: 'quick' | 'custom';
+    customDomain?: string;
     tunnelProcess?: ChildProcess;
     tunnelPid?: number;
     cloudflaredUrl?: string; // Store cloudflared tunnel URL
+    webhookSecret?: string;
+    tunnelToken?: string;
   };
 }
 
@@ -85,6 +93,11 @@ class SessionManager {
       });
 
       fs.writeFileSync(SESSIONS_FILE, JSON.stringify(serializableSessions, null, 2), 'utf-8');
+      
+      // Async R2 sync so the cloud backup is immediately up-to-date
+      saveStateToR2().catch(err => {
+        console.error('[SessionManager] Failed to sync session state to Cloudflare R2:', err);
+      });
     } catch (error) {
       console.error('❌ Failed to save sessions to disk:', error);
     }

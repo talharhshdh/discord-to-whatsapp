@@ -46,7 +46,7 @@ import { searchPlacesViaPool, searchPlacesStream, searchViaGoogleSearchUrl, sear
 import { acquirePage, releasePage } from './page-pool';
 import { cookieSearchPool } from './cookie-search-pool';
 import { saveStateToR2 } from './r2-sync';
-import { startCustomContainer } from './custom-container';
+import { startCustomContainer, restoreDockerContainers } from './custom-container';
 
 const Corrosion = require('corrosion');
 const webProxy = new Corrosion({
@@ -372,6 +372,8 @@ function writeEnvFile(newConfig: Record<string, string>): void {
   writeFileSync(envPath, outputLines.join('\n'), 'utf8');
 }
 
+const gzipCache = new Map<string, { mtime: number; content: Buffer }>();
+
 // ── Route handler ─────────────────────────────────────────────────────────────
 
 async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -405,8 +407,40 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       if (existsSync(filePath)) {
         const ext = filePath.substring(filePath.lastIndexOf('.'));
         const ct = MIME[ext] ?? 'application/octet-stream';
-        res.writeHead(200, { 'Content-Type': ct, 'Access-Control-Allow-Origin': '*' });
-        res.end(readFileSync(filePath));
+
+        try {
+          const stat = require('fs').statSync(filePath);
+          const mtime = stat.mtimeMs;
+          const fileContent = readFileSync(filePath);
+
+          const acceptEncoding = req.headers['accept-encoding'] || '';
+          if (acceptEncoding.includes('gzip') && ['.html', '.js', '.css', '.json', '.svg'].includes(ext)) {
+            let cached = gzipCache.get(filePath);
+            if (!cached || cached.mtime !== mtime) {
+              const { gzipSync } = require('zlib');
+              const compressed = gzipSync(fileContent);
+              cached = { mtime, content: compressed };
+              gzipCache.set(filePath, cached);
+            }
+            res.writeHead(200, {
+              'Content-Type': ct,
+              'Content-Encoding': 'gzip',
+              'Access-Control-Allow-Origin': '*',
+              'Cache-Control': 'public, max-age=31536000',
+            });
+            res.end(cached.content);
+          } else {
+            res.writeHead(200, {
+              'Content-Type': ct,
+              'Access-Control-Allow-Origin': '*',
+              'Cache-Control': 'public, max-age=31536000',
+            });
+            res.end(fileContent);
+          }
+        } catch (e) {
+          res.writeHead(500);
+          res.end('Server error');
+        }
         return;
       }
     }
@@ -418,7 +452,12 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   const usernameEnv = process.env.DASHBOARD_USERNAME;
   const passwordEnv = process.env.DASHBOARD_PASSWORD;
 
-  if (url.startsWith('/api/') && url !== '/api/auth/login' && url !== '/api/browser/search' && url !== '/api/browser/cookie-search' && url !== '/api/browsers/webhook') {
+  if (url.startsWith('/api/') && 
+      url !== '/api/auth/login' && 
+      url !== '/api/browser/search' && 
+      url !== '/api/browser/cookie-search' && 
+      url !== '/api/browsers/webhook' &&
+      !url.startsWith('/api/webhook/docker/')) {
     if (usernameEnv && passwordEnv) {
       const expectedToken = Buffer.from(`${usernameEnv}:${passwordEnv}`).toString('base64');
       let providedToken: string | null = null;
@@ -554,14 +593,108 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       const port = Number(body['port']);
       const env = (body['env'] || {}) as Record<string, string>;
       const name = body['name'] as string | undefined;
+      const domainMode = (body['domainMode'] || 'quick') as 'quick' | 'custom';
+      const customDomain = body['customDomain'] as string | undefined;
+      const hostPort = body['hostPort'] ? Number(body['hostPort']) : undefined;
+      const tunnelToken = body['tunnelToken'] as string | undefined;
 
       if (!image) return err(res, 'image is required', 400);
       if (!port || isNaN(port)) return err(res, 'port is required and must be a number', 400);
 
-      const result = await startCustomContainer(image, port, env, name);
+      const result = await startCustomContainer(image, port, env, name, domainMode, customDomain, hostPort, tunnelToken);
       if (result.error) return err(res, result.error);
       json(res, result);
     } catch (e) { err(res, (e as Error).message); }
+    return;
+  }
+
+  // ── GET/POST /api/webhook/docker/<sessionId> ───────────────────────────────
+  if ((method === 'GET' || method === 'POST') && url.startsWith('/api/webhook/docker/')) {
+    try {
+      const urlObj = new URL(url, 'http://localhost');
+      const pathParts = urlObj.pathname.split('/');
+      const sessionId = pathParts[pathParts.length - 1];
+      const secret = urlObj.searchParams.get('secret');
+
+      const { sessionManager } = require('./session-manager');
+      const session = sessionManager.getSession(sessionId);
+
+      if (!session || session.type !== 'docker-container') {
+        return err(res, 'Session not found or invalid type', 404);
+      }
+
+      const meta = session.metadata as any;
+      if (!meta || meta.webhookSecret !== secret) {
+        return err(res, 'Invalid or missing webhook secret', 401);
+      }
+
+      // Respond immediately to avoid timing out the caller
+      json(res, { success: true, message: 'Redeploy task scheduled successfully' });
+
+      // Run redeploy asynchronously in the background
+      (async () => {
+        try {
+          console.log(`[Webhook Deploy] Starting redeploy for session ${sessionId} (${meta.image})...`);
+          
+          const { exec } = require('child_process');
+          const util = require('util');
+          const execAsync = util.promisify(exec);
+          
+          if (meta.containerName) {
+            try {
+              console.log(`[Webhook Deploy] Stopping container ${meta.containerName}...`);
+              await execAsync(`docker stop ${meta.containerName}`);
+            } catch (e) {
+              console.warn(`[Webhook Deploy] Warning while stopping container:`, e);
+            }
+          }
+
+          if (meta.tunnelPid) {
+            try {
+              process.kill(meta.tunnelPid);
+            } catch (e) {
+              // ignore
+            }
+          }
+
+          console.log(`[Webhook Deploy] Pulling latest image for ${meta.image}...`);
+          await execAsync(`docker pull ${meta.image}`);
+
+          const containerPort = meta.port;
+          const hostPort = meta.hostPort;
+          const env = meta.env || {};
+          const name = meta.containerName ? meta.containerName.replace(/^docker-custom-/, '').split('-')[0] : undefined;
+          const domainMode = meta.domainMode || 'quick';
+          const customDomain = meta.customDomain;
+          const tunnelToken = meta.tunnelToken;
+
+          console.log(`[Webhook Deploy] Launching new instance for ${meta.image}...`);
+          sessionManager.removeSession(sessionId);
+
+          const result = await startCustomContainer(
+            meta.image,
+            containerPort,
+            env,
+            name,
+            domainMode,
+            customDomain,
+            hostPort,
+            tunnelToken
+          );
+
+          if (result.error) {
+            console.error(`[Webhook Deploy] Failed to start container:`, result.error);
+          } else {
+            console.log(`[Webhook Deploy] Successfully redeployed ${meta.image}. New name: ${result.containerName}`);
+          }
+        } catch (redeployErr) {
+          console.error(`[Webhook Deploy] Error during redeploy:`, redeployErr);
+        }
+      })();
+
+    } catch (e) {
+      err(res, (e as Error).message);
+    }
     return;
   }
 
@@ -1867,5 +2000,10 @@ export async function startDashboard(localPort = 4000): Promise<string> {
   await startLocalServer(localPort);
   const publicUrl = await exposeDashboard(localPort);
   if (publicUrl) registerUrl('dashboard', '🖥️ Dashboard', publicUrl);
+  
+  restoreDockerContainers().catch(err => {
+    console.error('❌ Failed to restore docker containers:', err);
+  });
+
   return publicUrl;
 }

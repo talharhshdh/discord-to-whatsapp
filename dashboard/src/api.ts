@@ -266,8 +266,8 @@ export const api = {
   startTerminal: () => post<SessionResult>('/api/sessions/terminal', {}),
   startVSCode: () => post<SessionResult>('/api/sessions/vscode', {}),
   startBrowser: () => post<SessionResult>('/api/sessions/browser', {}),
-  startDocker: (image: string, port: number, env: Record<string, string>, name?: string) =>
-    post<SessionResult>('/api/sessions/docker', { image, port, env, name }),
+  startDocker: (image: string, port: number, env: Record<string, string>, name?: string, domainMode?: string, customDomain?: string) =>
+    post<SessionResult>('/api/sessions/docker', { image, port, env, name, domainMode, customDomain }),
 
   removeBg: (file: File) => {
     const fd = new FormData(); fd.append('file', file);

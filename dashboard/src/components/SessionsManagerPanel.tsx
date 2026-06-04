@@ -11,8 +11,10 @@ interface Session {
   metadata?: {
     targetUrl?: string;
     port?: number;
+    hostPort?: number;
     containerName?: string;
     cloudflaredUrl?: string;
+    webhookSecret?: string;
   };
 }
 
@@ -29,6 +31,10 @@ export default function SessionsManagerPanel() {
   const [dockerPort, setDockerPort] = useState('80');
   const [dockerName, setDockerName] = useState('');
   const [dockerEnv, setDockerEnv] = useState('');
+  const [domainMode, setDomainMode] = useState<'quick' | 'custom'>('quick');
+  const [customDomain, setCustomDomain] = useState('');
+  const [hostPort, setHostPort] = useState('15000');
+  const [tunnelToken, setTunnelToken] = useState('');
 
   const loadSessions = async () => {
     try {
@@ -105,6 +111,11 @@ export default function SessionsManagerPanel() {
       setResult('❌ Please enter a valid container port number');
       return;
     }
+    const hostPortNum = parseInt(hostPort, 10);
+    if (isNaN(hostPortNum) || hostPortNum <= 0) {
+      setResult('❌ Please enter a valid local host port number');
+      return;
+    }
 
     setLoading(true);
     setResult('');
@@ -129,7 +140,11 @@ export default function SessionsManagerPanel() {
           image: dockerImage,
           port: portNum,
           env: envObj,
-          name: dockerName || undefined
+          name: dockerName || undefined,
+          domainMode,
+          customDomain: domainMode === 'custom' ? customDomain : undefined,
+          hostPort: hostPortNum,
+          tunnelToken: domainMode === 'custom' ? (tunnelToken || undefined) : undefined,
         }),
       });
       const data = await res.json();
@@ -140,6 +155,8 @@ export default function SessionsManagerPanel() {
         setDockerImage('');
         setDockerName('');
         setDockerEnv('');
+        setCustomDomain('');
+        setTunnelToken('');
         await loadSessions();
       }
     } catch (err: any) {
@@ -239,8 +256,8 @@ export default function SessionsManagerPanel() {
       {/* Deploy Custom Docker Container */}
       <div className="glass rounded-2xl p-5 border border-white/[0.07] space-y-3">
         <h3 className="text-sm font-semibold text-white">🐋 Deploy Custom Docker Container</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-          <div className="flex flex-col space-y-1">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+          <div className="flex flex-col space-y-1 sm:col-span-2">
             <span className="text-[10px] text-white/40 font-bold uppercase text-xs">Image URI</span>
             <input
               type="text"
@@ -256,21 +273,68 @@ export default function SessionsManagerPanel() {
               type="number"
               value={dockerPort}
               onChange={(e) => setDockerPort(e.target.value)}
-              placeholder="Container port (e.g. 2368)"
+              placeholder="e.g. 80"
               className="px-3 py-2 rounded-lg bg-white/[0.05] border border-white/10 text-white text-sm focus:outline-none focus:border-teal-500"
             />
           </div>
+          <div className="flex flex-col space-y-1">
+            <span className="text-[10px] text-white/40 font-bold uppercase text-xs">Local Host Port</span>
+            <input
+              type="number"
+              value={hostPort}
+              onChange={(e) => setHostPort(e.target.value)}
+              placeholder="e.g. 15000"
+              className="px-3 py-2 rounded-lg bg-white/[0.05] border border-white/10 text-white text-sm focus:outline-none focus:border-teal-500"
+            />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <div className="flex flex-col space-y-1">
             <span className="text-[10px] text-white/40 font-bold uppercase text-xs">Instance Name (Optional)</span>
             <input
               type="text"
               value={dockerName}
               onChange={(e) => setDockerName(e.target.value)}
-              placeholder="e.g. my-ghost-blog"
+              placeholder="e.g. my-app"
               className="px-3 py-2 rounded-lg bg-white/[0.05] border border-white/10 text-white text-sm focus:outline-none focus:border-teal-500"
             />
           </div>
+          <div className="flex flex-col space-y-1">
+            <span className="text-[10px] text-white/40 font-bold uppercase text-xs">Domain Mode</span>
+            <select
+              value={domainMode}
+              onChange={(e) => setDomainMode(e.target.value as 'quick' | 'custom')}
+              className="px-3 py-2 rounded-lg bg-[#161a26] border border-white/10 text-white text-sm focus:outline-none focus:border-teal-500"
+            >
+              <option value="quick" className="bg-[#161a26]">Quick Tunnel (trycloudflare)</option>
+              <option value="custom" className="bg-[#161a26]">Custom Subdomain</option>
+            </select>
+          </div>
+          {domainMode === 'custom' && (
+            <div className="flex flex-col space-y-1 animate-in fade-in slide-in-from-top-1 duration-200">
+              <span className="text-[10px] text-white/40 font-bold uppercase text-xs">Custom Subdomain</span>
+              <input
+                type="text"
+                value={customDomain}
+                onChange={(e) => setCustomDomain(e.target.value)}
+                placeholder="e.g. whoami.ufone-claim.site"
+                className="px-3 py-2 rounded-lg bg-white/[0.05] border border-white/10 text-white text-sm focus:outline-none focus:border-teal-500"
+              />
+            </div>
+          )}
         </div>
+        {domainMode === 'custom' && (
+          <div className="flex flex-col space-y-1 animate-in fade-in slide-in-from-top-1 duration-200">
+            <span className="text-[10px] text-white/40 font-bold uppercase text-xs">Cloudflare Tunnel Token (Optional)</span>
+            <input
+              type="password"
+              value={tunnelToken}
+              onChange={(e) => setTunnelToken(e.target.value)}
+              placeholder="Paste your Cloudflare Tunnel Token to keep domain persistent across sessions"
+              className="w-full px-3 py-2 rounded-lg bg-white/[0.05] border border-white/10 text-white text-sm focus:outline-none focus:border-teal-500 font-mono"
+            />
+          </div>
+        )}
         <div className="flex flex-col space-y-1">
           <span className="text-[10px] text-white/40 font-bold uppercase text-xs">Environment Variables</span>
           <textarea
@@ -291,7 +355,7 @@ export default function SessionsManagerPanel() {
           </button>
         </div>
         <p className="text-xs text-white/40">
-          Pulls the image from Docker Hub, spins up a secure container, and generates a Cloudflare tunnel URL instantly.
+          Pulls the image from Docker Hub, spins up a secure container, and routes traffic via Cloudflare.
         </p>
       </div>
 
@@ -312,7 +376,7 @@ export default function SessionsManagerPanel() {
                         <span className="text-white/40">🔗 Live URL:</span>
                         <button
                           onClick={() => copyToClipboard(session.metadata?.cloudflaredUrl || session.url)}
-                          className="text-teal-400 hover:text-teal-300 truncate flex-1 text-left font-mono"
+                          className="text-teal-400 hover:text-teal-300 truncate flex-1 text-left font-mono text-xs"
                         >
                           {session.metadata?.cloudflaredUrl || session.url}
                         </button>
@@ -320,10 +384,22 @@ export default function SessionsManagerPanel() {
                       {session.metadata?.containerName && (
                         <div className="text-white/40">📦 Container Name: <span className="font-mono text-white/80 select-all">{session.metadata.containerName}</span></div>
                       )}
-                      {session.metadata?.port && (
-                        <div className="text-white/40">🔌 Local Host Port: {session.metadata.port}</div>
+                      {session.metadata?.hostPort && (
+                        <div className="text-white/40">🔌 Local Host Port: {session.metadata.hostPort}</div>
                       )}
                       <div className="text-white/40">⏱️ Started: {new Date(session.startedAt).toLocaleString()}</div>
+                      {session.metadata?.webhookSecret && (
+                        <div className="flex flex-col space-y-1 mt-2 pt-2 border-t border-white/[0.05]">
+                          <span className="text-[10px] text-white/40 font-bold uppercase">⚓ Re-deploy Webhook (POST/GET to rebuild image & restart):</span>
+                          <button
+                            onClick={() => copyToClipboard(`${window.location.origin}/api/webhook/docker/${session.id}?secret=${session.metadata?.webhookSecret}`)}
+                            className="text-indigo-400 hover:text-indigo-300 font-mono text-[10px] break-all text-left flex-1"
+                          >
+                            {`${window.location.origin}/api/webhook/docker/${session.id}?secret=${session.metadata?.webhookSecret}`}
+                          </button>
+                          <div className="text-white/30 text-[9px]">Secret ID: <span className="font-mono text-white/50 select-all">{session.metadata.webhookSecret}</span></div>
+                        </div>
+                      )}
                     </div>
                   </div>
                   <button
