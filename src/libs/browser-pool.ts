@@ -467,56 +467,64 @@ export async function searchViaPool(
       // ── Request interception: block heavy assets ───────────────────────
       page.removeAllListeners('request');
       await page.setRequestInterception(true);
-      page.on('request', (req: any) => {
-        if (req.isInterceptResolutionHandled()) return;
+      page.on('request', async (req: any) => {
+        try {
+          if (req.isInterceptResolutionHandled()) return;
 
-        const type = req.resourceType();
-        const url = req.url();
+          const type = req.resourceType();
+          const url = req.url();
 
-        // Never block the main document navigation
-        if (type === 'document') {
-          return req.continue();
+          // Never block the main document navigation
+          if (type === 'document') {
+            try { await req.continue(); } catch {}
+            return;
+          }
+
+          // Block unnecessary resource types
+          if (
+            [
+              'image',
+              'media',
+              'font',
+              'stylesheet',
+              'websocket',
+              'manifest',
+              'other',
+            ].includes(type)
+          ) {
+            try { await req.abort(); } catch {}
+            return;
+          }
+
+          // Block telemetry / tracking / analytics
+          if (
+            url.includes('gen_204') ||
+            url.includes('/log?') ||
+            url.includes('sodar') ||
+            url.includes('batchexecute') ||
+            url.includes('xjs=s') ||
+            url.includes('m=') ||
+            url.includes('async=') ||
+            url.includes('google-analytics') ||
+            url.includes('play.google.com/log') ||
+            url.includes('/gen_204') ||
+            url.includes('gws-wiz') ||
+            url.includes('clients1.google.com')
+          ) {
+            try { await req.abort(); } catch {}
+            return;
+          }
+
+          // Block JS entirely for maximum speed
+          if (['script', 'xhr', 'fetch'].includes(type)) {
+            try { await req.abort(); } catch {}
+            return;
+          }
+
+          try { await req.continue(); } catch {}
+        } catch (err) {
+          // ignore
         }
-
-        // Block unnecessary resource types
-        if (
-          [
-            'image',
-            'media',
-            'font',
-            'stylesheet',
-            'websocket',
-            'manifest',
-            'other',
-          ].includes(type)
-        ) {
-          return req.abort();
-        }
-
-        // Block telemetry / tracking / analytics
-        if (
-          url.includes('gen_204') ||
-          url.includes('/log?') ||
-          url.includes('sodar') ||
-          url.includes('batchexecute') ||
-          url.includes('xjs=s') ||
-          url.includes('m=') ||
-          url.includes('async=') ||
-          url.includes('google-analytics') ||
-          url.includes('play.google.com/log') ||
-          url.includes('/gen_204') ||
-          url.includes('gws-wiz') ||
-          url.includes('clients1.google.com')
-        ) {
-          return req.abort();
-        }
-
-        // Block JS entirely for maximum speed
-        if (['script', 'xhr', 'fetch'].includes(type)) {
-          return req.abort();
-        }
-
-        req.continue();
       });
 
       const startParam = (pageNumber - 1) * 10;

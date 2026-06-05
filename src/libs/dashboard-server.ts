@@ -46,7 +46,7 @@ import { searchPlacesViaPool, searchPlacesStream, searchViaGoogleSearchUrl, sear
 import { acquirePage, releasePage } from './page-pool';
 import { cookieSearchPool } from './cookie-search-pool';
 import { saveStateToR2 } from './r2-sync';
-import { startCustomContainer, restoreDockerContainers } from './custom-container';
+import { startCustomContainer, restoreDockerContainers, stopCustomContainer } from './custom-container';
 
 const Corrosion = require('corrosion');
 const webProxy = new Corrosion({
@@ -747,7 +747,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
             domainMode,
             customDomain,
             hostPort,
-            tunnelToken
+            tunnelToken,
+            sessionId
           );
 
           if (result.error) {
@@ -1131,28 +1132,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         const result = await stopAndroidEmulator();
         json(res, result);
       } else if (session.type === 'docker-container') {
-        const containerName = session.metadata?.containerName;
-        if (containerName) {
-          const { exec } = require('child_process');
-          const util = require('util');
-          const execAsync = util.promisify(exec);
-          try {
-            await execAsync(`docker stop ${containerName}`);
-          } catch (e) {
-            console.error('Failed to stop docker container:', e);
-          }
-        }
-        // Kill tunnel process
-        const tunnelPid = session.metadata?.tunnelPid;
-        if (tunnelPid) {
-          try {
-            process.kill(tunnelPid);
-          } catch (e) {
-            // ignore
-          }
-        }
-        sessionManager.removeSession(sessionId);
-        json(res, { success: true, message: 'Docker container stopped and resources cleaned up.' });
+        const result = await stopCustomContainer(sessionId);
+        json(res, result);
       } else {
         json(res, { success: false, message: 'Cannot stop this session type yet' });
       }

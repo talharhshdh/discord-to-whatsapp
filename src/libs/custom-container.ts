@@ -5,6 +5,12 @@ import { sessionManager } from './session-manager';
 
 const execAsync = util.promisify(exec);
 
+function getSanitizedEnv(key: string): string {
+  const raw = process.env[key];
+  if (!raw) return '';
+  return raw.trim().replace(/^['"]|['"]$/g, '').replace(/;$/, '').trim();
+}
+
 let nextPort = 15000;
 
 export async function startCustomContainer(
@@ -62,13 +68,214 @@ export async function startCustomContainer(
         return { error: 'Custom domain is required when domain mode is custom.' };
       }
       const targetUrl = customDomain.startsWith('http') ? customDomain : `https://${customDomain}`;
-      console.log(`[Docker Deploy] Custom domain configured: ${targetUrl}`);
+      const hostname = targetUrl.replace(/^https?:\/\//, '');
+      console.log(`[Docker Deploy] Custom domain configured: ${targetUrl} (hostname: ${hostname})`);
+
+      const ACCOUNT_ID = getSanitizedEnv('CLOUDFLARE_ACCOUNT_ID');
+      const ZONE_ID = getSanitizedEnv('CLOUDFLARE_ZONE_ID');
+      const API_TOKEN = getSanitizedEnv('CLOUDFLARE_API_TOKEN');
+
+      let activeTunnelToken = tunnelToken;
+      let activeTunnelId = '';
+
+      // Check if domain has changed for an existing session with a tunnel
+      const existingSession = existingSessionId ? sessionManager.getSession(existingSessionId) : null;
+      const oldDomain = existingSession?.metadata?.customDomain;
+      const oldTunnelId = existingSession?.metadata?.tunnelId;
+
+      if (activeTunnelToken && oldTunnelId && oldDomain && oldDomain !== targetUrl) {
+        if (!ACCOUNT_ID || !ZONE_ID || !API_TOKEN) {
+          console.warn('[Docker Deploy] Domain changed but missing Cloudflare API credentials to update routing.');
+        } else {
+          try {
+            console.log(`[Docker Deploy] Domain changed from ${oldDomain} to ${targetUrl}. Updating Cloudflare...`);
+            
+            // 1. Delete old DNS CNAME
+            const oldHostname = oldDomain.replace(/^https?:\/\//, '');
+            const oldDnsRes = await fetch(`https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records?name=${oldHostname}&type=CNAME`, {
+              headers: { 'Authorization': `Bearer ${API_TOKEN}`, 'Content-Type': 'application/json' }
+            });
+            const oldDnsData = await oldDnsRes.json() as any;
+            if (oldDnsData.success && oldDnsData.result && oldDnsData.result.length > 0) {
+              const oldDnsRecordId = oldDnsData.result[0].id;
+              await fetch(`https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records/${oldDnsRecordId}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${API_TOKEN}`, 'Content-Type': 'application/json' }
+              });
+              console.log(`[Docker Deploy] Deleted old CNAME record for ${oldHostname}`);
+            }
+
+            // 2. Update Ingress configuration on existing tunnel
+            const configRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/cfd_tunnel/${oldTunnelId}/configurations`, {
+              method: 'PUT',
+              headers: {
+                'Authorization': `Bearer ${API_TOKEN}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                config: {
+                  ingress: [
+                    { hostname: hostname, service: `http://localhost:${hostPort}` },
+                    { service: 'http_status:404' }
+                  ]
+                }
+              })
+            });
+            const configData = await configRes.json() as any;
+            if (!configData.success) throw new Error(`Routing update failed: ${JSON.stringify(configData.errors)}`);
+            console.log('[Docker Deploy] Updated ingress routing on Cloudflare tunnel.');
+
+            // 3. Upsert CNAME record for new domain
+            const dnsListRes = await fetch(`https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records?name=${hostname}&type=CNAME`, {
+              headers: { 'Authorization': `Bearer ${API_TOKEN}`, 'Content-Type': 'application/json' }
+            });
+            const dnsListData = await dnsListRes.json() as any;
+            let dnsRecordId = '';
+            if (dnsListData.success && dnsListData.result && dnsListData.result.length > 0) {
+              dnsRecordId = dnsListData.result[0].id;
+            }
+
+            const dnsUrl = dnsRecordId 
+              ? `https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records/${dnsRecordId}`
+              : `https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records`;
+            const dnsMethod = dnsRecordId ? 'PUT' : 'POST';
+
+            const dnsRes = await fetch(dnsUrl, {
+              method: dnsMethod,
+              headers: {
+                'Authorization': `Bearer ${API_TOKEN}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                type: 'CNAME',
+                name: hostname,
+                content: `${oldTunnelId}.cfargotunnel.com`,
+                proxied: true
+              })
+            });
+            const dnsData = await dnsRes.json() as any;
+            if (!dnsData.success) {
+              console.warn('⚠️ DNS record creation/update failed:', dnsData.errors);
+            } else {
+              console.log(`[Docker Deploy] DNS Record mapped ${hostname} to tunnel ${oldTunnelId}`);
+            }
+
+            activeTunnelId = oldTunnelId;
+          } catch (err: any) {
+            console.error('[Docker Deploy] Error updating domain routing:', err);
+          }
+        }
+      }
+
+      // If no tunnel token is provided, and we have Cloudflare credentials, auto-generate the tunnel
+      if (!activeTunnelToken) {
+        if (!ACCOUNT_ID || !ZONE_ID || !API_TOKEN) {
+          return { error: 'Missing Cloudflare credentials (CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_ZONE_ID, CLOUDFLARE_API_TOKEN) in environment to auto-configure custom domain.' };
+        }
+
+        try {
+          console.log('[Docker Deploy] Auto-configuring Cloudflare Tunnel...');
+          const tunnelSecret = crypto.randomBytes(32).toString('base64');
+          const tunnelName = `tunnel-${cleanName}-${hash}`.substring(0, 120);
+
+          // 1. Create Tunnel
+          const tunnelRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/cfd_tunnel`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${API_TOKEN}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              name: tunnelName,
+              tunnel_secret: tunnelSecret
+            })
+          });
+          const tunnelData = await tunnelRes.json() as any;
+          if (!tunnelData.success) {
+            return { error: `Cloudflare tunnel creation failed: ${JSON.stringify(tunnelData.errors)}` };
+          }
+          activeTunnelId = tunnelData.result.id;
+          console.log(`[Docker Deploy] Cloudflare Tunnel Created: ${activeTunnelId}`);
+
+          // 2. Configure Ingress Rules
+          const configRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/cfd_tunnel/${activeTunnelId}/configurations`, {
+            method: 'PUT',
+            headers: {
+              'Authorization': `Bearer ${API_TOKEN}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              config: {
+                ingress: [
+                  { hostname: hostname, service: `http://localhost:${hostPort}` },
+                  { service: 'http_status:404' }
+                ]
+              }
+            })
+          });
+          const configData = await configRes.json() as any;
+          if (!configData.success) {
+            return { error: `Cloudflare tunnel configuration failed: ${JSON.stringify(configData.errors)}` };
+          }
+          console.log('[Docker Deploy] Cloudflare Ingress Rules configured.');
+
+          // 3. Create or Update DNS CNAME record
+          const dnsListRes = await fetch(`https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records?name=${hostname}&type=CNAME`, {
+            headers: { 'Authorization': `Bearer ${API_TOKEN}`, 'Content-Type': 'application/json' }
+          });
+          const dnsListData = await dnsListRes.json() as any;
+          let dnsRecordId = '';
+          if (dnsListData.success && dnsListData.result && dnsListData.result.length > 0) {
+            dnsRecordId = dnsListData.result[0].id;
+          }
+
+          const dnsUrl = dnsRecordId 
+            ? `https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records/${dnsRecordId}`
+            : `https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records`;
+          const dnsMethod = dnsRecordId ? 'PUT' : 'POST';
+
+          const dnsRes = await fetch(dnsUrl, {
+            method: dnsMethod,
+            headers: {
+              'Authorization': `Bearer ${API_TOKEN}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              type: 'CNAME',
+              name: hostname,
+              content: `${activeTunnelId}.cfargotunnel.com`,
+              proxied: true
+            })
+          });
+          const dnsData = await dnsRes.json() as any;
+          if (!dnsData.success) {
+            console.warn('⚠️ DNS record creation/update failed:', dnsData.errors);
+          } else {
+            console.log(`[Docker Deploy] DNS Record mapped ${hostname} to ${activeTunnelId}.cfargotunnel.com`);
+          }
+
+          // 4. Construct Tunnel Token
+          const tokenPayload = { a: ACCOUNT_ID, t: activeTunnelId, s: tunnelSecret };
+          activeTunnelToken = Buffer.from(JSON.stringify(tokenPayload)).toString('base64');
+        } catch (err: any) {
+          return { error: `Failed during Cloudflare API calls: ${err.message}` };
+        }
+      } else {
+        if (!activeTunnelId && activeTunnelToken) {
+          try {
+            const decoded = JSON.parse(Buffer.from(activeTunnelToken, 'base64').toString('utf8'));
+            activeTunnelId = decoded.t;
+          } catch {
+            // ignore
+          }
+        }
+      }
 
       let tunnelProcess: any = null;
-      if (tunnelToken) {
+      if (activeTunnelToken) {
         console.log(`[Docker Deploy] Starting Cloudflare Named Tunnel for ${targetUrl}...`);
         tunnelProcess = spawn('cloudflared', [
-          'tunnel', '--no-autoupdate', 'run', '--token', tunnelToken
+          'tunnel', '--no-autoupdate', 'run', '--token', activeTunnelToken
         ]);
 
         tunnelProcess.on('close', (code: any) => {
@@ -97,7 +304,8 @@ export async function startCustomContainer(
           customDomain: targetUrl,
           cloudflaredUrl: targetUrl,
           tunnelPid: tunnelProcess ? tunnelProcess.pid : undefined,
-          tunnelToken,
+          tunnelToken: activeTunnelToken,
+          tunnelId: activeTunnelId,
           webhookSecret,
         },
       });
@@ -222,13 +430,11 @@ export async function restoreDockerContainers(): Promise<void> {
         ];
 
         await execAsync(dockerCmd.join(' '));
-        console.log(`[Docker Restore] Container ${containerName} started on port ${hostPort}.`);
       }
 
       if (domainMode === 'custom') {
         if (tunnelToken) {
-          console.log(`[Docker Restore] Restarting Cloudflare Named Tunnel for custom domain ${customDomain}...`);
-          const tunnelProcess = spawn('cloudflared', [
+         const tunnelProcess = spawn('cloudflared', [
             'tunnel', '--no-autoupdate', 'run', '--token', tunnelToken
           ]);
 
@@ -293,4 +499,103 @@ export async function restoreDockerContainers(): Promise<void> {
       console.error(`[Docker Restore] Failed to restore session ${session.id}:`, restoreErr);
     }
   }
+}
+
+export async function stopCustomContainer(sessionId: string): Promise<{ success: boolean; message: string }> {
+  const session = sessionManager.getSession(sessionId);
+  if (!session || session.type !== 'docker-container') {
+    return { success: false, message: 'Docker session not found' };
+  }
+
+  const meta = session.metadata as any;
+  if (meta) {
+    const { containerName, tunnelPid, tunnelId, customDomain } = meta;
+
+    // 1. Stop container
+    if (containerName) {
+      try {
+        await execAsync(`docker stop ${containerName}`);
+        console.log(`[Docker Stop] Stopped container ${containerName}`);
+      } catch (e: any) {
+        console.error(`[Docker Stop] Failed to stop container ${containerName}:`, e);
+      }
+    }
+
+    // 2. Kill tunnel process
+    if (tunnelPid) {
+      try {
+        process.kill(tunnelPid);
+        console.log(`[Docker Stop] Killed tunnel process PID ${tunnelPid}`);
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    // 3. Delete Cloudflare Tunnel & DNS CNAME if created programmatically
+    const ACCOUNT_ID = getSanitizedEnv('CLOUDFLARE_ACCOUNT_ID');
+    const ZONE_ID = getSanitizedEnv('CLOUDFLARE_ZONE_ID');
+    const API_TOKEN = getSanitizedEnv('CLOUDFLARE_API_TOKEN');
+
+    if (tunnelId && ACCOUNT_ID && API_TOKEN) {
+      try {
+        console.log(`[Docker Stop] Deleting Cloudflare tunnel ${tunnelId}...`);
+        
+        // Wait a brief moment to ensure the tunnel process is fully terminated and disconnected
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        const delRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/cfd_tunnel/${tunnelId}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${API_TOKEN}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        const delData = await delRes.json() as any;
+        if (delData.success) {
+          console.log(`[Docker Stop] Successfully deleted Cloudflare tunnel ${tunnelId}`);
+        } else {
+          console.warn(`[Docker Stop] Failed to delete Cloudflare tunnel:`, delData.errors);
+        }
+      } catch (err) {
+        console.error(`[Docker Stop] Error deleting Cloudflare tunnel:`, err);
+      }
+    }
+
+    if (customDomain && ZONE_ID && API_TOKEN) {
+      try {
+        const hostname = customDomain.replace(/^https?:\/\//, '');
+        console.log(`[Docker Stop] Cleaning up DNS CNAME record for ${hostname}...`);
+
+        // Find DNS record ID
+        const dnsListRes = await fetch(`https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records?name=${hostname}&type=CNAME`, {
+          headers: {
+            'Authorization': `Bearer ${API_TOKEN}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        const dnsListData = await dnsListRes.json() as any;
+        if (dnsListData.success && dnsListData.result && dnsListData.result.length > 0) {
+          const dnsRecordId = dnsListData.result[0].id;
+          const delDnsRes = await fetch(`https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records/${dnsRecordId}`, {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${API_TOKEN}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          const delDnsData = await delDnsRes.json() as any;
+          if (delDnsData.success) {
+            console.log(`[Docker Stop] Successfully deleted CNAME record for ${hostname}`);
+          } else {
+            console.warn(`[Docker Stop] Failed to delete CNAME record:`, delDnsData.errors);
+          }
+        }
+      } catch (err) {
+        console.error(`[Docker Stop] Error cleaning up CNAME record:`, err);
+      }
+    }
+  }
+
+  sessionManager.removeSession(sessionId);
+  return { success: true, message: 'Docker container stopped and resources cleaned up.' };
 }

@@ -30,6 +30,7 @@ export interface Session {
     cloudflaredUrl?: string; // Store cloudflared tunnel URL
     webhookSecret?: string;
     tunnelToken?: string;
+    tunnelId?: string;
   };
 }
 
