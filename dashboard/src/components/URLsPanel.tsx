@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
 import { ToolUrl } from '../api';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 
 export default function URLsPanel({ tools }: { tools: Record<string, ToolUrl> }) {
   const keys = Object.keys(tools);
@@ -22,21 +25,21 @@ export default function URLsPanel({ tools }: { tools: Record<string, ToolUrl> })
 
   if (keys.length === 0) {
     return (
-      <div className="glass rounded-3xl p-12 text-center text-white/30 text-sm border border-white/[0.08] max-w-2xl mx-auto shadow-2xl space-y-2">
+      <Card className="glass rounded-3xl p-12 text-center text-white/30 text-sm border border-white/[0.08] max-w-2xl mx-auto shadow-2xl space-y-2">
         <div className="text-3xl">🔗</div>
         <p className="font-semibold text-white/50">No Live Tunnels Connected</p>
         <p className="text-xs text-white/20">Active URLs will automatically appear here as isolated sessions are launched.</p>
-      </div>
+      </Card>
     );
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl mx-auto">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl mx-auto text-sm">
       {keys.map(key => {
         const t = tools[key];
         const displayLabel = t.label || key;
         return (
-          <div
+          <Card
             key={key}
             className="glass glass-hover rounded-3xl p-6 space-y-4 border border-white/[0.08] shadow-lg flex flex-col relative overflow-hidden group"
           >
@@ -49,16 +52,16 @@ export default function URLsPanel({ tools }: { tools: Record<string, ToolUrl> })
                   {ICON[key] ?? '🔗'}
                 </div>
                 <div>
-                  <p className="font-bold text-white text-sm">{displayLabel}</p>
+                  <CardTitle className="font-bold text-white text-sm">{displayLabel}</CardTitle>
                   <p className="text-[10px] text-white/30 font-mono">
                     Registered at: {new Date(t.registeredAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </p>
                 </div>
               </div>
               
-              <span className="px-2 py-0.5 rounded bg-teal-500/10 border border-teal-500/20 text-[9px] font-bold text-teal-400 uppercase tracking-wider">
+              <Badge variant="outline" className="px-2 py-0.5 rounded bg-teal-500/10 border border-teal-500/20 text-[9px] font-bold text-teal-400 uppercase tracking-wider">
                 Live
-              </span>
+              </Badge>
             </div>
 
             {/* Connection link */}
@@ -71,13 +74,14 @@ export default function URLsPanel({ tools }: { tools: Record<string, ToolUrl> })
               >
                 {t.url}
               </a>
-              <button
+              <Button
+                variant="ghost"
                 onClick={() => copyText(t.url, `${key}-url`)}
-                className="text-xs text-white/40 hover:text-white transition-colors px-1.5 py-0.5 hover:bg-white/[0.04] rounded-lg"
+                className="text-xs text-white/40 hover:text-white transition-colors px-1.5 py-0.5 hover:bg-white/[0.04] rounded-lg h-auto"
                 title="Copy URL"
               >
                 {copiedKey === `${key}-url` ? '✓' : '📋'}
-              </button>
+              </Button>
               <a
                 href={t.url}
                 target="_blank"
@@ -122,7 +126,7 @@ export default function URLsPanel({ tools }: { tools: Record<string, ToolUrl> })
                 )}
               </div>
             )}
-          </div>
+          </Card>
         );
       })}
     </div>

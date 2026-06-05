@@ -1,9 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { api, BASE, LLMModelInfo, LLMChatMessage, LLMStatus } from '../api';
+import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-function Badge({ text, color = 'default' }: { text: string; color?: 'green' | 'blue' | 'purple' | 'orange' | 'default' }) {
+function CustomBadge({ text, color = 'default' }: { text: string; color?: 'green' | 'blue' | 'purple' | 'orange' | 'default' }) {
   const cls: Record<string, string> = {
     green: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25',
     blue: 'bg-blue-500/15 text-blue-400 border-blue-500/25',
@@ -12,9 +17,9 @@ function Badge({ text, color = 'default' }: { text: string; color?: 'green' | 'b
     default: 'bg-white/[0.06] text-white/50 border-white/10',
   };
   return (
-    <span className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-medium border ${cls[color]}`}>
+    <Badge variant="outline" className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-medium border ${cls[color]}`}>
       {text}
-    </span>
+    </Badge>
   );
 }
 
@@ -68,16 +73,16 @@ function ModelCard({
   };
 
   return (
-    <div className={`relative glass rounded-2xl p-4 flex flex-col gap-3 transition-all border ${
+    <Card className={`relative glass rounded-2xl p-4 flex flex-col gap-3 transition-all border ${
       model.loaded
         ? 'border-emerald-500/30 shadow-emerald-500/10 shadow-lg'
         : 'border-white/[0.07] hover:border-white/[0.15]'
     }`}>
       {model.loaded && (
-        <div className="absolute top-3 right-3 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 text-[10px] font-semibold">
+        <Badge variant="outline" className="absolute top-3 right-3 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 text-[10px] font-semibold">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
           ACTIVE
-        </div>
+        </Badge>
       )}
 
       <div>
@@ -86,15 +91,15 @@ function ModelCard({
             🧠
           </div>
           <div className="min-w-0">
-            <h3 className="font-semibold text-white text-sm leading-tight truncate">{model.label}</h3>
+            <CardTitle className="font-semibold text-white text-sm leading-tight truncate">{model.label}</CardTitle>
             <p className="text-[11px] text-white/40 mt-0.5 leading-relaxed line-clamp-2">{model.description}</p>
           </div>
         </div>
 
         <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">
-          {model.tags.map(t => <Badge key={t} text={t} color={tagColor(t)} />)}
-          <Badge text={`${model.size_gb}GB`} color="default" />
-          <Badge text={`${(model.ctx / 1024).toFixed(model.ctx >= 4096 ? 0 : 1)}K ctx`} color="default" />
+          {model.tags.map(t => <CustomBadge key={t} text={t} color={tagColor(t)} />)}
+          <CustomBadge text={`${model.size_gb}GB`} color="default" />
+          <CustomBadge text={`${(model.ctx / 1024).toFixed(model.ctx >= 4096 ? 0 : 1)}K ctx`} color="default" />
         </div>
       </div>
 
@@ -108,12 +113,13 @@ function ModelCard({
       {/* Actions */}
       <div className="flex gap-2 mt-auto">
         {!model.downloaded && !isDownloading && (
-          <button
+          <Button
             onClick={() => onDownload(model.id)}
-            className="flex-1 py-1.5 rounded-lg bg-[#6c63ff]/20 hover:bg-[#6c63ff]/35 border border-[#6c63ff]/30 text-[#a8a3ff] text-xs font-medium transition-all"
+            variant="outline"
+            className="flex-1 py-1.5 h-auto rounded-lg bg-[#6c63ff]/20 hover:bg-[#6c63ff]/35 border border-[#6c63ff]/30 text-[#a8a3ff] text-xs font-medium transition-all"
           >
             ⬇ Download
-          </button>
+          </Button>
         )}
         {isDownloading && (
           <div className="flex-1 py-1.5 rounded-lg bg-white/[0.04] border border-white/10 text-white/40 text-xs font-medium text-center">
@@ -122,31 +128,34 @@ function ModelCard({
         )}
         {model.downloaded && !model.loaded && !isDownloading && (
           <>
-            <button
+            <Button
               onClick={() => onLoad(model.id)}
-              className="flex-1 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/25 text-emerald-400 text-xs font-medium transition-all"
+              variant="outline"
+              className="flex-1 py-1.5 h-auto rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/25 text-emerald-400 text-xs font-medium transition-all"
             >
               ▶ Load
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={() => onDelete(model.id)}
-              className="py-1.5 px-2.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 text-xs transition-all"
+              variant="outline"
+              className="py-1.5 px-2.5 h-auto rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 text-xs transition-all"
               title="Delete model file"
             >
               🗑
-            </button>
+            </Button>
           </>
         )}
         {model.loaded && (
-          <button
+          <Button
             onClick={onUnload}
-            className="flex-1 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] border border-white/10 text-white/50 text-xs font-medium transition-all"
+            variant="outline"
+            className="flex-1 py-1.5 h-auto rounded-lg bg-white/[0.06] hover:bg-white/[0.1] border border-white/10 text-white/50 text-xs font-medium transition-all"
           >
             ⏹ Unload
-          </button>
+          </Button>
         )}
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -155,7 +164,7 @@ function ModelCard({
 interface ChatEntry {
   role: 'user' | 'assistant';
   content: string;
-  streaming?: boolean;  // true while tokens are still arriving
+  streaming?: boolean;
 }
 
 function ChatPanel({ modelLabel }: { modelLabel: string }) {
@@ -169,7 +178,6 @@ function ChatPanel({ modelLabel }: { modelLabel: string }) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // Auto-scroll on every history change
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [history]);
@@ -182,7 +190,6 @@ function ChatPanel({ modelLabel }: { modelLabel: string }) {
 
     const userMsg: ChatEntry = { role: 'user', content: text };
     const newHistory = [...history, userMsg];
-    // Append placeholder assistant bubble (streaming flag = true, content empty)
     const withPlaceholder: ChatEntry[] = [...newHistory, { role: 'assistant', content: '', streaming: true }];
     setHistory(withPlaceholder);
     setStreaming(true);
@@ -220,7 +227,6 @@ function ChatPanel({ modelLabel }: { modelLabel: string }) {
 
         buf += decoder.decode(value, { stream: true });
 
-        // Process complete SSE lines from buffer
         const lines = buf.split('\n');
         buf = lines.pop() ?? '';
 
@@ -240,11 +246,10 @@ function ChatPanel({ modelLabel }: { modelLabel: string }) {
                 return next;
               });
             }
-          } catch { /* skip malformed chunk */ }
+          } catch { /* skip */ }
         }
       }
 
-      // Mark streaming done — remove the streaming flag
       setHistory(prev => {
         const next = [...prev];
         const last = next[next.length - 1];
@@ -253,7 +258,6 @@ function ChatPanel({ modelLabel }: { modelLabel: string }) {
       });
     } catch (e: unknown) {
       if ((e as Error).name === 'AbortError') {
-        // User aborted — seal the partial message
         setHistory(prev => {
           const next = [...prev];
           const last = next[next.length - 1];
@@ -262,7 +266,6 @@ function ChatPanel({ modelLabel }: { modelLabel: string }) {
         });
       } else {
         setError((e as Error).message);
-        // Remove the empty placeholder if nothing arrived
         setHistory(prev => {
           const last = prev[prev.length - 1];
           return last?.role === 'assistant' && !last.content ? prev.slice(0, -1) : prev;
@@ -279,10 +282,6 @@ function ChatPanel({ modelLabel }: { modelLabel: string }) {
   const handleKey = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
   };
-
-  // Determine whether the last assistant message is the streaming one
-  const lastMsg = history[history.length - 1];
-  const isWaitingForFirstToken = streaming && lastMsg?.role === 'assistant' && !lastMsg.content;
 
   return (
     <div className="flex flex-col gap-4">
@@ -308,19 +307,20 @@ function ChatPanel({ modelLabel }: { modelLabel: string }) {
             {[0.1, 0.3, 0.5, 0.7, 0.9, 1.0].map(v => <option key={v} value={v}>{v}</option>)}
           </select>
         </div>
-        <button
+        <Button
           onClick={() => setHistory([])}
           disabled={streaming}
-          className="ml-auto text-xs px-2.5 py-1 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 text-white/40 transition-all disabled:opacity-30"
+          variant="outline"
+          className="ml-auto text-xs px-2.5 py-1 h-auto rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 text-white/40 transition-all disabled:opacity-30"
         >
           🗑 Clear
-        </button>
+        </Button>
       </div>
 
       {/* System prompt */}
       <div>
         <label className="text-[11px] text-white/30 block mb-1">System prompt</label>
-        <textarea
+        <Textarea
           value={systemPrompt}
           onChange={e => setSystemPrompt(e.target.value)}
           rows={2}
@@ -347,7 +347,6 @@ function ChatPanel({ modelLabel }: { modelLabel: string }) {
                 ? 'bg-[#6c63ff]/25 border border-[#6c63ff]/30 text-white rounded-br-sm'
                 : 'bg-white/[0.05] border border-white/[0.08] text-white/85 rounded-bl-sm'
             }`}>
-              {/* Show dots only while waiting for first token */}
               {msg.role === 'assistant' && msg.streaming && !msg.content ? (
                 <span className="flex gap-1 py-0.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -357,7 +356,6 @@ function ChatPanel({ modelLabel }: { modelLabel: string }) {
               ) : (
                 <>
                   <pre className="whitespace-pre-wrap font-sans">{msg.content}</pre>
-                  {/* Blinking cursor while tokens are arriving */}
                   {msg.streaming && (
                     <span className="inline-block w-0.5 h-4 bg-white/60 animate-pulse ml-0.5 align-text-bottom" />
                   )}
@@ -379,7 +377,7 @@ function ChatPanel({ modelLabel }: { modelLabel: string }) {
 
       {/* Input row */}
       <div className="flex gap-2">
-        <textarea
+        <Textarea
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKey}
@@ -389,27 +387,27 @@ function ChatPanel({ modelLabel }: { modelLabel: string }) {
           className="flex-1 bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-white/30 outline-none focus:border-white/25 resize-none transition-colors disabled:opacity-50"
         />
         {streaming ? (
-          <button
+          <Button
             onClick={stop}
-            className="px-4 rounded-xl bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 text-red-400 text-sm font-medium transition-all"
+            variant="outline"
+            className="px-4 rounded-xl bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 text-red-400 text-sm font-medium transition-all h-auto"
             title="Stop generation"
           >
             ⏹
-          </button>
+          </Button>
         ) : (
-          <button
+          <Button
             onClick={send}
             disabled={!input.trim()}
-            className="px-4 rounded-xl bg-gradient-to-br from-[#6c63ff] to-[#5a54e0] hover:opacity-90 disabled:opacity-40 text-white text-sm font-medium transition-all shadow-lg shadow-[#6c63ff]/20"
+            className="px-4 rounded-xl bg-gradient-to-br from-[#6c63ff] to-[#5a54e0] hover:opacity-90 disabled:opacity-40 text-white text-sm font-medium transition-all shadow-lg shadow-[#6c63ff]/20 h-auto"
           >
             ▶
-          </button>
+          </Button>
         )}
       </div>
     </div>
   );
 }
-
 
 // ── Main panel ─────────────────────────────────────────────────────────────────
 
@@ -430,7 +428,6 @@ export default function LLMPanel() {
       const [st, ml] = await Promise.all([api.llmStatus(), api.llmModels().catch(() => ({ models: [], current_model: null, models_dir: '' }))]);
       setStatus(st);
       setModels(ml.models);
-      // Clear local downloading flags for any model the server now reports as ready
       setDownloading(prev => {
         if (prev.size === 0) return prev;
         const stillPending = new Set(prev);
@@ -501,7 +498,7 @@ export default function LLMPanel() {
   const downloadedCount = models.filter(m => m.downloaded).length;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 text-sm">
       {/* Header row */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex-1">
@@ -510,9 +507,9 @@ export default function LLMPanel() {
           </p>
         </div>
         <StatusBar status={status} />
-        <button onClick={refresh} className="px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/10 text-white/40 hover:text-white/70 text-xs transition-colors">
+        <Button onClick={refresh} variant="outline" className="px-3 py-1.5 h-auto rounded-full bg-white/[0.04] border border-white/10 text-white/40 hover:text-white/70 text-xs transition-colors">
           🔄 Refresh
-        </button>
+        </Button>
       </div>
 
       {/* Stats row */}
@@ -522,23 +519,24 @@ export default function LLMPanel() {
           { label: 'Downloaded', value: downloadedCount.toString(), icon: '💾' },
           { label: 'Active Model', value: status?.label ?? 'None', icon: '⚡' },
         ].map(stat => (
-          <div key={stat.label} className="glass rounded-xl px-4 py-3 border border-white/[0.07] flex items-center sm:block gap-3 sm:gap-0">
+          <Card key={stat.label} className="glass rounded-xl px-4 py-3 border border-white/[0.07] flex items-center sm:block gap-3 sm:gap-0">
             <div className="text-xl sm:mb-1">{stat.icon}</div>
             <div className="flex-1">
-              <div className="text-white font-bold text-lg">{stat.value}</div>
-              <div className="text-white/30 text-xs">{stat.label}</div>
+              <CardTitle className="text-white font-bold text-lg">{stat.value}</CardTitle>
+              <CardDescription className="text-white/30 text-xs mt-0.5">{stat.label}</CardDescription>
             </div>
-          </div>
+          </Card>
         ))}
       </div>
 
       {/* Tabs */}
       <div className="flex gap-1 p-1 bg-black/20 rounded-xl border border-white/[0.06] w-full overflow-x-auto scrollbar-none">
         {(['models', 'chat'] as const).map(t => (
-          <button
+          <Button
             key={t}
             onClick={() => setTab(t)}
-            className={`flex-shrink-0 px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
+            variant="outline"
+            className={`flex-shrink-0 px-4 py-1.5 h-auto rounded-lg text-sm font-medium transition-all ${
               tab === t
                 ? 'bg-[#6c63ff]/25 text-white border border-[#6c63ff]/30'
                 : 'text-white/40 hover:text-white/70'
@@ -548,22 +546,22 @@ export default function LLMPanel() {
             {t === 'chat' && status?.loaded && (
               <span className="ml-1.5 w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block animate-pulse" />
             )}
-          </button>
+          </Button>
         ))}
       </div>
 
       {/* Flash message */}
       {actionMsg && (
-        <div className="px-4 py-2.5 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white/70">
+        <Card className="px-4 py-2.5 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white/70">
           {actionMsg}
-        </div>
+        </Card>
       )}
 
       {/* Error */}
       {error && (
-        <div className="px-4 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-sm text-red-400">
+        <Card className="px-4 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-sm text-red-400">
           ⚠️ {error}
-        </div>
+        </Card>
       )}
 
       {/* Models grid */}
@@ -572,7 +570,7 @@ export default function LLMPanel() {
           {loading ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
               {[...Array(6)].map((_, i) => (
-                <div key={i} className="glass rounded-2xl p-4 h-44 animate-pulse border border-white/[0.07]" />
+                <Card key={i} className="glass rounded-2xl p-4 h-44 animate-pulse border border-white/[0.07]" />
               ))}
             </div>
           ) : (
@@ -598,22 +596,23 @@ export default function LLMPanel() {
 
       {/* Chat panel */}
       {tab === 'chat' && (
-        <div className="glass rounded-2xl p-5 border border-white/[0.07]">
+        <Card className="glass rounded-2xl p-5 border border-white/[0.07]">
           {!status?.loaded ? (
             <div className="text-center py-12 space-y-3">
               <div className="text-4xl">🧠</div>
               <p className="text-white/40 text-sm">Load a model from the Models tab to start chatting.</p>
-              <button
+              <Button
                 onClick={() => setTab('models')}
-                className="px-4 py-2 rounded-xl bg-[#6c63ff]/20 border border-[#6c63ff]/30 text-[#a8a3ff] text-sm hover:bg-[#6c63ff]/30 transition-all"
+                variant="outline"
+                className="px-4 py-2 h-auto rounded-xl bg-[#6c63ff]/20 border border-[#6c63ff]/30 text-[#a8a3ff] text-sm hover:bg-[#6c63ff]/30 transition-all"
               >
                 → Go to Models
-              </button>
+              </Button>
             </div>
           ) : (
             <ChatPanel modelLabel={currentModel?.label ?? status.label ?? 'Model'} />
           )}
-        </div>
+        </Card>
       )}
     </div>
   );

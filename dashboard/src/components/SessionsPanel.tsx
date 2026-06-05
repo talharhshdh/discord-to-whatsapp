@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { api, BASE, SessionResult } from '../api';
+import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 
 interface SessionCardProps {
   icon: string;
@@ -22,24 +24,25 @@ function SessionCard({ icon, title, description, color, action }: SessionCardPro
   };
 
   return (
-    <div className="glass glass-hover rounded-2xl p-6 flex flex-col gap-4">
+    <Card className="glass glass-hover rounded-2xl p-6 flex flex-col gap-4 border border-white/10">
       <div className="flex items-center gap-3">
         <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl ${color}`}>
           {icon}
         </div>
         <div>
-          <h3 className="font-semibold text-white">{title}</h3>
-          <p className="text-xs text-white/40">{description}</p>
+          <CardTitle className="text-sm font-semibold text-white">{title}</CardTitle>
+          <CardDescription className="text-xs text-white/40">{description}</CardDescription>
         </div>
       </div>
 
-      <button
+      <Button
         onClick={launch}
         disabled={loading}
+        variant="outline"
         className="w-full py-2.5 rounded-xl bg-white/[0.07] hover:bg-white/[0.12] border border-white/10 hover:border-white/20 text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {loading ? '⏳ Launching…' : `Launch ${title}`}
-      </button>
+      </Button>
 
       {error && (
         <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
@@ -57,7 +60,7 @@ function SessionCard({ icon, title, description, color, action }: SessionCardPro
           {result.password && <p className="text-white/60">🔑 <span className="text-white font-mono">{result.password}</span></p>}
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -107,24 +110,25 @@ export default function SessionsPanel() {
         />
 
         {/* SSH Terminal Card */}
-        <div className="glass glass-hover rounded-2xl p-6 flex flex-col gap-4">
+        <Card className="glass glass-hover rounded-2xl p-6 flex flex-col gap-4 border border-white/10">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl bg-purple-500/15 border border-purple-500/20">
               🔐
             </div>
             <div>
-              <h3 className="font-semibold text-white">SSH Terminal</h3>
-              <p className="text-xs text-white/40">Isolated container with SSH access</p>
+              <CardTitle className="text-sm font-semibold text-white">SSH Terminal</CardTitle>
+              <CardDescription className="text-xs text-white/40">Isolated container with SSH access</CardDescription>
             </div>
           </div>
 
-          <button
+          <Button
             onClick={launchSSH}
             disabled={sshLoading}
+            variant="outline"
             className="w-full py-2.5 rounded-xl bg-white/[0.07] hover:bg-white/[0.12] border border-white/10 hover:border-white/20 text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {sshLoading ? '⏳ Launching…' : 'Launch SSH Terminal'}
-          </button>
+          </Button>
 
           {sshError && (
             <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
@@ -148,7 +152,7 @@ export default function SessionsPanel() {
               </p>
             </div>
           )}
-        </div>
+        </Card>
       </div>
     </div>
   );

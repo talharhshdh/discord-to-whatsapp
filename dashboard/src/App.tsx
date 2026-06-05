@@ -1,6 +1,11 @@
 import React, { useState } from 'react';
 import { api } from './api';
 import { useUrls, useCountdown, NavSection } from './hooks';
+import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+
 const SessionsPanel = React.lazy(() => import('./components/SessionsPanel'));
 const SessionsManagerPanel = React.lazy(() => import('./components/SessionsManagerPanel'));
 const AIToolsPanel = React.lazy(() => import('./components/AIToolsPanel'));
@@ -16,9 +21,6 @@ const PlacesPanel = React.lazy(() => import('./components/PlacesPanel'));
 const GoogleClonePanel = React.lazy(() => import('./components/GoogleClonePanel'));
 const WebProxyPanel = React.lazy(() => import('./components/WebProxyPanel'));
 const PoolPanel = React.lazy(() => import('./components/PoolPanel'));
-
-
-
 
 interface NavItem {
   id: NavSection;
@@ -188,14 +190,15 @@ export default function App() {
       <div className="min-h-screen flex items-center justify-center bg-[#070b14] relative p-4 font-sans text-white">
         {/* Theme toggle on login screen */}
         <div className="absolute top-4 right-4 z-20">
-          <button
+          <Button
             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            className="p-2.5 rounded-xl glass border border-white/10 text-white/60 hover:text-white/90 hover:scale-[1.02] active:scale-[0.98] text-xs transition-all flex items-center gap-1.5 font-medium shadow-lg shadow-black/10"
+            variant="outline"
+            className="p-2.5 h-auto rounded-xl glass border border-white/10 text-white/60 hover:text-white/90 hover:scale-[1.02] active:scale-[0.98] text-xs transition-all flex items-center gap-1.5 font-medium shadow-lg shadow-black/10"
             title={theme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
           >
             <span>{theme === 'dark' ? '☀️' : '🌙'}</span>
             <span>{theme === 'dark' ? 'Light' : 'Dark'}</span>
-          </button>
+          </Button>
         </div>
 
         {/* Ambient orbs */}
@@ -204,19 +207,19 @@ export default function App() {
           <div className="absolute -bottom-40 -right-40 w-[500px] h-[500px] rounded-full bg-[#00d4aa]/10 blur-[120px]" />
         </div>
 
-        <div className="relative z-10 w-full max-w-md glass border border-white/[0.08] p-8 rounded-3xl shadow-2xl space-y-6">
+        <Card className="relative z-10 w-full max-w-md glass border border-white/[0.08] p-8 rounded-3xl shadow-2xl space-y-6">
           <div className="text-center">
             <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-[#6c63ff] to-[#00d4aa] flex items-center justify-center text-3xl shadow-lg shadow-[#6c63ff]/20 mb-4 animate-pulse">
               🔒
             </div>
-            <h2 className="text-2xl font-black tracking-tight bg-gradient-to-r from-white via-white to-white/70 bg-clip-text text-transparent">Bridge Panel Login</h2>
-            <p className="text-xs text-white/40 mt-1">Please authenticate to manage Discord/WhatsApp sessions</p>
+            <CardTitle className="text-2xl font-black tracking-tight bg-gradient-to-r from-white via-white to-white/70 bg-clip-text text-transparent">Bridge Panel Login</CardTitle>
+            <CardDescription className="text-xs text-white/40 mt-1">Please authenticate to manage Discord/WhatsApp sessions</CardDescription>
           </div>
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="space-y-1">
               <label className="text-[10px] uppercase font-bold tracking-wider text-white/40">Username</label>
-              <input
+              <Input
                 type="text"
                 required
                 className="w-full bg-[#1b1b22] border border-white/10 rounded-xl px-4 py-2.5 text-sm placeholder-white/20 focus:outline-none focus:border-[#6c63ff]/40 text-white"
@@ -228,7 +231,7 @@ export default function App() {
 
             <div className="space-y-1">
               <label className="text-[10px] uppercase font-bold tracking-wider text-white/40">Password</label>
-              <input
+              <Input
                 type="password"
                 required
                 className="w-full bg-[#1b1b22] border border-white/10 rounded-xl px-4 py-2.5 text-sm placeholder-white/20 focus:outline-none focus:border-[#6c63ff]/40 text-white"
@@ -244,27 +247,28 @@ export default function App() {
               </div>
             )}
 
-            <button
+            <Button
               type="submit"
               disabled={loginLoading}
-              className="w-full py-3 bg-gradient-to-r from-[#6c63ff] to-[#00d4aa] hover:opacity-90 disabled:opacity-50 text-sm font-semibold rounded-xl text-white transition-all shadow-lg shadow-[#6c63ff]/15"
+              className="w-full py-6 bg-gradient-to-r from-[#6c63ff] to-[#00d4aa] hover:opacity-90 disabled:opacity-50 text-sm font-semibold rounded-xl text-white transition-all shadow-lg shadow-[#6c63ff]/15"
             >
               {loginLoading ? 'Authenticating...' : 'Sign In'}
-            </button>
+            </Button>
           </form>
 
           <div className="text-center pt-2">
-            <button
+            <Button
               onClick={() => {
                 setSection('google');
                 window.history.pushState(null, '', '/google');
               }}
-              className="text-xs text-[#00d4aa] hover:underline"
+              variant="link"
+              className="text-xs text-[#00d4aa] hover:underline p-0 h-auto font-normal"
             >
               🌍 View public Google Clone instead
-            </button>
+            </Button>
           </div>
-        </div>
+        </Card>
       </div>
     );
   }
@@ -278,7 +282,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#070b14]">
+    <div className="min-h-screen flex flex-col bg-[#070b14] text-sm">
       {/* Ambient orbs */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
         <div className="absolute -top-40 -left-40 w-[600px] h-[600px] rounded-full bg-[#6c63ff]/10 blur-[120px]" />
@@ -286,7 +290,7 @@ export default function App() {
       </div>
 
       <div className="relative z-10 flex flex-col min-h-screen">
-        {/* Top bar */}
+        {/* Header */}
         <header className="glass border-b border-white/[0.07] px-4 md:px-6 py-3 md:py-4 sticky top-0 z-30">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 md:gap-3">
@@ -301,32 +305,33 @@ export default function App() {
 
             <div className="flex items-center gap-2 md:gap-3">
               {/* Countdown - simplified on mobile */}
-              <div className={`flex items-center gap-1.5 px-2 md:px-3 py-1 md:py-1.5 rounded-full border text-[10px] md:text-xs font-mono ${
+              <Badge variant="outline" className={`flex items-center gap-1.5 px-2 md:px-3 py-1 md:py-1.5 rounded-full border text-[10px] md:text-xs font-mono font-normal ${
                 cd.urgent ? 'bg-red-500/10 border-red-500/20 text-red-400' : 'bg-white/[0.04] border-white/10 text-white/60'
               }`}>
                 <span className="hidden sm:inline">⏱</span> {cd.display}
-              </div>
+              </Badge>
 
               {/* Theme toggle button */}
-              <button 
+              <Button 
                 onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} 
-                className="p-1.5 md:px-3 md:py-1.5 rounded-full bg-white/[0.04] border border-white/10 text-white/60 hover:text-white/90 text-[10px] md:text-xs transition-colors flex items-center gap-1.5 font-medium"
+                variant="outline"
+                className="p-1.5 md:px-3 md:py-1.5 h-auto rounded-full bg-white/[0.04] border border-white/10 text-white/60 hover:text-white/90 text-[10px] md:text-xs transition-colors flex items-center gap-1.5 font-medium"
                 title={theme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
               >
                 <span>{theme === 'dark' ? '☀️' : '🌙'}</span>
                 <span className="hidden sm:inline">{theme === 'dark' ? 'Light' : 'Dark'}</span>
-              </button>
+              </Button>
 
-              <button onClick={refresh} className="p-1.5 md:px-3 md:py-1.5 rounded-full bg-white/[0.04] border border-white/10 text-white/40 hover:text-white/70 text-[10px] md:text-xs transition-colors">
+              <Button onClick={refresh} variant="outline" className="p-1.5 md:px-3 md:py-1.5 h-auto rounded-full bg-white/[0.04] border border-white/10 text-white/40 hover:text-white/70 text-[10px] md:text-xs transition-colors font-normal">
                 <span className="hidden md:inline">🔄 Refresh</span>
                 <span className="md:hidden">🔄</span>
-              </button>
+              </Button>
 
               {isAuthenticated && (
-                <button onClick={handleLogout} className="p-1.5 md:px-3 md:py-1.5 rounded-full bg-red-500/10 border border-red-500/20 text-red-400 hover:text-red-300 text-[10px] md:text-xs transition-colors">
+                <Button onClick={handleLogout} variant="outline" className="p-1.5 md:px-3 md:py-1.5 h-auto rounded-full bg-red-500/10 border border-red-500/20 text-red-400 hover:text-red-300 text-[10px] md:text-xs transition-colors font-semibold">
                   <span className="hidden md:inline">🚪 Sign Out</span>
                   <span className="md:hidden">🚪</span>
-                </button>
+                </Button>
               )}
 
               <button 
@@ -353,7 +358,7 @@ export default function App() {
             {/* Sidebar Search */}
             <div className="relative px-1">
               <span className="absolute inset-y-0 left-4 flex items-center text-white/30 text-xs">🔍</span>
-              <input
+              <Input
                 type="text"
                 placeholder="Search tools..."
                 value={searchQuery}
@@ -379,23 +384,24 @@ export default function App() {
                   </h3>
                   <div className="space-y-0.5">
                     {category.items.map(n => (
-                      <button
+                      <Button
                         key={n.id}
                         onClick={() => handleNavClick(n.id)}
-                        className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-200 ${
+                        variant="ghost"
+                        className={`w-full flex items-center justify-start gap-2.5 px-3 py-2 h-auto rounded-xl text-xs font-semibold transition-all duration-200 ${
                           section === n.id
-                            ? 'bg-gradient-to-r from-[#6c63ff]/20 to-[#00d4aa]/10 text-white border border-[#6c63ff]/30 shadow-lg shadow-[#6c63ff]/5'
+                            ? 'bg-gradient-to-r from-[#6c63ff]/20 to-[#00d4aa]/10 text-white border border-[#6c63ff]/30 shadow-lg shadow-[#6c63ff]/5 hover:bg-[#6c63ff]/25 hover:text-white'
                             : 'text-white/50 hover:text-white hover:bg-white/[0.04]'
                         }`}
                       >
                         <span className="text-sm">{n.icon}</span>
                         <span className="truncate">{n.label}</span>
                         {n.id === 'urls' && data?.tools && Object.keys(data.tools).length > 0 && (
-                          <span className="ml-auto text-[10px] bg-teal-500/20 text-teal-400 font-bold rounded-full px-1.5 py-0.5">
+                          <Badge variant="outline" className="ml-auto text-[10px] bg-teal-500/20 text-teal-400 font-bold rounded-full px-1.5 py-0.5 border-teal-500/25">
                             {Object.keys(data.tools).length}
-                          </span>
+                          </Badge>
                         )}
-                      </button>
+                      </Button>
                     ))}
                   </div>
                 </div>
@@ -432,7 +438,7 @@ export default function App() {
                 {/* Mobile Search */}
                 <div className="relative mb-5">
                   <span className="absolute inset-y-0 left-3 flex items-center text-white/30 text-xs">🔍</span>
-                  <input
+                  <Input
                     type="text"
                     placeholder="Search tools..."
                     value={searchQuery}
@@ -458,23 +464,24 @@ export default function App() {
                       </h4>
                       <div className="space-y-0.5">
                         {category.items.map(n => (
-                          <button
+                          <Button
                             key={n.id}
                             onClick={() => handleNavClick(n.id)}
-                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                            variant="ghost"
+                            className={`w-full flex items-center justify-start gap-3 px-3 py-2.5 h-auto rounded-xl text-sm font-medium transition-all ${
                               section === n.id
-                                ? 'bg-gradient-to-r from-[#6c63ff]/20 to-[#00d4aa]/10 text-white border border-[#6c63ff]/30'
+                                ? 'bg-gradient-to-r from-[#6c63ff]/20 to-[#00d4aa]/10 text-white border border-[#6c63ff]/30 hover:bg-[#6c63ff]/25 hover:text-white'
                                 : 'text-white/45 hover:text-white hover:bg-white/[0.05]'
                             }`}
                           >
                             <span className="text-base">{n.icon}</span>
                             <span className="truncate">{n.label}</span>
                             {n.id === 'urls' && data?.tools && Object.keys(data.tools).length > 0 && (
-                              <span className="ml-auto text-xs bg-teal-500/20 text-teal-400 rounded-full px-2 py-0.5">
+                              <Badge variant="outline" className="ml-auto text-xs bg-teal-500/20 text-teal-400 rounded-full px-2 py-0.5 border-teal-500/25">
                                 {Object.keys(data.tools).length}
-                              </span>
+                              </Badge>
                             )}
-                          </button>
+                          </Button>
                         ))}
                       </div>
                     </div>
@@ -492,7 +499,6 @@ export default function App() {
               </nav>
             </div>
           )}
-
 
           {/* Main content */}
           <main className="flex-1 overflow-y-auto scrollbar-thin p-4 md:p-6 lg:p-8">

@@ -1,5 +1,9 @@
 import React, { useState } from 'react';
 import { api } from '../api';
+import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
 
 const PLATFORMS = [
   { name: 'Instagram', color: 'bg-pink-500/10 text-pink-400 border-pink-500/20' },
@@ -38,30 +42,31 @@ export default function MediaPanel() {
   };
 
   return (
-    <div className="space-y-6 max-w-3xl mx-auto">
+    <div className="space-y-6 max-w-3xl mx-auto text-sm">
       <div className="space-y-3">
         <p className="text-white/50 text-sm leading-relaxed">
           Paste any media URL from the supported platforms below. The system automatically detects the origin and processes the download chunk-by-chunk.
         </p>
         <div className="flex flex-wrap gap-2 pt-1">
           {PLATFORMS.map(p => (
-            <span
+            <Badge
               key={p.name}
-              className={`px-3 py-1 rounded-xl border text-[10px] font-bold tracking-wide transition-all ${p.color}`}
+              variant="outline"
+              className={`px-3 py-1 rounded-xl text-[10px] font-bold tracking-wide transition-all border ${p.color}`}
             >
               {p.name}
-            </span>
+            </Badge>
           ))}
         </div>
       </div>
 
-      <div className="glass rounded-3xl p-6 md:p-8 space-y-6 border border-white/[0.08] shadow-2xl relative overflow-hidden">
+      <Card className="glass rounded-3xl p-6 md:p-8 space-y-6 border border-white/[0.08] shadow-2xl relative overflow-hidden">
         <div className="absolute -top-24 -right-24 w-48 h-48 rounded-full bg-[#6c63ff]/10 blur-[80px] pointer-events-none" />
         <div className="absolute -bottom-24 -left-24 w-48 h-48 rounded-full bg-[#00d4aa]/10 blur-[80px] pointer-events-none" />
 
         <div className="space-y-2">
           <label className="text-[10px] uppercase font-black tracking-wider text-white/40 block">Media URL</label>
-          <input
+          <Input
             value={url}
             onChange={e => setUrl(e.target.value)}
             placeholder="Paste Instagram post, TikTok video, YouTube link..."
@@ -69,10 +74,10 @@ export default function MediaPanel() {
           />
         </div>
 
-        <button
+        <Button
           onClick={download}
           disabled={loading || !url.trim()}
-          className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-[#6c63ff] to-[#00d4aa] hover:opacity-95 font-bold text-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed text-white shadow-lg shadow-[#6c63ff]/15 flex items-center justify-center gap-2"
+          className="w-full py-6 rounded-2xl bg-gradient-to-r from-[#6c63ff] to-[#00d4aa] hover:opacity-95 font-bold text-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed text-white shadow-lg shadow-[#6c63ff]/15 flex items-center justify-center gap-2"
         >
           {loading ? (
             <>
@@ -85,7 +90,7 @@ export default function MediaPanel() {
               <span>Download Media</span>
             </>
           )}
-        </button>
+        </Button>
 
         {error && (
           <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-2xl px-4 py-3 flex items-start gap-2.5 animate-in fade-in duration-300">
@@ -116,7 +121,7 @@ export default function MediaPanel() {
             </a>
           </div>
         )}
-      </div>
+      </Card>
     </div>
   );
 }

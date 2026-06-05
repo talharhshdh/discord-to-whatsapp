@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { api, BrowserPoolPayload, BrowserPoolItem } from '../api';
+import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 
 function copyText(text: string) {
   navigator.clipboard.writeText(text).catch(() => {});
@@ -80,21 +83,22 @@ export default function PoolPanel() {
 
   if (error && !data) {
     return (
-      <div className="glass rounded-3xl p-10 text-center space-y-4 max-w-md mx-auto">
+      <Card className="glass rounded-3xl p-10 text-center space-y-4 max-w-md mx-auto border border-white/[0.08]">
         <div className="w-12 h-12 mx-auto rounded-full bg-rose-500/10 border border-rose-500/25 flex items-center justify-center text-xl">
           ⚠️
         </div>
         <div>
-          <h3 className="text-white font-bold">Failed to load pool status</h3>
-          <p className="text-white/40 text-xs mt-1">{error}</p>
+          <CardTitle className="text-white font-bold text-base">Failed to load pool status</CardTitle>
+          <CardDescription className="text-white/40 text-xs mt-1">{error}</CardDescription>
         </div>
-        <button
+        <Button
           onClick={() => { setLoading(true); fetchPool(); }}
+          variant="outline"
           className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-semibold rounded-xl transition-all"
         >
           Try Again
-        </button>
-      </div>
+        </Button>
+      </Card>
     );
   }
 
@@ -102,34 +106,34 @@ export default function PoolPanel() {
   const cachedCount = browsers.filter(b => b.isCached).length;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 text-sm">
       {/* Fleet Stats Overview */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="glass rounded-2xl p-4 flex flex-col justify-between">
+        <Card className="glass rounded-2xl p-4 flex flex-col justify-between border border-white/[0.08]">
           <p className="text-[10px] text-white/30 uppercase font-bold tracking-wider">Total Fleet Size</p>
           <div className="flex items-baseline gap-2 mt-2">
             <span className="text-3xl font-black text-white">{data?.total ?? 0}</span>
             <span className="text-xs text-white/30">workers</span>
           </div>
-        </div>
+        </Card>
 
-        <div className="glass rounded-2xl p-4 flex flex-col justify-between">
+        <Card className="glass rounded-2xl p-4 flex flex-col justify-between border border-white/[0.08]">
           <p className="text-[10px] text-white/30 uppercase font-bold tracking-wider">Active Workers</p>
           <div className="flex items-baseline gap-2 mt-2">
             <span className="text-3xl font-black text-emerald-400">{data?.active ?? 0}</span>
             <span className="text-xs text-white/30">online</span>
           </div>
-        </div>
+        </Card>
 
-        <div className="glass rounded-2xl p-4 flex flex-col justify-between">
+        <Card className="glass rounded-2xl p-4 flex flex-col justify-between border border-white/[0.08]">
           <p className="text-[10px] text-white/30 uppercase font-bold tracking-wider">Pre-warmed CDP Connections</p>
           <div className="flex items-baseline gap-2 mt-2">
             <span className="text-3xl font-black text-teal-400">{cachedCount}</span>
             <span className="text-xs text-white/30">cached</span>
           </div>
-        </div>
+        </Card>
 
-        <div className="glass rounded-2xl p-4 flex flex-col justify-between">
+        <Card className="glass rounded-2xl p-4 flex flex-col justify-between border border-white/[0.08]">
           <p className="text-[10px] text-white/30 uppercase font-bold tracking-wider">Pool Efficiency</p>
           <div className="flex items-baseline gap-2 mt-2">
             <span className="text-3xl font-black text-[#6c63ff]">
@@ -137,14 +141,14 @@ export default function PoolPanel() {
             </span>
             <span className="text-xs text-white/30">pre-warmed</span>
           </div>
-        </div>
+        </Card>
       </div>
 
       {/* Control Actions */}
-      <div className="flex items-center justify-between bg-white/[0.02] border border-white/[0.06] rounded-2xl p-4">
+      <Card className="flex flex-row items-center justify-between bg-white/[0.02] border border-white/[0.06] rounded-2xl p-4">
         <div>
-          <h3 className="text-sm font-semibold text-white">Browser Fleet Manager</h3>
-          <p className="text-xs text-white/30 mt-0.5">Control, restart, and monitor live distributed worker instances.</p>
+          <CardTitle className="text-sm font-semibold text-white">Browser Fleet Manager</CardTitle>
+          <CardDescription className="text-xs text-white/30 mt-0.5">Control, restart, and monitor live distributed worker instances.</CardDescription>
         </div>
         <div className="flex gap-2">
           {restartMsg && (
@@ -156,18 +160,19 @@ export default function PoolPanel() {
               {restartMsg}
             </div>
           )}
-          <button
+          <Button
             onClick={handleRestart}
             disabled={restarting}
-            className="px-4 py-2 bg-gradient-to-r from-red-500/20 to-rose-500/25 border border-red-500/30 hover:opacity-90 disabled:opacity-40 text-red-400 text-xs font-semibold rounded-xl transition-all shadow-lg shadow-red-500/5 flex items-center gap-1.5"
+            variant="outline"
+            className="px-4 py-2 h-auto bg-gradient-to-r from-red-500/20 to-rose-500/25 border border-red-500/30 hover:opacity-90 disabled:opacity-40 text-red-400 text-xs font-semibold rounded-xl transition-all shadow-lg shadow-red-500/5 flex items-center gap-1.5"
           >
             ⚡ {restarting ? 'Triggering...' : 'Restart Fleet'}
-          </button>
+          </Button>
         </div>
-      </div>
+      </Card>
 
       {/* Worker List */}
-      <div className="glass rounded-3xl overflow-hidden border border-white/[0.08]">
+      <Card className="glass rounded-3xl overflow-hidden border border-white/[0.08]">
         {browsers.length === 0 ? (
           <div className="p-12 text-center text-white/30 text-sm">
             No remote browser workers registered. Ensure GHA worker runs are active and heartbeating.
@@ -202,34 +207,34 @@ export default function PoolPanel() {
                            className="flex-1 text-teal-400 hover:underline text-xs font-mono truncate select-all">
                           {b.cdpUrl}
                         </a>
-                        <button onClick={() => copyText(b.cdpUrl)}
-                                className="text-[10px] text-white/30 hover:text-white transition-colors"
-                                title="Copy CDP URL">📋</button>
+                        <Button variant="ghost" onClick={() => copyText(b.cdpUrl)}
+                                className="text-[10px] text-white/30 hover:text-white transition-colors h-auto p-1"
+                                title="Copy CDP URL">📋</Button>
                         <a href={`${b.cdpUrl}/json/version`} target="_blank" rel="noopener noreferrer"
-                           className="text-[10px] text-white/30 hover:text-white transition-colors"
+                           className="text-[10px] text-white/30 hover:text-white transition-colors px-1"
                            title="Check CDP Status page">↗</a>
                       </div>
                     </td>
 
                     {/* Status Badge */}
                     <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border capitalize ${getStatusColor(b.status)}`}>
+                      <Badge variant="outline" className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border capitalize ${getStatusColor(b.status)}`}>
                         {b.status}
-                      </span>
+                      </Badge>
                     </td>
 
                     {/* Connection/Cache Status */}
                     <td className="px-6 py-4">
                       {b.isCached ? (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs">
+                        <Badge variant="outline" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                           Cached & Pre-warmed
-                        </span>
+                        </Badge>
                       ) : (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.04] border border-white/10 text-white/40 text-xs">
+                        <Badge variant="outline" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.04] border border-white/10 text-white/40 text-xs">
                           <span className="w-1.5 h-1.5 rounded-full bg-white/20" />
                           Lazy / Disconnected
-                        </span>
+                        </Badge>
                       )}
                     </td>
 
@@ -252,7 +257,7 @@ export default function PoolPanel() {
             </table>
           </div>
         )}
-      </div>
+      </Card>
     </div>
   );
 }

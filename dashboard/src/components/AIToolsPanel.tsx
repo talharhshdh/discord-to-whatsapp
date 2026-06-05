@@ -1,5 +1,10 @@
 import React, { useState, useRef } from 'react';
 import { api } from '../api';
+import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
 
 function blobUrl(blob: Blob) { return URL.createObjectURL(blob); }
 
@@ -29,17 +34,18 @@ function FileUploadCard({
   };
 
   return (
-    <div className="glass glass-hover rounded-2xl p-5 flex flex-col gap-3">
+    <Card className="glass glass-hover rounded-2xl p-5 flex flex-col gap-3 border border-white/10">
       <div className="text-2xl">{icon}</div>
-      <h3 className="font-semibold text-white text-sm">{title}</h3>
+      <CardTitle className="font-semibold text-white text-sm">{title}</CardTitle>
       <input ref={inputRef} type="file" accept={accept} className="hidden"
         onChange={e => e.target.files?.[0] && handle(e.target.files[0])} />
-      <button
+      <Button
         onClick={() => inputRef.current?.click()} disabled={loading}
-        className="py-2 rounded-lg bg-white/[0.07] hover:bg-white/[0.12] border border-white/10 text-xs font-medium transition-all disabled:opacity-50"
+        variant="outline"
+        className="w-full py-2 rounded-lg bg-white/[0.07] hover:bg-white/[0.12] border border-white/10 text-xs font-medium transition-all"
       >
         {loading ? '⏳ Processing…' : 'Upload & Process'}
-      </button>
+      </Button>
       {error && <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">❌ {error}</p>}
       {result && resultType === 'image' && (
         <div className="space-y-2">
@@ -49,10 +55,10 @@ function FileUploadCard({
         </div>
       )}
       {result && resultType === 'text' && (
-        <textarea readOnly value={result} rows={5}
+        <Textarea readOnly value={result} rows={5}
           className="w-full text-xs font-mono bg-black/30 border border-white/10 rounded-lg p-3 text-white/80 resize-none" />
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -72,19 +78,20 @@ function ScreenshotCard() {
   };
 
   return (
-    <div className="glass glass-hover rounded-2xl p-5 flex flex-col gap-3">
+    <Card className="glass glass-hover rounded-2xl p-5 flex flex-col gap-3 border border-white/10">
       <div className="text-2xl">📸</div>
-      <h3 className="font-semibold text-white text-sm">Screenshot URL</h3>
-      <input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://example.com"
+      <CardTitle className="font-semibold text-white text-sm">Screenshot URL</CardTitle>
+      <Input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://example.com"
         className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 outline-none focus:border-white/30" />
-      <label className="flex items-center gap-2 text-xs text-white/50 cursor-pointer">
+      <Label className="flex items-center gap-2 text-xs text-white/50 cursor-pointer">
         <input type="checkbox" checked={fullPage} onChange={e => setFullPage(e.target.checked)} className="accent-teal-400" />
         Full page screenshot
-      </label>
-      <button onClick={shoot} disabled={loading || !url}
-        className="py-2 rounded-lg bg-white/[0.07] hover:bg-white/[0.12] border border-white/10 text-xs font-medium transition-all disabled:opacity-50">
+      </Label>
+      <Button onClick={shoot} disabled={loading || !url}
+        variant="outline"
+        className="w-full py-2 rounded-lg bg-white/[0.07] hover:bg-white/[0.12] border border-white/10 text-xs font-medium transition-all">
         {loading ? '⏳ Capturing…' : 'Take Screenshot'}
-      </button>
+      </Button>
       {error && <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">❌ {error}</p>}
       {imgUrl && (
         <div className="space-y-2">
@@ -93,7 +100,7 @@ function ScreenshotCard() {
             className="block text-center text-xs text-teal-400 hover:underline">⬇ Download</a>
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -114,27 +121,28 @@ function HtmlCleanerCard() {
   };
 
   return (
-    <div className="glass glass-hover rounded-2xl p-5 flex flex-col gap-3">
+    <Card className="glass glass-hover rounded-2xl p-5 flex flex-col gap-3 border border-white/10">
       <div className="text-2xl">🧹</div>
-      <h3 className="font-semibold text-white text-sm">MinerU HTML Cleaner</h3>
-      <textarea value={html} onChange={e => setHtml(e.target.value)} placeholder="Paste raw HTML here..." rows={4}
+      <CardTitle className="font-semibold text-white text-sm">MinerU HTML Cleaner</CardTitle>
+      <Textarea value={html} onChange={e => setHtml(e.target.value)} placeholder="Paste raw HTML here..." rows={4}
         className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-white/30 outline-none focus:border-white/30 resize-none" />
-      <button onClick={clean} disabled={loading || !html.trim()}
-        className="py-2 rounded-lg bg-white/[0.07] hover:bg-white/[0.12] border border-white/10 text-xs font-medium transition-all disabled:opacity-50">
+      <Button onClick={clean} disabled={loading || !html.trim()}
+        variant="outline"
+        className="w-full py-2 rounded-lg bg-white/[0.07] hover:bg-white/[0.12] border border-white/10 text-xs font-medium transition-all">
         {loading ? '⏳ Cleaning…' : 'Clean HTML'}
-      </button>
+      </Button>
       {error && <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">❌ {error}</p>}
       {result && (
-        <textarea readOnly value={result} rows={5}
+        <Textarea readOnly value={result} rows={5}
           className="w-full text-xs font-mono bg-black/30 border border-white/10 rounded-lg p-3 text-white/80 resize-none mt-2" />
       )}
-    </div>
+    </Card>
   );
 }
 
 export default function AIToolsPanel() {
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 text-sm">
       <p className="text-white/40 text-sm">AI-powered tools — all processed by the Python API running in the same Actions session.</p>
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <FileUploadCard icon="🎨" title="Remove Background" accept="image/*" resultType="image"

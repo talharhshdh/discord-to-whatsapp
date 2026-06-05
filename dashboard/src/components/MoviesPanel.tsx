@@ -1,5 +1,9 @@
 import React, { useState } from 'react';
 import { api, MovieResult } from '../api';
+import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
 
 export default function MoviesPanel() {
   const [query, setQuery] = useState('');
@@ -23,19 +27,19 @@ export default function MoviesPanel() {
   };
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
-      <div className="glass rounded-3xl p-6 md:p-8 space-y-4 border border-white/[0.08] shadow-2xl relative overflow-hidden">
+    <div className="space-y-6 max-w-5xl mx-auto text-sm">
+      <Card className="glass rounded-3xl p-6 md:p-8 space-y-4 border border-white/[0.08] shadow-2xl relative overflow-hidden">
         <div className="absolute -top-24 -right-24 w-48 h-48 rounded-full bg-[#6c63ff]/5 blur-[80px] pointer-events-none" />
         
         <div>
-          <h3 className="font-bold text-white text-base">🎬 Discover Movies & TV Shows</h3>
-          <p className="text-white/40 text-xs mt-1">Search TMDB to fetch instant details and streaming links.</p>
+          <CardTitle className="font-bold text-white text-base">🎬 Discover Movies & TV Shows</CardTitle>
+          <CardDescription className="text-white/40 text-xs mt-1">Search TMDB to fetch instant details and streaming links.</CardDescription>
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <span className="absolute inset-y-0 left-4 flex items-center text-white/30 text-sm">🔍</span>
-            <input
+            <Input
               value={query}
               onChange={e => setQuery(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && search()}
@@ -43,10 +47,10 @@ export default function MoviesPanel() {
               className="w-full bg-[#161b26]/50 border border-white/10 rounded-2xl pl-10 pr-4 py-3 text-sm text-white placeholder-white/20 outline-none focus:border-[#6c63ff]/40 transition-all focus:bg-[#161b26]/80"
             />
           </div>
-          <button
+          <Button
             onClick={search}
             disabled={searching || !query.trim()}
-            className="px-6 py-3 rounded-2xl bg-gradient-to-r from-[#6c63ff] to-[#00d4aa] text-white text-sm font-bold hover:opacity-95 transition-all disabled:opacity-30 flex items-center justify-center gap-2 shadow-lg shadow-[#6c63ff]/10"
+            className="px-6 py-6 rounded-2xl bg-gradient-to-r from-[#6c63ff] to-[#00d4aa] text-white text-sm font-bold hover:opacity-95 transition-all disabled:opacity-30 flex items-center justify-center gap-2 shadow-lg shadow-[#6c63ff]/10 h-auto"
           >
             {searching ? (
               <>
@@ -56,9 +60,9 @@ export default function MoviesPanel() {
             ) : (
               <span>Search</span>
             )}
-          </button>
+          </Button>
         </div>
-      </div>
+      </Card>
 
       {error && (
         <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-2xl px-4 py-3 flex items-center gap-2.5 animate-in fade-in duration-300">
@@ -70,7 +74,7 @@ export default function MoviesPanel() {
       {results.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 pt-2">
           {results.map(m => (
-            <div
+            <Card
               key={m.tmdbId}
               className="glass glass-hover rounded-3xl overflow-hidden flex flex-col border border-white/[0.08] shadow-lg transition-all duration-300 group"
             >
@@ -88,15 +92,15 @@ export default function MoviesPanel() {
                 )}
                 
                 {/* Media Type Tag */}
-                <span className="absolute top-3 left-3 px-2 py-0.5 rounded-lg bg-black/60 border border-white/10 text-[9px] font-bold uppercase tracking-wider text-[#00d4aa] z-20">
+                <Badge variant="outline" className="absolute top-3 left-3 px-2 py-0.5 rounded-lg bg-black/60 border border-white/10 text-[9px] font-bold uppercase tracking-wider text-[#00d4aa] z-20">
                   {m.mediaType === 'tv' ? '📺 TV Show' : '🎬 Movie'}
-                </span>
+                </Badge>
                 
                 {/* Release Year Tag */}
                 {m.releaseDate && (
-                  <span className="absolute top-3 right-3 px-2 py-0.5 rounded-lg bg-black/60 border border-white/10 text-[9px] font-bold text-white/70 z-20">
+                  <Badge variant="outline" className="absolute top-3 right-3 px-2 py-0.5 rounded-lg bg-black/60 border border-white/10 text-[9px] font-bold text-white/70 z-20">
                     {m.releaseDate.slice(0, 4)}
-                  </span>
+                  </Badge>
                 )}
               </div>
 
@@ -104,11 +108,11 @@ export default function MoviesPanel() {
               <div className="p-5 flex-1 flex flex-col space-y-3">
                 <div className="space-y-1">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="font-bold text-white text-sm line-clamp-1 leading-snug group-hover:text-[#6c63ff] transition-colors">{m.title}</p>
+                    <CardTitle className="font-bold text-white text-sm line-clamp-1 leading-snug group-hover:text-[#6c63ff] transition-colors">{m.title}</CardTitle>
                     {m.voteAverage > 0 && (
-                      <span className="text-[10px] font-bold text-yellow-400 flex items-center gap-0.5 bg-yellow-500/10 px-1.5 py-0.5 rounded border border-yellow-500/20">
+                      <Badge variant="outline" className="text-[10px] font-bold text-yellow-400 flex items-center gap-0.5 bg-yellow-500/10 px-1.5 py-0.5 rounded border border-yellow-500/20">
                         ⭐ {m.voteAverage.toFixed(1)}
-                      </span>
+                      </Badge>
                     )}
                   </div>
                 </div>
@@ -129,7 +133,7 @@ export default function MoviesPanel() {
                   <span>Watch Content</span>
                 </a>
               </div>
-            </div>
+            </Card>
           ))}
         </div>
       )}

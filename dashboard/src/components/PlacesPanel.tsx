@@ -1,5 +1,9 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { api, PlaceResult } from '../api';
+import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
@@ -29,7 +33,8 @@ function StarRating({ rating }: { rating: number }) {
 function StatusBadge({ openNow }: { openNow: boolean | null }) {
   if (openNow === null) return null;
   return (
-    <span
+    <Badge
+      variant="outline"
       className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
         openNow
           ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
@@ -38,7 +43,7 @@ function StatusBadge({ openNow }: { openNow: boolean | null }) {
     >
       <span className={`w-1.5 h-1.5 rounded-full ${openNow ? 'bg-emerald-400' : 'bg-red-400'}`} />
       {openNow ? 'Open now' : 'Closed'}
-    </span>
+    </Badge>
   );
 }
 
@@ -46,7 +51,7 @@ function PlaceCard({ place, isNew }: { place: PlaceResult; isNew: boolean }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div
+    <Card
       className={`glass rounded-2xl border transition-all duration-500 overflow-hidden group ${
         isNew
           ? 'border-[#6c63ff]/40 shadow-lg shadow-[#6c63ff]/10 animate-in fade-in slide-in-from-bottom-2 duration-400'
@@ -57,17 +62,17 @@ function PlaceCard({ place, isNew }: { place: PlaceResult; isNew: boolean }) {
       <div className="p-5">
         <div className="flex items-start justify-between gap-3 mb-2">
           <div className="flex-1 min-w-0">
-            <h4 className="text-white font-semibold text-base leading-tight truncate group-hover:text-[#6c63ff] transition-colors">
+            <CardTitle className="text-white font-semibold text-base leading-tight truncate group-hover:text-[#6c63ff] transition-colors">
               {place.name}
-            </h4>
+            </CardTitle>
             {place.category && (
               <p className="text-xs text-white/40 mt-0.5">{place.category}</p>
             )}
           </div>
           {place.priceLevel && (
-            <span className="flex-shrink-0 text-xs font-bold text-[#00d4aa] bg-[#00d4aa]/10 border border-[#00d4aa]/20 px-2 py-0.5 rounded-lg">
+            <Badge variant="outline" className="flex-shrink-0 text-xs font-bold text-[#00d4aa] bg-[#00d4aa]/10 border border-[#00d4aa]/20 px-2 py-0.5 rounded-lg">
               {place.priceLevel}
-            </span>
+            </Badge>
           )}
         </div>
 
@@ -129,19 +134,20 @@ function PlaceCard({ place, isNew }: { place: PlaceResult; isNew: boolean }) {
 
       {(place.weeklyHours || (place.amenities?.length ?? 0) > 0 || place.lat !== null) && (
         <>
-          <button
+          <Button
             onClick={() => setExpanded((v) => !v)}
-            className="w-full px-5 py-2 flex items-center justify-between text-xs text-white/35 hover:text-white/60 border-t border-white/[0.05] hover:bg-white/[0.02] transition-all"
+            variant="ghost"
+            className="w-full px-5 py-2 h-auto flex items-center justify-between text-xs text-white/35 hover:text-white/60 border-t border-white/[0.05] hover:bg-white/[0.02] rounded-none transition-all font-normal"
           >
             <span>{expanded ? 'Show less' : 'More details'}</span>
             <span className={`transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}>▾</span>
-          </button>
+          </Button>
 
           {expanded && (
             <div className="px-5 pb-5 space-y-4 border-t border-white/[0.04] pt-4">
               {place.weeklyHours && Object.keys(place.weeklyHours).length > 0 && (
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider text-white/30 mb-2">Hours</p>
+                  <p className="text-[10px] uppercase tracking-wider text-white/30 mb-2 font-bold">Hours</p>
                   <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                     {Object.entries(place.weeklyHours).map(([day, hrs]) => (
                       <div key={day} className="flex justify-between gap-2 text-xs">
@@ -155,12 +161,12 @@ function PlaceCard({ place, isNew }: { place: PlaceResult; isNew: boolean }) {
 
               {(place.amenities?.length ?? 0) > 0 && (
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider text-white/30 mb-2">Amenities</p>
+                  <p className="text-[10px] uppercase tracking-wider text-white/30 mb-2 font-bold">Amenities</p>
                   <div className="flex flex-wrap gap-1.5">
                     {place.amenities.map((a, i) => (
-                      <span key={i} className="text-[10px] bg-white/[0.04] border border-white/[0.07] text-white/50 px-2 py-0.5 rounded-full">
+                      <Badge key={i} variant="outline" className="text-[10px] bg-white/[0.04] border border-white/[0.07] text-white/50 px-2 py-0.5 rounded-full font-normal">
                         {a}
-                      </span>
+                      </Badge>
                     ))}
                   </div>
                 </div>
@@ -168,7 +174,7 @@ function PlaceCard({ place, isNew }: { place: PlaceResult; isNew: boolean }) {
 
               {place.lat !== null && place.lng !== null && (
                 <div className="flex items-center gap-3">
-                  <p className="text-[10px] uppercase tracking-wider text-white/30">Coordinates</p>
+                  <p className="text-[10px] uppercase tracking-wider text-white/30 font-bold">Coordinates</p>
                   <p className="text-xs text-white/40 font-mono">
                     {place.lat.toFixed(6)}, {place.lng.toFixed(6)}
                   </p>
@@ -177,19 +183,19 @@ function PlaceCard({ place, isNew }: { place: PlaceResult; isNew: boolean }) {
 
               <div className="flex flex-wrap gap-2">
                 {place.hasPopularTimes && (
-                  <span className="text-[10px] text-purple-400 bg-purple-400/10 border border-purple-400/20 px-2 py-0.5 rounded-full">
+                  <Badge variant="outline" className="text-[10px] text-purple-400 bg-purple-400/10 border border-purple-400/20 px-2 py-0.5 rounded-full font-normal">
                     📊 Popular times
-                  </span>
+                  </Badge>
                 )}
                 {place.photosCount !== null && (
-                  <span className="text-[10px] text-white/35 bg-white/[0.04] border border-white/[0.07] px-2 py-0.5 rounded-full">
+                  <Badge variant="outline" className="text-[10px] text-white/35 bg-white/[0.04] border border-white/[0.07] px-2 py-0.5 rounded-full font-normal">
                     🖼 {place.photosCount.toLocaleString()} photos
-                  </span>
+                  </Badge>
                 )}
                 {place.placeId && (
-                  <span className="text-[10px] text-white/25 bg-white/[0.03] border border-white/[0.05] px-2 py-0.5 rounded-full font-mono">
+                  <Badge variant="outline" className="text-[10px] text-white/25 bg-white/[0.03] border border-white/[0.05] px-2 py-0.5 rounded-full font-mono font-normal">
                     ID: {place.placeId.slice(0, 24)}…
-                  </span>
+                  </Badge>
                 )}
               </div>
             </div>
@@ -209,7 +215,7 @@ function PlaceCard({ place, isNew }: { place: PlaceResult; isNew: boolean }) {
           </a>
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -217,7 +223,7 @@ function PlaceCard({ place, isNew }: { place: PlaceResult; isNew: boolean }) {
 
 function StreamProgress({ round, total, done }: { round: number; total: number; done: boolean }) {
   return (
-    <div className="glass rounded-xl border border-[#6c63ff]/20 p-4 flex items-center gap-4">
+    <Card className="glass rounded-xl border border-[#6c63ff]/20 p-4 flex items-center gap-4">
       <div className="relative w-8 h-8 flex-shrink-0">
         {!done ? (
           <>
@@ -225,7 +231,7 @@ function StreamProgress({ round, total, done }: { round: number; total: number; 
             <div className="absolute inset-0 rounded-full border-2 border-[#6c63ff] border-t-transparent animate-spin" />
           </>
         ) : (
-          <div className="w-8 h-8 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 text-sm">
+          <div className="w-8 h-8 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 text-sm animate-in fade-in">
             ✓
           </div>
         )}
@@ -239,13 +245,13 @@ function StreamProgress({ round, total, done }: { round: number; total: number; 
         </p>
       </div>
       <span className="text-2xl font-bold text-[#6c63ff] tabular-nums">{total}</span>
-    </div>
+    </Card>
   );
 }
 
 // ── Mode toggle ───────────────────────────────────────────────────────────────
 
-type Mode = 'stream' | 'paginated' | 'google-search';
+type Mode = 'google-search' | 'stream' | 'paginated';
 
 // ── Paginated panel ───────────────────────────────────────────────────────────
 
@@ -276,16 +282,18 @@ function PaginatedPanel() {
 
   return (
     <div className="space-y-6">
-      <div className="glass p-6 rounded-2xl border border-white/[0.07] shadow-xl">
+      <Card className="glass p-6 rounded-2xl border border-white/[0.07] shadow-xl">
         <div className="flex items-start justify-between mb-1">
-          <h3 className="text-lg font-bold text-white">Paginated Places Search</h3>
-          <span className="text-xs text-white/30 bg-white/[0.04] border border-white/[0.07] px-2 py-0.5 rounded-full">pool · page {page}</span>
+          <div>
+            <CardTitle className="text-lg font-bold text-white">Paginated Places Search</CardTitle>
+            <CardDescription className="text-xs text-white/45 mt-1">Fetches one page (20 results) at a time via the browser pool.</CardDescription>
+          </div>
+          <Badge variant="outline" className="text-xs text-white/30 bg-white/[0.04] border border-white/[0.07] px-2 py-0.5 rounded-full font-normal">pool · page {page}</Badge>
         </div>
-        <p className="text-sm text-white/45 mb-5">Fetches one page (20 results) at a time via the browser pool.</p>
 
-        <form onSubmit={handleSubmit} className="space-y-3">
+        <form onSubmit={handleSubmit} className="space-y-3 mt-4">
           <div className="flex flex-col sm:flex-row gap-3">
-            <input
+            <Input
               id="places-pool-query"
               type="text"
               className="flex-1 bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-[#6c63ff]/50 transition-colors"
@@ -294,13 +302,13 @@ function PaginatedPanel() {
               onChange={(e) => setQuery(e.target.value)}
               disabled={loading}
             />
-            <button
+            <Button
               type="submit"
               disabled={!query.trim() || loading}
-              className="px-6 py-2.5 bg-gradient-to-r from-[#6c63ff] to-[#00d4aa] rounded-xl text-white font-medium hover:opacity-90 disabled:opacity-50 transition-all shadow-lg shadow-[#6c63ff]/20 whitespace-nowrap"
+              className="px-6 py-2.5 h-auto bg-gradient-to-r from-[#6c63ff] to-[#00d4aa] rounded-xl text-white font-medium hover:opacity-90 disabled:opacity-50 transition-all shadow-lg shadow-[#6c63ff]/20 whitespace-nowrap"
             >
               {loading ? '⏳ Searching…' : '🔍 Search'}
-            </button>
+            </Button>
           </div>
 
           <label className="flex items-center gap-2 cursor-pointer select-none w-fit">
@@ -317,24 +325,26 @@ function PaginatedPanel() {
         {error && (
           <div className="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{error}</div>
         )}
-      </div>
+      </Card>
 
       {result && (
         <>
           <div className="flex items-center justify-between">
             <span className="text-white/60 text-sm">{result.totalResultsText ?? `${result.results.length} results`}</span>
             <div className="flex items-center gap-2">
-              <button
+              <Button
                 onClick={() => runSearch(page - 1)}
                 disabled={page <= 1 || loading}
-                className="px-3 py-1.5 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white/60 text-sm hover:bg-white/[0.09] disabled:opacity-30 transition-all"
-              >← Prev</button>
+                variant="outline"
+                className="px-3 py-1.5 h-auto rounded-lg bg-white/[0.05] border border-white/[0.08] text-white/60 text-sm hover:bg-white/[0.09] disabled:opacity-30 transition-all"
+              >← Prev</Button>
               <span className="text-white/40 text-xs px-2">Page {page}</span>
-              <button
+              <Button
                 onClick={() => runSearch(page + 1)}
                 disabled={!result.hasNextPage || loading}
-                className="px-3 py-1.5 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white/60 text-sm hover:bg-white/[0.09] disabled:opacity-30 transition-all"
-              >Next →</button>
+                variant="outline"
+                className="px-3 py-1.5 h-auto rounded-lg bg-white/[0.05] border border-white/[0.08] text-white/60 text-sm hover:bg-white/[0.09] disabled:opacity-30 transition-all"
+              >Next →</Button>
             </div>
           </div>
 
@@ -356,6 +366,11 @@ function PaginatedPanel() {
 // ── Google Search panel ──────────────────────────────────────────────────────
 
 type GsSubMode = 'stream' | 'paginated';
+
+interface PlaceEntry {
+  place: PlaceResult;
+  isNew: boolean;
+}
 
 function GoogleSearchPanel() {
   const [subMode, setSubMode] = useState<GsSubMode>('stream');
@@ -443,38 +458,44 @@ function GoogleSearchPanel() {
     <div className="space-y-6">
       {/* Sub-mode toggle */}
       <div className="flex gap-1 p-1 bg-white/[0.04] border border-white/[0.07] rounded-xl w-fit">
-        {(['stream', 'paginated'] as GsSubMode[]).map(m => (
-          <button
-            key={m}
-            onClick={() => setSubMode(m)}
-            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
-              subMode === m
-                ? 'bg-[#00d4aa] text-black shadow shadow-[#00d4aa]/30'
-                : 'text-white/40 hover:text-white/70'
+        {([
+          { id: 'stream', label: '📡 Auto-paginate' },
+          { id: 'paginated', label: '📄 Single page' }
+        ] as { id: GsSubMode; label: string }[]).map(({ id, label }) => (
+          <Button
+            key={id}
+            onClick={() => setSubMode(id)}
+            variant="outline"
+            className={`px-4 py-1.5 h-auto rounded-lg text-sm font-medium transition-all ${
+              subMode === id
+                ? 'bg-[#00d4aa] text-black shadow shadow-[#00d4aa]/30 hover:bg-[#00d4aa]/80'
+                : 'text-white/40 hover:text-white/70 border-transparent bg-transparent hover:bg-white/5'
             }`}
           >
-            {m === 'stream' ? '📡 Auto-paginate' : '📄 Single page'}
-          </button>
+            {label}
+          </Button>
         ))}
       </div>
 
       {/* ── Streaming / auto-paginate mode ─────────────────────────────── */}
       {subMode === 'stream' && (
         <>
-          <div className="glass p-6 rounded-2xl border border-white/[0.07] shadow-xl">
+          <Card className="glass p-6 rounded-2xl border border-white/[0.07] shadow-xl">
             <div className="flex items-start justify-between mb-1">
-              <h3 className="text-lg font-bold text-white">Google Search Places — Auto-paginate</h3>
-              <span className="text-xs text-white/30 bg-white/[0.04] border border-white/[0.07] px-2 py-0.5 rounded-full">
+              <div>
+                <CardTitle className="text-lg font-bold text-white">Google Search Places — Auto-paginate</CardTitle>
+                <CardDescription className="text-sm text-white/45 mt-1">
+                  Iterates Google Search pages (start=0, 20, 40…) and streams results live.
+                </CardDescription>
+              </div>
+              <Badge variant="outline" className="text-xs text-white/30 bg-white/[0.04] border border-white/[0.07] px-2 py-0.5 rounded-full font-normal">
                 udm=1 · sse
-              </span>
+              </Badge>
             </div>
-            <p className="text-sm text-white/45 mb-5">
-              Iterates Google Search pages (start=0, 20, 40…) and streams results live.
-            </p>
 
-            <form onSubmit={handleStreamSearch} className="space-y-3">
+            <form onSubmit={handleStreamSearch} className="space-y-3 mt-4">
               <div className="flex flex-col sm:flex-row gap-3">
-                <input
+                <Input
                   id="gs-stream-query"
                   type="text"
                   className="flex-1 bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-[#00d4aa]/50 transition-colors"
@@ -484,21 +505,22 @@ function GoogleSearchPanel() {
                   disabled={streaming}
                 />
                 {streaming ? (
-                  <button
+                  <Button
                     type="button"
                     onClick={handleStop}
-                    className="px-6 py-2.5 bg-red-500/20 border border-red-500/30 rounded-xl text-red-400 font-medium hover:bg-red-500/30 transition-all whitespace-nowrap"
+                    variant="outline"
+                    className="px-6 py-2.5 h-auto bg-red-500/20 border border-red-500/30 rounded-xl text-red-400 font-medium hover:bg-red-500/30 transition-all whitespace-nowrap"
                   >
                     ⏹ Stop
-                  </button>
+                  </Button>
                 ) : (
-                  <button
+                  <Button
                     type="submit"
                     disabled={!sQuery.trim()}
-                    className="px-6 py-2.5 bg-gradient-to-r from-[#00d4aa] to-[#6c63ff] rounded-xl text-white font-medium hover:opacity-90 disabled:opacity-50 transition-all shadow-lg shadow-[#00d4aa]/20 whitespace-nowrap"
+                    className="px-6 py-2.5 h-auto bg-gradient-to-r from-[#00d4aa] to-[#6c63ff] rounded-xl text-white font-medium hover:opacity-90 disabled:opacity-50 transition-all shadow-lg shadow-[#00d4aa]/20 whitespace-nowrap"
                   >
                     🔍 Search
-                  </button>
+                  </Button>
                 )}
               </div>
               <div className="flex items-center gap-3">
@@ -520,7 +542,7 @@ function GoogleSearchPanel() {
             {sError && (
               <div className="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{sError}</div>
             )}
-          </div>
+          </Card>
 
           {(streaming || sDone) && (
             <StreamProgress round={sRound} total={sTotal} done={sDone && !streaming} />
@@ -534,7 +556,7 @@ function GoogleSearchPanel() {
                   {streaming && <span className="ml-2 text-[#00d4aa] animate-pulse">● live</span>}
                 </span>
                 {sDone && !streaming && (
-                  <span className="text-xs text-emerald-400/70 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">✓ Complete</span>
+                  <Badge variant="outline" className="text-xs text-emerald-400/70 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full font-normal">✓ Complete</Badge>
                 )}
               </div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -560,16 +582,18 @@ function GoogleSearchPanel() {
       {/* ── Single-page paginated mode ──────────────────────────────────── */}
       {subMode === 'paginated' && (
         <div className="space-y-6">
-          <div className="glass p-6 rounded-2xl border border-white/[0.07] shadow-xl">
+          <Card className="glass p-6 rounded-2xl border border-white/[0.07] shadow-xl">
             <div className="flex items-start justify-between mb-1">
-              <h3 className="text-lg font-bold text-white">Google Search Places — Single Page</h3>
-              <span className="text-xs text-white/30 bg-white/[0.04] border border-white/[0.07] px-2 py-0.5 rounded-full">udm=1 · page {pPage}</span>
+              <div>
+                <CardTitle className="text-lg font-bold text-white">Google Search Places — Single Page</CardTitle>
+                <CardDescription className="text-sm text-white/45 mt-1">Fetches one page (20 results) at a time via Google Search URL.</CardDescription>
+              </div>
+              <Badge variant="outline" className="text-xs text-white/30 bg-white/[0.04] border border-white/[0.07] px-2 py-0.5 rounded-full font-normal">udm=1 · page {pPage}</Badge>
             </div>
-            <p className="text-sm text-white/45 mb-5">Fetches one page (20 results) at a time via Google Search URL.</p>
 
-            <form onSubmit={(e) => { e.preventDefault(); runPagedSearch(1); }} className="space-y-3">
+            <form onSubmit={(e) => { e.preventDefault(); runPagedSearch(1); }} className="space-y-3 mt-4">
               <div className="flex flex-col sm:flex-row gap-3">
-                <input
+                <Input
                   id="gs-paged-query"
                   type="text"
                   className="flex-1 bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-[#00d4aa]/50 transition-colors"
@@ -578,37 +602,39 @@ function GoogleSearchPanel() {
                   onChange={e => setPQuery(e.target.value)}
                   disabled={pLoading}
                 />
-                <button
+                <Button
                   type="submit"
                   disabled={!pQuery.trim() || pLoading}
-                  className="px-6 py-2.5 bg-gradient-to-r from-[#00d4aa] to-[#6c63ff] rounded-xl text-white font-medium hover:opacity-90 disabled:opacity-50 transition-all shadow-lg shadow-[#00d4aa]/20 whitespace-nowrap"
+                  className="px-6 py-2.5 h-auto bg-gradient-to-r from-[#00d4aa] to-[#6c63ff] rounded-xl text-white font-medium hover:opacity-90 disabled:opacity-50 transition-all shadow-lg shadow-[#00d4aa]/20 whitespace-nowrap"
                 >
                   {pLoading ? '⏳ Searching…' : '🔍 Search'}
-                </button>
+                </Button>
               </div>
             </form>
 
             {pError && (
               <div className="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{pError}</div>
             )}
-          </div>
+          </Card>
 
           {pResult && (
             <>
               <div className="flex items-center justify-between">
                 <span className="text-white/60 text-sm">{pResult.totalResultsText ?? `${pResult.results.length} results`}</span>
                 <div className="flex items-center gap-2">
-                  <button
+                  <Button
                     onClick={() => runPagedSearch(pPage - 1)}
                     disabled={pPage <= 1 || pLoading}
-                    className="px-3 py-1.5 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white/60 text-sm hover:bg-white/[0.09] disabled:opacity-30 transition-all"
-                  >← Prev</button>
+                    variant="outline"
+                    className="px-3 py-1.5 h-auto rounded-lg bg-white/[0.05] border border-white/[0.08] text-white/60 text-sm hover:bg-white/[0.09] disabled:opacity-30 transition-all"
+                  >← Prev</Button>
                   <span className="text-white/40 text-xs px-2">Page {pPage}</span>
-                  <button
+                  <Button
                     onClick={() => runPagedSearch(pPage + 1)}
                     disabled={!pResult.hasNextPage || pLoading}
-                    className="px-3 py-1.5 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white/60 text-sm hover:bg-white/[0.09] disabled:opacity-30 transition-all"
-                  >Next →</button>
+                    variant="outline"
+                    className="px-3 py-1.5 h-auto rounded-lg bg-white/[0.05] border border-white/[0.08] text-white/60 text-sm hover:bg-white/[0.09] disabled:opacity-30 transition-all"
+                  >Next →</Button>
                 </div>
               </div>
 
@@ -631,11 +657,6 @@ function GoogleSearchPanel() {
 
 // ── Main panel ────────────────────────────────────────────────────────────────
 
-interface PlaceEntry {
-  place: PlaceResult;
-  isNew: boolean;
-}
-
 export default function PlacesPanel() {
   const [mode, setMode]         = useState<Mode>('google-search');
   const [query, setQuery]       = useState('');
@@ -647,7 +668,6 @@ export default function PlacesPanel() {
   const [total, setTotal]       = useState(0);
 
   const esRef = useRef<EventSource | null>(null);
-  // Track which card names are newly arrived (highlighted for 3s)
   const newNamesRef = useRef<Set<string>>(new Set());
 
   const stopStream = useCallback(() => {
@@ -655,10 +675,8 @@ export default function PlacesPanel() {
     esRef.current = null;
   }, []);
 
-  // Clean up on unmount
   useEffect(() => () => stopStream(), [stopStream]);
 
-  // After 3s, remove the "isNew" glow from newly added cards
   const scheduleNewFade = useCallback((names: string[]) => {
     setTimeout(() => {
       setEntries(prev =>
@@ -683,7 +701,6 @@ export default function PlacesPanel() {
 
     const es = api.placesStream(
       query.trim(),
-      // onBatch
       (cards, newTotal, newRound) => {
         const newNames = cards.map(c => c.name);
         newNames.forEach(n => newNamesRef.current.add(n));
@@ -695,13 +712,11 @@ export default function PlacesPanel() {
         ]);
         scheduleNewFade(newNames);
       },
-      // onDone
       (finalTotal) => {
         setTotal(finalTotal);
         setStreaming(false);
         setDone(true);
       },
-      // onError
       (msg) => {
         setError(msg);
         setStreaming(false);
@@ -719,7 +734,7 @@ export default function PlacesPanel() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 text-sm">
       {/* Mode toggle */}
       <div className="flex gap-1 p-1 bg-white/[0.04] border border-white/[0.07] rounded-xl w-fit">
         {([
@@ -727,17 +742,18 @@ export default function PlacesPanel() {
           { id: 'stream',        label: '📡 Maps Stream' },
           { id: 'paginated',     label: '📄 Maps Paginated' },
         ] as { id: Mode; label: string }[]).map(({ id, label }) => (
-          <button
+          <Button
             key={id}
             onClick={() => setMode(id)}
-            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
+            variant="outline"
+            className={`px-4 py-1.5 h-auto rounded-lg text-sm font-medium transition-all ${
               mode === id
-                ? 'bg-[#6c63ff] text-white shadow shadow-[#6c63ff]/30'
-                : 'text-white/40 hover:text-white/70'
+                ? 'bg-[#6c63ff] text-white shadow shadow-[#6c63ff]/30 hover:bg-[#6c63ff]/80 border-transparent'
+                : 'text-white/40 hover:text-white/70 border-transparent bg-transparent hover:bg-white/5'
             }`}
           >
             {label}
-          </button>
+          </Button>
         ))}
       </div>
 
@@ -747,21 +763,22 @@ export default function PlacesPanel() {
       {mode === 'stream' && (
       <>
       {/* Search card */}
-      <div className="glass p-6 rounded-2xl border border-white/[0.07] shadow-xl">
+      <Card className="glass p-6 rounded-2xl border border-white/[0.07] shadow-xl">
         <div className="flex items-start justify-between mb-1">
-          <h3 className="text-lg font-bold text-white">Google Maps Places Search</h3>
-          <span className="text-xs text-white/30 bg-white/[0.04] border border-white/[0.07] px-2 py-0.5 rounded-full">
+          <div>
+            <CardTitle className="text-lg font-bold text-white">Google Maps Places Search</CardTitle>
+            <CardDescription className="text-sm text-white/45 mt-1">
+              Results appear in real-time as the browser scrolls through Google Maps.
+            </CardDescription>
+          </div>
+          <Badge variant="outline" className="text-xs text-white/30 bg-white/[0.04] border border-white/[0.07] px-2 py-0.5 rounded-full font-normal">
             live stream
-          </span>
+          </Badge>
         </div>
-        <p className="text-sm text-white/45 mb-5">
-          Results appear in real-time as the browser scrolls through Google Maps.
-        </p>
 
-
-        <form onSubmit={handleSearch} className="space-y-3">
+        <form onSubmit={handleSearch} className="space-y-3 mt-4">
           <div className="flex flex-col sm:flex-row gap-3">
-            <input
+            <Input
               id="places-query"
               type="text"
               className="flex-1 bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-[#6c63ff]/50 transition-colors"
@@ -771,21 +788,22 @@ export default function PlacesPanel() {
               disabled={streaming}
             />
             {streaming ? (
-              <button
+              <Button
                 type="button"
                 onClick={handleStop}
-                className="px-6 py-2.5 bg-red-500/20 border border-red-500/30 rounded-xl text-red-400 font-medium hover:bg-red-500/30 transition-all whitespace-nowrap"
+                variant="outline"
+                className="px-6 py-2.5 h-auto bg-red-500/20 border border-red-500/30 rounded-xl text-red-400 font-medium hover:bg-red-500/30 transition-all whitespace-nowrap"
               >
                 ⏹ Stop
-              </button>
+              </Button>
             ) : (
-              <button
+              <Button
                 type="submit"
                 disabled={!query.trim()}
-                className="px-6 py-2.5 bg-gradient-to-r from-[#6c63ff] to-[#00d4aa] rounded-xl text-white font-medium hover:opacity-90 disabled:opacity-50 transition-all shadow-lg shadow-[#6c63ff]/20 whitespace-nowrap"
+                className="px-6 py-2.5 h-auto bg-gradient-to-r from-[#6c63ff] to-[#00d4aa] rounded-xl text-white font-medium hover:opacity-90 disabled:opacity-50 transition-all shadow-lg shadow-[#6c63ff]/20 whitespace-nowrap"
               >
                 🗺 Search Places
-              </button>
+              </Button>
             )}
           </div>
         </form>
@@ -795,9 +813,8 @@ export default function PlacesPanel() {
             {error}
           </div>
         )}
-      </div>
+      </Card>
 
-      {/* Live progress bar */}
       {(streaming || done) && entries.length >= 0 && (
         <StreamProgress round={round} total={total} done={done && !streaming} />
       )}
@@ -811,9 +828,9 @@ export default function PlacesPanel() {
               {streaming && <span className="ml-2 text-[#6c63ff] animate-pulse">● live</span>}
             </span>
             {done && !streaming && (
-              <span className="text-xs text-emerald-400/70 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+              <Badge variant="outline" className="text-xs text-emerald-400/70 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full font-normal">
                 ✓ Complete
-              </span>
+              </Badge>
             )}
           </div>
 

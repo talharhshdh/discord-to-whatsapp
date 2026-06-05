@@ -1150,11 +1150,16 @@ export async function searchViaPool(
         results = await extractResults(categoryKey);
       }
 
+      // If organic results are less than 10, try re-parsing once immediately
+      if (!results.captcha && categoryKey === 'all' && results.organic.length < 10) {
+        results = await extractResults(categoryKey);
+      }
+
       if (results.captcha) {
         pageErrored = true;
         throw new Error('CAPTCHA_DETECTED');
       }
-
+      
       workerCdpFailures.delete(browser.workerId);
 
       let cleanAiResponse: string | null = null;

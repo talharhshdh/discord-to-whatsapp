@@ -1,5 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { api, TTSVoice, TTSStatus } from '../api';
+import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -65,21 +70,22 @@ function AudioResult({ blob, filename }: { blob: Blob; filename: string }) {
   }, [blob]);
 
   return (
-    <div className="flex flex-col gap-2 p-4 rounded-2xl bg-emerald-500/[0.06] border border-emerald-500/20">
+    <Card className="flex flex-col gap-2 p-4 rounded-2xl bg-emerald-500/[0.06] border border-emerald-500/20">
       <div className="flex items-center gap-2 text-xs text-emerald-400">
         <span>🎵</span>
         <span className="font-medium">{filename}</span>
       </div>
       <audio controls src={src} className="w-full h-9 rounded-lg" />
       <div className="flex gap-2 mt-1">
-        <button
+        <Button
           onClick={() => downloadBlob(blob, filename)}
-          className="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/25 text-emerald-400 text-xs font-medium transition-all"
+          variant="outline"
+          className="px-3 py-1.5 h-auto rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/25 text-emerald-400 text-xs font-medium transition-all"
         >
           ⬇ Download
-        </button>
+        </Button>
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -88,22 +94,23 @@ function AudioResult({ blob, filename }: { blob: Blob; filename: string }) {
 function VoiceCard({ voice, selected, onClick }: { voice: TTSVoice; selected: boolean; onClick(): void }) {
   const genderIcon = voice.gender === 'female' ? '👩' : voice.gender === 'male' ? '👨' : '🧑';
   return (
-    <button
+    <Button
       onClick={onClick}
-      className={`relative flex flex-col gap-1 p-3 rounded-xl border text-left transition-all ${selected
+      variant="outline"
+      className={`relative flex flex-col items-start gap-1 p-3 rounded-xl border text-left transition-all h-auto ${selected
         ? 'bg-[#6c63ff]/20 border-[#6c63ff]/40 text-white'
         : 'bg-white/[0.03] border-white/[0.07] text-white/60 hover:border-white/20 hover:text-white'
       }`}
     >
-      <div className="absolute top-2 right-2 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-white/10 text-white/40">
+      <Badge variant="outline" className="absolute top-2 right-2 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-white/10 text-white/40 border-none">
         {voice.engine}
-      </div>
+      </Badge>
       <div className="flex items-center gap-1.5">
         <span>{genderIcon}</span>
         <span className="font-semibold text-sm">{voice.label}</span>
       </div>
-      <p className="text-[10px] leading-relaxed opacity-70">{voice.tone}</p>
-    </button>
+      <p className="text-[10px] leading-relaxed opacity-70 whitespace-normal font-normal">{voice.tone}</p>
+    </Button>
   );
 }
 
@@ -147,12 +154,12 @@ function GenerateTab({ voices, serverReady }: { voices: TTSVoice[]; serverReady:
       {/* Text input */}
       <div>
         <div className="flex items-center justify-between mb-1.5">
-          <label className="text-[11px] text-white/40">Text to synthesise</label>
+          <label className="text-[11px] text-white/40 font-semibold uppercase block">Text to synthesise</label>
           <span className={`text-[10px] ${charCount > charLimit ? 'text-red-400' : 'text-white/20'}`}>
             {charCount}/{charLimit}
           </span>
         </div>
-        <textarea
+        <Textarea
           value={text}
           onChange={e => setText(e.target.value)}
           rows={5}
@@ -164,7 +171,7 @@ function GenerateTab({ voices, serverReady }: { voices: TTSVoice[]; serverReady:
       {/* Voice grid */}
       {voices.length > 0 && (
         <div>
-          <label className="text-[11px] text-white/40 block mb-2">Voice preset</label>
+          <label className="text-[11px] text-white/40 font-semibold uppercase block mb-2">Voice preset</label>
           <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 gap-2">
             {voices.map(v => (
               <VoiceCard key={v.id} voice={v} selected={voice === v.id} onClick={() => setVoice(v.id)} />
@@ -176,7 +183,7 @@ function GenerateTab({ voices, serverReady }: { voices: TTSVoice[]; serverReady:
       {/* Options row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <label className="text-[11px] text-white/40 block mb-1.5">Language</label>
+          <label className="text-[11px] text-white/40 font-semibold uppercase block mb-1.5">Language</label>
           <select
             value={language}
             onChange={e => setLanguage(e.target.value)}
@@ -189,8 +196,8 @@ function GenerateTab({ voices, serverReady }: { voices: TTSVoice[]; serverReady:
           </select>
         </div>
         <div>
-          <label className="text-[11px] text-white/40 block mb-1.5">Instruction (Optional)</label>
-          <input
+          <label className="text-[11px] text-white/40 font-semibold uppercase block mb-1.5">Instruction (Optional)</label>
+          <Input
             type="text"
             value={instruct}
             onChange={e => setInstruct(e.target.value)}
@@ -200,13 +207,13 @@ function GenerateTab({ voices, serverReady }: { voices: TTSVoice[]; serverReady:
         </div>
       </div>
 
-      <button
+      <Button
         onClick={generate}
         disabled={!text.trim() || busy || !serverReady || charCount > charLimit}
-        className="w-full py-3 rounded-xl bg-gradient-to-r from-[#6c63ff] to-[#00d4aa] hover:opacity-90 disabled:opacity-40 text-white font-semibold text-sm transition-all shadow-lg shadow-[#6c63ff]/20"
+        className="w-full py-3 h-auto bg-gradient-to-r from-[#6c63ff] to-[#00d4aa] hover:opacity-90 disabled:opacity-40 text-white font-semibold text-sm transition-all shadow-lg shadow-[#6c63ff]/20"
       >
         {busy ? '🎙️ Synthesising…' : '🎙️ Generate Speech'}
-      </button>
+      </Button>
 
       {error && (
         <div className="px-4 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-sm text-red-400">
@@ -255,7 +262,7 @@ function CloneTab({ serverReady }: { serverReady: boolean }) {
 
       {/* Reference audio */}
       <div>
-        <label className="text-[11px] text-white/40 block mb-1.5">Reference audio clip</label>
+        <label className="text-[11px] text-white/40 font-semibold uppercase block mb-1.5">Reference audio clip</label>
         <div
           onClick={() => fileRef.current?.click()}
           className={`relative flex flex-col items-center justify-center gap-2 py-8 rounded-2xl border-2 border-dashed cursor-pointer transition-all ${refFile
@@ -287,8 +294,8 @@ function CloneTab({ serverReady }: { serverReady: boolean }) {
 
       {/* Reference Transcript */}
       <div>
-        <label className="text-[11px] text-white/40 block mb-1.5">Reference audio transcript</label>
-        <textarea
+        <label className="text-[11px] text-white/40 font-semibold uppercase block mb-1.5">Reference audio transcript</label>
+        <Textarea
           value={refText}
           onChange={e => setRefText(e.target.value)}
           rows={2}
@@ -300,8 +307,8 @@ function CloneTab({ serverReady }: { serverReady: boolean }) {
 
       {/* Text input */}
       <div>
-        <label className="text-[11px] text-white/40 block mb-1.5">Text to synthesise</label>
-        <textarea
+        <label className="text-[11px] text-white/40 font-semibold uppercase block mb-1.5">Text to synthesise</label>
+        <Textarea
           value={text}
           onChange={e => setText(e.target.value)}
           rows={4}
@@ -312,7 +319,7 @@ function CloneTab({ serverReady }: { serverReady: boolean }) {
 
       {/* Language */}
       <div>
-        <label className="text-[11px] text-white/40 block mb-1.5">Language</label>
+        <label className="text-[11px] text-white/40 font-semibold uppercase block mb-1.5">Language</label>
         <select
           value={language}
           onChange={e => setLanguage(e.target.value)}
@@ -325,13 +332,13 @@ function CloneTab({ serverReady }: { serverReady: boolean }) {
         </select>
       </div>
 
-      <button
+      <Button
         onClick={clone}
         disabled={!canClone}
-        className="w-full py-3 rounded-xl bg-gradient-to-r from-[#ff6384] to-[#6c63ff] hover:opacity-90 disabled:opacity-40 text-white font-semibold text-sm transition-all shadow-lg shadow-[#ff6384]/20"
+        className="w-full py-3 h-auto bg-gradient-to-r from-[#ff6384] to-[#6c63ff] hover:opacity-90 disabled:opacity-40 text-white font-semibold text-sm transition-all shadow-lg shadow-[#ff6384]/20"
       >
         {busy ? '🧬 Cloning voice…' : '🧬 Clone Voice'}
-      </button>
+      </Button>
 
       {error && (
         <div className="px-4 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-sm text-red-400">
@@ -384,8 +391,8 @@ function DesignTab({ serverReady }: { serverReady: boolean }) {
 
       {/* Style input */}
       <div>
-        <label className="text-[11px] text-white/40 block mb-1.5">Voice style description</label>
-        <textarea
+        <label className="text-[11px] text-white/40 font-semibold uppercase block mb-1.5">Voice style description</label>
+        <Textarea
           value={style}
           onChange={e => setStyle(e.target.value)}
           rows={3}
@@ -396,21 +403,22 @@ function DesignTab({ serverReady }: { serverReady: boolean }) {
         {/* Quick examples */}
         <div className="mt-2 flex flex-wrap gap-1.5">
           {STYLE_EXAMPLES.map(ex => (
-            <button
+            <Button
               key={ex}
               onClick={() => setStyle(ex)}
-              className="text-[10px] px-2 py-1 rounded-lg bg-white/[0.04] border border-white/[0.08] text-white/40 hover:text-white/70 hover:border-white/20 transition-all"
+              variant="outline"
+              className="text-[10px] px-2 py-1 h-auto rounded-lg bg-white/[0.04] border border-white/[0.08] text-white/45 hover:text-white/70 hover:border-white/20 transition-all font-normal"
             >
               {ex.length > 42 ? ex.slice(0, 42) + '…' : ex}
-            </button>
+            </Button>
           ))}
         </div>
       </div>
 
       {/* Text input */}
       <div>
-        <label className="text-[11px] text-white/40 block mb-1.5">Text to synthesise</label>
-        <textarea
+        <label className="text-[11px] text-white/40 font-semibold uppercase block mb-1.5">Text to synthesise</label>
+        <Textarea
           value={text}
           onChange={e => setText(e.target.value)}
           rows={4}
@@ -421,7 +429,7 @@ function DesignTab({ serverReady }: { serverReady: boolean }) {
 
       {/* Language */}
       <div>
-        <label className="text-[11px] text-white/40 block mb-1.5">Language</label>
+        <label className="text-[11px] text-white/40 font-semibold uppercase block mb-1.5">Language</label>
         <select
           value={language}
           onChange={e => setLanguage(e.target.value)}
@@ -434,13 +442,13 @@ function DesignTab({ serverReady }: { serverReady: boolean }) {
         </select>
       </div>
 
-      <button
+      <Button
         onClick={design}
         disabled={!text.trim() || !style.trim() || busy || !serverReady}
-        className="w-full py-3 rounded-xl bg-gradient-to-r from-[#f093fb] to-[#f5576c] hover:opacity-90 disabled:opacity-40 text-white font-semibold text-sm transition-all shadow-lg shadow-[#f093fb]/20"
+        className="w-full py-3 h-auto bg-gradient-to-r from-[#f093fb] to-[#f5576c] hover:opacity-90 disabled:opacity-40 text-white font-semibold text-sm transition-all shadow-lg shadow-[#f093fb]/20"
       >
         {busy ? '🎨 Designing voice…' : '🎨 Design Voice'}
-      </button>
+      </Button>
 
       {error && (
         <div className="px-4 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-sm text-red-400">
@@ -489,7 +497,7 @@ export default function TTSPanel() {
   const serverReady = Boolean(status?.running && status?.model_loaded);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 text-sm">
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex-1">
@@ -498,12 +506,13 @@ export default function TTSPanel() {
           </p>
         </div>
         <StatusBar status={status} />
-        <button
+        <Button
           onClick={refresh}
-          className="px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/10 text-white/40 hover:text-white/70 text-xs transition-colors"
+          variant="outline"
+          className="px-3 py-1.5 h-auto rounded-full bg-white/[0.04] border border-white/10 text-white/40 hover:text-white/70 text-xs transition-colors"
         >
           🔄 Refresh
-        </button>
+        </Button>
       </div>
 
       {/* Stats */}
@@ -513,49 +522,50 @@ export default function TTSPanel() {
           { label: 'Server', value: status?.running ? 'Online' : 'Offline', icon: status?.running ? '🟢' : '🔴' },
           { label: 'Status', value: status?.model_loaded ? 'Ready' : status?.loading ? 'Loading…' : 'Idle', icon: '⚡' },
         ].map(s => (
-          <div key={s.label} className="glass rounded-xl px-4 py-3 border border-white/[0.07] flex items-center sm:block gap-3 sm:gap-0">
+          <Card key={s.label} className="glass rounded-xl px-4 py-3 border border-white/[0.07] flex items-center sm:block gap-3 sm:gap-0">
             <div className="text-xl sm:mb-1">{s.icon}</div>
             <div className="flex-1">
-              <div className="text-white font-bold text-sm truncate">{s.value}</div>
-              <div className="text-white/30 text-xs">{s.label}</div>
+              <CardTitle className="text-white font-bold text-sm truncate">{s.value}</CardTitle>
+              <CardDescription className="text-white/30 text-xs mt-0.5">{s.label}</CardDescription>
             </div>
-          </div>
+          </Card>
         ))}
       </div>
 
       {/* Not running banner */}
       {status && !status.running && (
-        <div className="px-4 py-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-sm text-amber-400 space-y-1">
+        <Card className="px-4 py-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-sm text-amber-400 space-y-1">
           <p className="font-medium">⚠️ TTS server is not running</p>
           <p className="text-xs text-amber-400/70">
             The <code className="font-mono">tts_server.py</code> process must be started in the GitHub Actions workflow.
             Check that the workflow installs <code className="font-mono">transformers soundfile torchaudio qwen-tts</code> and starts the server on port 8002.
           </p>
-        </div>
+        </Card>
       )}
 
       {/* Tabs */}
       <div className="flex gap-1 p-1 bg-black/20 rounded-xl border border-white/[0.06] w-full overflow-x-auto scrollbar-none">
         {TABS.map(t => (
-          <button
+          <Button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`flex-shrink-0 px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${tab === t.id
+            variant="outline"
+            className={`flex-shrink-0 px-4 py-1.5 h-auto rounded-lg text-sm font-medium transition-all ${tab === t.id
               ? 'bg-[#6c63ff]/25 text-white border border-[#6c63ff]/30'
               : 'text-white/40 hover:text-white/70'
               }`}
           >
             {t.icon} {t.label}
-          </button>
+          </Button>
         ))}
       </div>
 
       {/* Tab content */}
-      <div className="glass rounded-2xl p-5 border border-white/[0.07]">
+      <Card className="glass rounded-2xl p-5 border border-white/[0.07]">
         {tab === 'generate' && <GenerateTab voices={voices} serverReady={serverReady} />}
         {tab === 'clone' && <CloneTab serverReady={serverReady} />}
         {tab === 'design' && <DesignTab serverReady={serverReady} />}
-      </div>
+      </Card>
     </div>
   );
 }

@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api, YtSearchResult, YtVideoInfo, YtQuality, YtDownloadJob } from '../api';
+import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
 
 function fmtViews(n: number) {
   if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
@@ -146,23 +150,24 @@ export default function YoutubePanel() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 text-sm">
       {/* Cookie Export */}
-      <div className="glass rounded-2xl p-5 space-y-3">
+      <Card className="glass rounded-2xl p-5 space-y-3 border border-white/[0.08]">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <h3 className="font-semibold text-white text-sm">🍪 YouTube Cookie Export</h3>
-            <p className="text-xs text-white/40 mt-0.5">
+            <CardTitle className="font-semibold text-white text-sm">🍪 YouTube Cookie Export</CardTitle>
+            <CardDescription className="text-xs text-white/40 mt-0.5">
               Export cookies from the cloud browser so yt-dlp can download age-restricted or members-only videos.
-            </p>
+            </CardDescription>
           </div>
-          <button
+          <Button
             onClick={exportCookies}
             disabled={cookieExporting}
-            className="px-4 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-300 text-sm font-semibold transition-all disabled:opacity-50 whitespace-nowrap"
+            variant="outline"
+            className="px-4 py-2 h-auto rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-300 text-sm font-semibold transition-all disabled:opacity-50 whitespace-nowrap"
           >
             {cookieExporting ? '⏳ Exporting…' : '🍪 Export Cookies'}
-          </button>
+          </Button>
         </div>
         {cookieResult && (
           <div className={`text-xs px-3 py-2 rounded-lg border ${cookieResult.success
@@ -175,38 +180,39 @@ export default function YoutubePanel() {
         <p className="text-[11px] text-white/25 leading-relaxed">
           💡 Open YouTube in the cloud browser and sign in first for best results. Auto-exports 15 s after startup.
         </p>
-      </div>
+      </Card>
 
       {/* Search */}
-      <div className="glass rounded-2xl p-5 space-y-3">
-        <h3 className="font-semibold text-white text-sm">🔍 YouTube Search</h3>
+      <Card className="glass rounded-2xl p-5 space-y-3 border border-white/[0.08]">
+        <CardTitle className="font-semibold text-white text-sm">🔍 YouTube Search</CardTitle>
         <div className="flex flex-col sm:flex-row gap-2">
-          <input value={query} onChange={e => setQuery(e.target.value)}
+          <Input value={query} onChange={e => setQuery(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && search()}
             placeholder="Search YouTube…"
             className="flex-1 bg-black/30 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/30 outline-none focus:border-white/30" />
-          <button onClick={search} disabled={searching || !query}
-            className="sm:px-5 py-2.5 rounded-xl bg-[#6c63ff] hover:bg-[#5a52e0] text-sm font-semibold transition-all disabled:opacity-50">
+          <Button onClick={search} disabled={searching || !query}
+            className="sm:px-5 py-2.5 h-auto rounded-xl bg-[#6c63ff] hover:bg-[#5a52e0] text-sm font-semibold transition-all disabled:opacity-50 text-white">
             {searching ? 'Searching…' : 'Search'}
-          </button>
+          </Button>
         </div>
-      </div>
+      </Card>
 
       {/* Direct URL */}
-      <div className="glass rounded-2xl p-5 space-y-4">
-        <h3 className="font-semibold text-white text-sm">🔗 Direct URL Download</h3>
+      <Card className="glass rounded-2xl p-5 space-y-4 border border-white/[0.08]">
+        <CardTitle className="font-semibold text-white text-sm">🔗 Direct URL Download</CardTitle>
         <div className="flex flex-col sm:flex-row gap-2">
-          <input value={directUrl} onChange={e => {
+          <Input value={directUrl} onChange={e => {
             setDirectUrl(e.target.value);
             setInfo(null);
           }}
             placeholder="https://youtube.com/watch?v=…"
             className="flex-1 bg-black/30 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white font-mono placeholder-white/30 outline-none focus:border-white/30" />
           <div className="flex gap-2">
-            <button onClick={() => loadInfo(directUrl)} disabled={loadingInfo || !directUrl}
-              className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.14] border border-white/10 text-sm font-medium transition-all disabled:opacity-50 whitespace-nowrap">
+            <Button onClick={() => loadInfo(directUrl)} disabled={loadingInfo || !directUrl}
+              variant="outline"
+              className="flex-1 sm:flex-none px-4 py-2.5 h-auto rounded-xl bg-white/[0.08] hover:bg-white/[0.14] border border-white/10 text-sm font-medium transition-all disabled:opacity-50 whitespace-nowrap">
               {loadingInfo ? '…' : 'Get Info (Optional)'}
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -215,39 +221,41 @@ export default function YoutubePanel() {
             <p className="text-xs text-white/50">Select Quality:</p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {standardQualities.map(q => (
-                <button
+                <Button
                   key={q.key}
                   onClick={() => setSelectedQuality(q)}
-                  className={`py-2 px-3 rounded-xl border text-xs font-medium transition-all text-left ${selectedQuality.key === q.key
+                  variant="outline"
+                  className={`py-2 px-3 h-auto rounded-xl border text-xs font-medium transition-all text-left ${selectedQuality.key === q.key
                       ? 'bg-teal-500/20 border-teal-500/50 text-teal-300'
                       : 'bg-white/[0.04] border-white/10 hover:bg-white/[0.08] text-white/70'
                     }`}
                 >
                   {q.label}
-                </button>
+                </Button>
               ))}
             </div>
 
-            <button
+            <Button
               onClick={() => startDownloadJob(directUrl, selectedQuality)}
               disabled={!directUrl || activeJob?.status === 'pending' || activeJob?.status === 'downloading'}
-              className="w-full py-2.5 rounded-xl bg-teal-600/30 hover:bg-teal-600/50 border border-teal-500/30 text-teal-300 text-sm font-semibold transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              variant="outline"
+              className="w-full py-2.5 h-auto rounded-xl bg-teal-600/30 hover:bg-teal-600/50 border border-teal-500/30 text-teal-300 text-sm font-semibold transition-all disabled:opacity-50 flex items-center justify-center gap-2"
             >
               🚀 Start Download Job
-            </button>
+            </Button>
           </div>
         )}
-      </div>
+      </Card>
 
       {error && <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">❌ {error}</p>}
 
       {/* Active Job Progress */}
       {activeJob && (
-        <div className="glass rounded-2xl p-5 space-y-3 border border-white/10">
+        <Card className="glass rounded-2xl p-5 space-y-3 border border-white/10">
           <div className="flex items-center justify-between">
-            <h4 className="font-semibold text-white text-sm flex items-center gap-2">
-              📥 Download Job: <span className="capitalize text-teal-300 font-bold">{activeJob.status}</span>
-            </h4>
+            <CardTitle className="font-semibold text-white text-sm flex items-center gap-2">
+              📥 Download Job: <Badge variant="outline" className="capitalize text-teal-300 font-bold border-teal-500/25 bg-teal-500/10">{activeJob.status}</Badge>
+            </CardTitle>
             {activeJob.status === 'downloading' && (
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
@@ -277,21 +285,21 @@ export default function YoutubePanel() {
               </a>
             )}
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Search results */}
       {results.length > 0 && !info && (
         <div className="space-y-2">
           {results.map(v => (
-            <div key={v.videoId} className="glass glass-hover rounded-xl p-4 flex gap-3 cursor-pointer" onClick={() => selectSearchResult(v)}>
+            <Card key={v.videoId} className="glass glass-hover rounded-xl p-4 flex gap-3 cursor-pointer border border-white/[0.08]" onClick={() => selectSearchResult(v)}>
               <img src={v.thumbnail} alt="" className="w-20 h-14 rounded-lg object-cover flex-shrink-0 bg-black/30" />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-white truncate">{v.title}</p>
                 <p className="text-xs text-white/40 mt-0.5">{v.author} · {v.duration} · {fmtViews(v.views)} views · {v.ago}</p>
               </div>
-              <button className="text-xs text-teal-400 hover:underline flex-shrink-0">Select →</button>
-            </div>
+              <Button variant="ghost" className="text-xs text-teal-400 hover:underline flex-shrink-0 p-1 h-auto">Select →</Button>
+            </Card>
           ))}
         </div>
       )}
@@ -303,11 +311,11 @@ export default function YoutubePanel() {
         const specificAudio = info.qualities.filter(q => q.key.startsWith('format-') && q.audioOnly);
 
         return (
-          <div className="glass rounded-2xl p-5 space-y-4">
+          <Card className="glass rounded-2xl p-5 space-y-4 border border-white/[0.08]">
             <div className="flex gap-3 items-start border-b border-white/5 pb-4">
               <img src={info.thumbnail} alt="" className="w-24 h-16 rounded-lg object-cover bg-black/30 flex-shrink-0 border border-white/10" />
               <div className="min-w-0">
-                <p className="font-semibold text-white text-sm truncate">{info.title}</p>
+                <CardTitle className="font-semibold text-white text-sm truncate">{info.title}</CardTitle>
                 <p className="text-xs text-white/40 mt-1">{info.uploader} {info.viewCount ? `· ${fmtViews(info.viewCount)} views` : ''}</p>
               </div>
             </div>
@@ -319,10 +327,11 @@ export default function YoutubePanel() {
                   <p className="text-xs font-bold text-teal-400">⚡ Standard Pre-merged Options</p>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     {standard.map(q => (
-                      <button key={q.key} onClick={() => startDownloadJob(info.url, q)} disabled={activeJob?.status === 'pending' || activeJob?.status === 'downloading'}
-                        className="py-2.5 px-3 rounded-xl bg-teal-500/10 hover:bg-teal-500/20 border border-teal-500/20 text-xs font-semibold text-teal-300 transition-all disabled:opacity-50 text-left">
+                      <Button key={q.key} onClick={() => startDownloadJob(info.url, q)} disabled={activeJob?.status === 'pending' || activeJob?.status === 'downloading'}
+                        variant="outline"
+                        className="py-2.5 px-3 h-auto bg-teal-500/10 hover:bg-teal-500/20 border border-teal-500/20 text-xs font-semibold text-teal-300 transition-all disabled:opacity-50 text-left">
                         {q.label}
-                      </button>
+                      </Button>
                     ))}
                   </div>
                 </div>
@@ -334,11 +343,12 @@ export default function YoutubePanel() {
                   <p className="text-xs font-bold text-white/50">📹 Specific Video Formats</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-60 overflow-y-auto pr-1">
                     {specificVideo.map(q => (
-                      <button key={q.key} onClick={() => startDownloadJob(info.url, q)} disabled={activeJob?.status === 'pending' || activeJob?.status === 'downloading'}
-                        className="py-2.5 px-3 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-xs text-white/80 hover:text-white transition-all disabled:opacity-50 text-left truncate"
+                      <Button key={q.key} onClick={() => startDownloadJob(info.url, q)} disabled={activeJob?.status === 'pending' || activeJob?.status === 'downloading'}
+                        variant="outline"
+                        className="py-2.5 px-3 h-auto bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-xs text-white/80 hover:text-white transition-all disabled:opacity-50 text-left truncate"
                         title={q.label}>
                         {q.label}
-                      </button>
+                      </Button>
                     ))}
                   </div>
                 </div>
@@ -350,11 +360,12 @@ export default function YoutubePanel() {
                   <p className="text-xs font-bold text-white/50">🎵 Specific Audio Formats</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-1">
                     {specificAudio.map(q => (
-                      <button key={q.key} onClick={() => startDownloadJob(info.url, q)} disabled={activeJob?.status === 'pending' || activeJob?.status === 'downloading'}
-                        className="py-2.5 px-3 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-xs text-white/80 hover:text-white transition-all disabled:opacity-50 text-left truncate"
+                      <Button key={q.key} onClick={() => startDownloadJob(info.url, q)} disabled={activeJob?.status === 'pending' || activeJob?.status === 'downloading'}
+                        variant="outline"
+                        className="py-2.5 px-3 h-auto bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-xs text-white/80 hover:text-white transition-all disabled:opacity-50 text-left truncate"
                         title={q.label}>
                         {q.label}
-                      </button>
+                      </Button>
                     ))}
                   </div>
                 </div>
@@ -362,9 +373,9 @@ export default function YoutubePanel() {
             </div>
 
             <div className="border-t border-white/5 pt-3">
-              <button onClick={() => setInfo(null)} className="text-xs text-white/30 hover:text-white/60 font-medium">← Back to results</button>
+              <Button onClick={() => setInfo(null)} variant="ghost" className="text-xs text-white/30 hover:text-white/60 font-medium p-1 h-auto">← Back to results</Button>
             </div>
-          </div>
+          </Card>
         );
       })()}
     </div>

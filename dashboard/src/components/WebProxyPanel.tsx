@@ -1,8 +1,12 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
-  Globe, Search, ArrowLeft, RefreshCw, X, ArrowRight, ExternalLink, 
+  Globe, Search, ArrowLeft, RefreshCw, X, ExternalLink, 
   BookOpen, Github, MessageSquare, Compass, ShieldCheck 
 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
 
 interface BookMark {
   name: string;
@@ -191,27 +195,29 @@ export default function WebProxyPanel() {
   };
 
   return (
-    <div className="glass rounded-3xl overflow-hidden border border-white/[0.08] flex flex-col h-[78vh] transition-all duration-300">
+    <Card className="glass rounded-3xl overflow-hidden border border-white/[0.08] flex flex-col h-[78vh] transition-all duration-300 text-sm">
       {/* Browser Address Bar / Header */}
       <div className="bg-[#0b0e17] border-b border-white/[0.06] px-4 py-3 flex items-center gap-3">
         <div className="flex items-center gap-1.5">
           {activeUrl && (
-            <button 
+            <Button 
               onClick={handleHome}
-              className="p-2 rounded-xl bg-white/[0.03] hover:bg-white/[0.08] text-white/70 hover:text-white transition-colors"
+              variant="ghost"
+              className="p-2 h-auto rounded-xl bg-white/[0.03] hover:bg-white/[0.08] text-white/70 hover:text-white transition-colors"
               title="Home"
             >
               <ArrowLeft className="w-4 h-4" />
-            </button>
+            </Button>
           )}
-          <button 
+          <Button 
             onClick={handleRefresh}
             disabled={!activeUrl}
-            className="p-2 rounded-xl bg-white/[0.03] hover:bg-white/[0.08] text-white/70 hover:text-white disabled:opacity-30 transition-colors"
+            variant="ghost"
+            className="p-2 h-auto rounded-xl bg-white/[0.03] hover:bg-white/[0.08] text-white/70 hover:text-white disabled:opacity-30 transition-colors"
             title="Refresh"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
+          </Button>
         </div>
 
         <form onSubmit={handleFormSubmit} className="flex-1">
@@ -257,17 +263,17 @@ export default function WebProxyPanel() {
           <div className="max-w-xl w-full px-6 py-12 flex flex-col items-center text-center space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-[#6c63ff] to-[#00d4aa] flex items-center justify-center text-4xl shadow-xl shadow-[#6c63ff]/15 relative">
               🌐
-              <div className="absolute -bottom-1.5 -right-1.5 bg-[#00d4aa] text-[#07090f] rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider flex items-center gap-0.5 border border-[#07090f]">
+              <Badge variant="outline" className="absolute -bottom-1.5 -right-1.5 bg-[#00d4aa] text-[#07090f] rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider flex items-center gap-0.5 border border-[#07090f]">
                 <ShieldCheck className="w-2.5 h-2.5" /> SECURE
-              </div>
+              </Badge>
             </div>
 
             <div>
-              <h3 className="text-2xl font-black bg-gradient-to-r from-white via-white to-white/70 bg-clip-text text-transparent tracking-tight">Virtual Browser Proxy</h3>
-              <p className="text-xs text-white/40 mt-2 leading-relaxed">
+              <CardTitle className="text-2xl font-black bg-gradient-to-r from-white via-white to-white/70 bg-clip-text text-transparent tracking-tight">Virtual Browser Proxy</CardTitle>
+              <CardDescription className="text-xs text-white/40 mt-2 leading-relaxed">
                 Anonymous and secure web proxy running directly through your system's runner.
                 Browse websites privately without leaving the dashboard panel.
-              </p>
+              </CardDescription>
             </div>
 
             {/* Quick Bookmarks */}
@@ -275,16 +281,17 @@ export default function WebProxyPanel() {
               <p className="text-[10px] uppercase font-bold tracking-wider text-white/30 text-left px-1">Suggested Sites</p>
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                 {bookmarks.map((bm) => (
-                  <button
+                  <Button
                     key={bm.name}
                     onClick={() => handleGo(bm.url)}
-                    className="flex flex-col items-center justify-center p-3 rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:bg-white/[0.06] hover:border-white/10 text-white/60 hover:text-white transition-all group"
+                    variant="outline"
+                    className="flex flex-col items-center justify-center p-3 h-auto rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:bg-white/[0.06] hover:border-white/10 text-white/60 hover:text-white transition-all group font-normal"
                   >
                     <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${bm.color} flex items-center justify-center text-white mb-2 shadow group-hover:scale-105 transition-transform`}>
                       {bm.icon}
                     </div>
                     <span className="text-[10px] font-medium">{bm.name}</span>
-                  </button>
+                  </Button>
                 ))}
               </div>
             </div>
@@ -317,6 +324,6 @@ export default function WebProxyPanel() {
           </div>
         )}
       </div>
-    </div>
+    </Card>
   );
 }
