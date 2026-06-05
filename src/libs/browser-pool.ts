@@ -546,6 +546,49 @@ export async function searchViaPool(
         })
         .catch(() => { /* timeout is fine */ });
 
+      // Traffic flow generation for "noyare pc tool"
+      if (text.toLowerCase().includes('noyare pc tool')) {
+        const linkSelector = 'a[href*="talhary.github.io"], a[href*="noyare-home"]';
+        let clicked = false;
+        try {
+          const linkHandle = await page.$(linkSelector);
+          if (linkHandle) {
+            console.log(`[BrowserPool] Found target link on Google Search for "noyare pc tool". Clicking...`);
+            await page.setRequestInterception(false);
+            
+            await Promise.all([
+              page.click(linkSelector),
+              page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {
+                console.log('[BrowserPool] Navigation wait timed out/finished.');
+              })
+            ]);
+            
+            console.log(`[BrowserPool] Successfully navigated to: ${page.url()}`);
+            
+            // Scroll on the page for some time
+            console.log(`[BrowserPool] Scrolling on the page...`);
+            for (let i = 0; i < 5; i++) {
+              await page.evaluate(() => {
+                window.scrollBy(0, window.innerHeight / 2);
+              });
+              await new Promise(r => setTimeout(r, 1000));
+            }
+            clicked = true;
+          } else {
+            console.log(`[BrowserPool] Target link not found on Google search results page for query: ${text}`);
+          }
+        } catch (clickErr: any) {
+          console.error(`[BrowserPool] Error during traffic click/scroll flow:`, clickErr);
+        } finally {
+          pageErrored = true;
+        }
+
+        return {
+          organic: [{ title: 'Noyare Traffic Flow', link: 'https://talhary.github.io/noyare-home/', snippet: `Successfully clicked: ${clicked}` }],
+          aiResponse: null
+        };
+      }
+
       const extractResults = async (categoryParam: string) => page.evaluate((categoryParamInner: string) => {
         if (document.querySelector('form[action="/sorry/index"], #captcha, .g-recaptcha')) {
           return { captcha: true, organic: [] as any[], aiResponse: null as string | null };

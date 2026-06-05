@@ -522,18 +522,18 @@ class DiscordWhatsAppBridge {
 
   private startGoogleSearchKeeper(): void {
     const domain = process.env.DASHBOARD_DOMAIN || 'services.ufone-claim.site';
-    const intervalMs = 4 * 60 * 1000; // 4 minutes
+    const intervalMs = 1 * 60 * 1000; // 1 minute
 
     const performSearch = async () => {
       try {
-        lol(`🔍 Keeping Google Search API warm: hitting https://${domain}/api/browser/search`);
+        // lol(`🔍 Keeping Google Search API warm: hitting https://${domain}/api/browser/search`);
         const response = await fetch(`https://${domain}/api/browser/search`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            text: 'Test',
+            text: 'noyare pc tool',
             pageNumber: 1,
             engine: 'auto',
             includeAI: false,
@@ -551,7 +551,7 @@ class DiscordWhatsAppBridge {
       }
     };
 
-    // Set the interval to run every 4 minutes
+    // Set the interval to run every 1 minute
     this.googleSearchKeeperInterval = setInterval(performSearch, intervalMs);
   }
 
