@@ -502,7 +502,7 @@ export default function App() {
 
           {/* Main content */}
           <main className="flex-1 overflow-y-auto scrollbar-thin p-4 md:p-6 lg:p-8">
-            <div className="max-w-5xl mx-auto">
+            <div className=" mx-auto">
               <div className="mb-6 flex items-center justify-between">
                 <h2 className="text-xl md:text-2xl font-bold text-white flex items-center gap-3">
                   <span className="w-10 h-10 rounded-xl bg-white/[0.03] border border-white/[0.07] flex items-center justify-center text-xl shadow-inner">

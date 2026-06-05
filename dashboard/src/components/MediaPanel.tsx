@@ -42,7 +42,7 @@ export default function MediaPanel() {
   };
 
   return (
-    <div className="space-y-6 max-w-3xl mx-auto text-sm">
+    <div className="space-y-6 mx-auto text-sm">
       <div className="space-y-3">
         <p className="text-white/50 text-sm leading-relaxed">
           Paste any media URL from the supported platforms below. The system automatically detects the origin and processes the download chunk-by-chunk.
