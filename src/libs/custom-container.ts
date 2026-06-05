@@ -13,6 +13,92 @@ function getSanitizedEnv(key: string): string {
 
 let nextPort = 15000;
 
+export async function cleanupCloudflareResources(meta: any, sessionId?: string): Promise<void> {
+  if (!meta) return;
+  const { tunnelPid, tunnelId, customDomain } = meta;
+
+  // Clear tunnelPid in session manager first to prevent the close/exit handlers from deleting the session
+  if (sessionId) {
+    sessionManager.updateSessionMetadata(sessionId, {
+      tunnelPid: undefined
+    });
+  }
+
+  // 1. Kill tunnel process
+  if (tunnelPid) {
+    try {
+      process.kill(tunnelPid);
+      console.log(`[Cloudflare Cleanup] Killed tunnel process PID ${tunnelPid}`);
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  // 2. Delete Cloudflare Tunnel & DNS CNAME if created programmatically
+  const ACCOUNT_ID = getSanitizedEnv('CLOUDFLARE_ACCOUNT_ID');
+  const ZONE_ID = getSanitizedEnv('CLOUDFLARE_ZONE_ID');
+  const API_TOKEN = getSanitizedEnv('CLOUDFLARE_API_TOKEN');
+
+  if (tunnelId && ACCOUNT_ID && API_TOKEN) {
+    try {
+      console.log(`[Cloudflare Cleanup] Deleting Cloudflare tunnel ${tunnelId}...`);
+      
+      // Wait a brief moment to ensure the tunnel process is fully terminated and disconnected
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      const delRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/cfd_tunnel/${tunnelId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${API_TOKEN}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      const delData = await delRes.json() as any;
+      if (delData.success) {
+        console.log(`[Cloudflare Cleanup] Successfully deleted Cloudflare tunnel ${tunnelId}`);
+      } else {
+        console.warn(`[Cloudflare Cleanup] Failed to delete Cloudflare tunnel:`, delData.errors);
+      }
+    } catch (err) {
+      console.error(`[Cloudflare Cleanup] Error deleting Cloudflare tunnel:`, err);
+    }
+  }
+
+  if (customDomain && ZONE_ID && API_TOKEN) {
+    try {
+      const hostname = customDomain.replace(/^https?:\/\//, '');
+      console.log(`[Cloudflare Cleanup] Cleaning up DNS CNAME record for ${hostname}...`);
+
+      // Find DNS record ID
+      const dnsListRes = await fetch(`https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records?name=${hostname}&type=CNAME`, {
+        headers: {
+          'Authorization': `Bearer ${API_TOKEN}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      const dnsListData = await dnsListRes.json() as any;
+      if (dnsListData.success && dnsListData.result && dnsListData.result.length > 0) {
+        const dnsRecordId = dnsListData.result[0].id;
+        const delDnsRes = await fetch(`https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records/${dnsRecordId}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${API_TOKEN}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        const delDnsData = await delDnsRes.json() as any;
+        if (delDnsData.success) {
+          console.log(`[Cloudflare Cleanup] Successfully deleted CNAME record for ${hostname}`);
+        } else {
+          console.warn(`[Cloudflare Cleanup] Failed to delete CNAME record:`, delDnsData.errors);
+        }
+      }
+    } catch (err) {
+      console.error(`[Cloudflare Cleanup] Error cleaning up CNAME record:`, err);
+    }
+  }
+}
+
 export async function startCustomContainer(
   image: string,
   containerPort: number,
@@ -34,9 +120,30 @@ export async function startCustomContainer(
 
     const hash = existingSessionId ? existingSessionId.replace(/^docker-/, '') : crypto.randomBytes(4).toString('hex');
     const sessionId = existingSessionId || `docker-${hash}`;
-    const webhookSecret = existingSessionId 
-      ? (sessionManager.getSession(existingSessionId)?.metadata?.webhookSecret || crypto.randomBytes(16).toString('hex'))
-      : crypto.randomBytes(16).toString('hex');
+
+    // 1. If updating/redeploying, stop old container and clean up old Cloudflare resources first
+    const existingSession = existingSessionId ? sessionManager.getSession(existingSessionId) : null;
+    const webhookSecret = existingSession?.metadata?.webhookSecret || crypto.randomBytes(16).toString('hex');
+
+    if (existingSession) {
+      const oldMeta = existingSession.metadata as any;
+      if (oldMeta) {
+        console.log(`[Docker Deploy] Cleaning up existing container and Cloudflare resources for ${existingSessionId}...`);
+        
+        // Stop old container
+        if (oldMeta.containerName) {
+          try {
+            await execAsync(`docker stop ${oldMeta.containerName}`);
+            console.log(`[Docker Deploy] Stopped old container ${oldMeta.containerName}`);
+          } catch (e) {
+            console.warn(`[Docker Deploy] Failed to stop old container:`, e);
+          }
+        }
+
+        // Clean up Cloudflare resources (tunnels, DNS, processes)
+        await cleanupCloudflareResources(oldMeta, existingSessionId);
+      }
+    }
     const cleanName = (name || 'custom-app').replace(/[^a-zA-Z0-9_-]/g, '_');
     const containerName = `docker-custom-${cleanName}-${hash}`;
     const hostPort = requestedHostPort && requestedHostPort > 0 ? requestedHostPort : nextPort++;
@@ -77,95 +184,6 @@ export async function startCustomContainer(
 
       let activeTunnelToken = tunnelToken;
       let activeTunnelId = '';
-
-      // Check if domain has changed for an existing session with a tunnel
-      const existingSession = existingSessionId ? sessionManager.getSession(existingSessionId) : null;
-      const oldDomain = existingSession?.metadata?.customDomain;
-      const oldTunnelId = existingSession?.metadata?.tunnelId;
-
-      if (activeTunnelToken && oldTunnelId && oldDomain && oldDomain !== targetUrl) {
-        if (!ACCOUNT_ID || !ZONE_ID || !API_TOKEN) {
-          console.warn('[Docker Deploy] Domain changed but missing Cloudflare API credentials to update routing.');
-        } else {
-          try {
-            console.log(`[Docker Deploy] Domain changed from ${oldDomain} to ${targetUrl}. Updating Cloudflare...`);
-            
-            // 1. Delete old DNS CNAME
-            const oldHostname = oldDomain.replace(/^https?:\/\//, '');
-            const oldDnsRes = await fetch(`https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records?name=${oldHostname}&type=CNAME`, {
-              headers: { 'Authorization': `Bearer ${API_TOKEN}`, 'Content-Type': 'application/json' }
-            });
-            const oldDnsData = await oldDnsRes.json() as any;
-            if (oldDnsData.success && oldDnsData.result && oldDnsData.result.length > 0) {
-              const oldDnsRecordId = oldDnsData.result[0].id;
-              await fetch(`https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records/${oldDnsRecordId}`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${API_TOKEN}`, 'Content-Type': 'application/json' }
-              });
-              console.log(`[Docker Deploy] Deleted old CNAME record for ${oldHostname}`);
-            }
-
-            // 2. Update Ingress configuration on existing tunnel
-            const configRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/cfd_tunnel/${oldTunnelId}/configurations`, {
-              method: 'PUT',
-              headers: {
-                'Authorization': `Bearer ${API_TOKEN}`,
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                config: {
-                  ingress: [
-                    { hostname: hostname, service: `http://localhost:${hostPort}` },
-                    { service: 'http_status:404' }
-                  ]
-                }
-              })
-            });
-            const configData = await configRes.json() as any;
-            if (!configData.success) throw new Error(`Routing update failed: ${JSON.stringify(configData.errors)}`);
-            console.log('[Docker Deploy] Updated ingress routing on Cloudflare tunnel.');
-
-            // 3. Upsert CNAME record for new domain
-            const dnsListRes = await fetch(`https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records?name=${hostname}&type=CNAME`, {
-              headers: { 'Authorization': `Bearer ${API_TOKEN}`, 'Content-Type': 'application/json' }
-            });
-            const dnsListData = await dnsListRes.json() as any;
-            let dnsRecordId = '';
-            if (dnsListData.success && dnsListData.result && dnsListData.result.length > 0) {
-              dnsRecordId = dnsListData.result[0].id;
-            }
-
-            const dnsUrl = dnsRecordId 
-              ? `https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records/${dnsRecordId}`
-              : `https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/dns_records`;
-            const dnsMethod = dnsRecordId ? 'PUT' : 'POST';
-
-            const dnsRes = await fetch(dnsUrl, {
-              method: dnsMethod,
-              headers: {
-                'Authorization': `Bearer ${API_TOKEN}`,
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                type: 'CNAME',
-                name: hostname,
-                content: `${oldTunnelId}.cfargotunnel.com`,
-                proxied: true
-              })
-            });
-            const dnsData = await dnsRes.json() as any;
-            if (!dnsData.success) {
-              console.warn('⚠️ DNS record creation/update failed:', dnsData.errors);
-            } else {
-              console.log(`[Docker Deploy] DNS Record mapped ${hostname} to tunnel ${oldTunnelId}`);
-            }
-
-            activeTunnelId = oldTunnelId;
-          } catch (err: any) {
-            console.error('[Docker Deploy] Error updating domain routing:', err);
-          }
-        }
-      }
 
       // If no tunnel token is provided, and we have Cloudflare credentials, auto-generate the tunnel
       if (!activeTunnelToken) {

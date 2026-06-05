@@ -632,32 +632,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         return err(res, 'Docker session not found', 404);
       }
 
-      // Stop current running container
-      const oldContainerName = session.metadata?.containerName;
-      if (oldContainerName) {
-        const { exec } = require('child_process');
-        const util = require('util');
-        const execAsync = util.promisify(exec);
-        try {
-          console.log(`[Docker Update] Stopping old container ${oldContainerName}...`);
-          await execAsync(`docker stop ${oldContainerName}`);
-        } catch (e) {
-          console.warn('Failed to stop old container:', e);
-        }
-      }
-
-      // Kill current tunnel process
-      const oldTunnelPid = session.metadata?.tunnelPid;
-      if (oldTunnelPid) {
-        try {
-          console.log(`[Docker Update] Killing old tunnel process PID ${oldTunnelPid}...`);
-          process.kill(oldTunnelPid);
-        } catch (e) {
-          // ignore
-        }
-      }
-
-      // Start new container with same sessionId
+      // Start new container with same sessionId (which will automatically stop the old one and clean up its Cloudflare resources first)
       const result = await startCustomContainer(
         image,
         port,
@@ -666,7 +641,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         domainMode,
         customDomain,
         hostPort,
-        tunnelToken || session.metadata?.tunnelToken,
+        undefined,
         sessionId
       );
 
@@ -704,40 +679,14 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         try {
           console.log(`[Webhook Deploy] Starting redeploy for session ${sessionId} (${meta.image})...`);
           
-          const { exec } = require('child_process');
-          const util = require('util');
-          const execAsync = util.promisify(exec);
-          
-          if (meta.containerName) {
-            try {
-              console.log(`[Webhook Deploy] Stopping container ${meta.containerName}...`);
-              await execAsync(`docker stop ${meta.containerName}`);
-            } catch (e) {
-              console.warn(`[Webhook Deploy] Warning while stopping container:`, e);
-            }
-          }
-
-          if (meta.tunnelPid) {
-            try {
-              process.kill(meta.tunnelPid);
-            } catch (e) {
-              // ignore
-            }
-          }
-
-          console.log(`[Webhook Deploy] Pulling latest image for ${meta.image}...`);
-          await execAsync(`docker pull ${meta.image}`);
-
           const containerPort = meta.port;
           const hostPort = meta.hostPort;
           const env = meta.env || {};
           const name = meta.containerName ? meta.containerName.replace(/^docker-custom-/, '').split('-')[0] : undefined;
           const domainMode = meta.domainMode || 'quick';
           const customDomain = meta.customDomain;
-          const tunnelToken = meta.tunnelToken;
 
           console.log(`[Webhook Deploy] Launching new instance for ${meta.image}...`);
-          sessionManager.removeSession(sessionId);
 
           const result = await startCustomContainer(
             meta.image,
@@ -747,7 +696,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
             domainMode,
             customDomain,
             hostPort,
-            tunnelToken,
+            undefined,
             sessionId
           );
 
