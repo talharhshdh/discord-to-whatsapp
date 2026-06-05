@@ -666,7 +666,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         domainMode,
         customDomain,
         hostPort,
-        tunnelToken,
+        tunnelToken || session.metadata?.tunnelToken,
         sessionId
       );
 

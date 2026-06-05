@@ -1,12 +1,16 @@
 import { randomBytes } from 'crypto';
 import 'dotenv/config'
 // --- Configuration ---
-const ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
-const ZONE_ID = process.env.CLOUDFLARE_ZONE_ID; 
-const API_TOKEN = process.env.CLOUDFLARE_API_TOKEN;
+function sanitize(val) {
+  if (!val) return '';
+  return val.trim().replace(/^['"]|['"]$/g, '').replace(/;$/, '').trim();
+}
+const ACCOUNT_ID = sanitize(process.env.CLOUDFLARE_ACCOUNT_ID);
+const ZONE_ID = sanitize(process.env.CLOUDFLARE_ZONE_ID); 
+const API_TOKEN = sanitize(process.env.CLOUDFLARE_API_TOKEN);
 
 const TUNNEL_NAME = 'vps-automated-tunnel';
-const SUBDOMAIN = 'api.'+ process.env.MAIN_DOMAIN;
+const SUBDOMAIN = 'checking.'+ process.env.MAIN_DOMAIN;
 const LOCALHOST_URL = 'http://localhost:8000';
 // ---------------------
 

@@ -373,7 +373,6 @@ export default function SessionsManagerPanel() {
               {domainMode === 'custom' && (
                 <div className="space-y-3 animate-in fade-in duration-200">
                   <input type="text" value={customDomain} onChange={(e) => setCustomDomain(e.target.value)} placeholder="whoami.yourdomain.com" className="w-full px-3 py-2 rounded-lg bg-black/20 border border-white/10 text-white focus:border-indigo-500 outline-none" />
-                  <input type="password" value={tunnelToken} onChange={(e) => setTunnelToken(e.target.value)} placeholder="Cloudflare Tunnel Token" className="w-full px-3 py-2 rounded-lg bg-black/20 border border-white/10 text-white font-mono focus:border-indigo-500 outline-none" />
                 </div>
               )}
 
@@ -556,10 +555,6 @@ export default function SessionsManagerPanel() {
                   <div>
                     <label className="text-[10px] text-white/50 font-bold uppercase">Custom Subdomain</label>
                     <input type="text" value={editCustomDomain} onChange={(e) => setEditCustomDomain(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-lg bg-black/40 border border-white/10 text-white outline-none focus:border-indigo-500" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-white/50 font-bold uppercase">Tunnel Token</label>
-                    <input type="password" value={editTunnelToken} onChange={(e) => setEditTunnelToken(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-lg bg-black/40 border border-white/10 text-white font-mono outline-none focus:border-indigo-500" />
                   </div>
                 </div>
               )}
