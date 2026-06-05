@@ -71,12 +71,13 @@ jobs:
 
       - name: Create .env from GitHub Secret
         run: |
-          echo '${{ secrets.ENV_FILE }}' > .env
+          echo '${{ secrets.ENV_FILE }}' > .env.secret
+          cp .env.secret .env
           echo "✅ .env file created"
 
       - name: Setup AWS CLI for Cloudflare R2
         run: |
-          source .env
+          source .env.secret
           aws configure set default.s3.signature_version s3v4
           aws configure set aws_access_key_id ${R2_ACCESS_KEY_ID}
           aws configure set aws_secret_access_key ${R2_SECRET_ACCESS_KEY}
@@ -84,12 +85,49 @@ jobs:
 
       - name: Load State from Cloudflare R2
         run: |
-          source .env
+          source .env.secret
           echo "📥 Downloading latest state..."
           aws s3 cp s3://${R2_BUCKET_NAME}/state.tar.gz state.tar.gz --endpoint-url https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com || echo "No previous state found."
           if [ -f "state.tar.gz" ]; then
             echo "📦 Extracting state..."
             tar -xzf state.tar.gz -C $(pwd) --overwrite || echo "Failed to extract state"
+          fi
+
+      - name: Merge secrets into .env
+        run: |
+          if [ -f ".env.secret" ]; then
+            echo "🔄 Merging GitHub secrets into .env..."
+            node -e "
+              const fs = require('fs');
+              
+              function parseEnv(filePath) {
+                if (!fs.existsSync(filePath)) return {};
+                const content = fs.readFileSync(filePath, 'utf8');
+                const config = {};
+                content.split('\n').forEach(line => {
+                  const trimmed = line.trim();
+                  if (!trimmed || trimmed.startsWith('#')) return;
+                  const eqIdx = trimmed.indexOf('=');
+                  if (eqIdx !== -1) {
+                    const k = trimmed.substring(0, eqIdx).trim();
+                    const v = trimmed.substring(eqIdx + 1).trim();
+                    config[k] = v;
+                  }
+                });
+                return config;
+              }
+
+              const r2Env = parseEnv('.env');
+              const secretEnv = parseEnv('.env.secret');
+              const merged = { ...r2Env, ...secretEnv };
+              
+              let output = '';
+              for (const [k, v] of Object.entries(merged)) {
+                output += \`\${k}=\${v}\n\`;
+              }
+              fs.writeFileSync('.env', output, 'utf8');
+              console.log('✅ .env merged successfully');
+            "
           fi
 
       - name: Install dependencies
