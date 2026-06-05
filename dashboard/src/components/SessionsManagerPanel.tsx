@@ -443,6 +443,13 @@ export default function SessionsManagerPanel() {
                           {session.metadata?.port && (
                             <div className="text-white/50">🔌 Port: {session.metadata.port}</div>
                           )}
+                          {session.type === 'docker-container' && session.metadata?.webhookSecret && (
+                            <div className="col-span-1 sm:col-span-2 flex items-center gap-1.5 text-white/50 truncate mt-1">
+                              ⚓ Webhook: <button onClick={() => copyToClipboard(`${BASE.startsWith('http') ? BASE : window.location.origin}/api/webhook/docker/${session.id}?secret=${session.metadata?.webhookSecret}`)} className="hover:text-white truncate text-[11px] font-mono text-indigo-400">
+                                {`${BASE.startsWith('http') ? BASE : window.location.origin}/api/webhook/docker/${session.id}?secret=${session.metadata?.webhookSecret}`}
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
