@@ -125,10 +125,14 @@ export async function startCustomContainer(
     const existingSession = existingSessionId ? sessionManager.getSession(existingSessionId) : null;
     const webhookSecret = existingSession?.metadata?.webhookSecret || crypto.randomBytes(16).toString('hex');
 
+    let activeTunnelToken = tunnelToken;
+    let activeTunnelId = '';
+    let reuseTunnel = false;
+
     if (existingSession) {
       const oldMeta = existingSession.metadata as any;
       if (oldMeta) {
-        console.log(`[Docker Deploy] Cleaning up existing container and Cloudflare resources for ${existingSessionId}...`);
+        console.log(`[Docker Deploy] Stopping existing container for ${existingSessionId}...`);
         
         // Stop old container
         if (oldMeta.containerName) {
@@ -140,8 +144,43 @@ export async function startCustomContainer(
           }
         }
 
-        // Clean up Cloudflare resources (tunnels, DNS, processes)
-        await cleanupCloudflareResources(oldMeta, existingSessionId);
+        // Clear tunnelPid in session manager first to prevent the close/exit handlers from deleting the session
+        sessionManager.updateSessionMetadata(sessionId, {
+          tunnelPid: undefined
+        });
+
+        // Kill old tunnel process
+        if (oldMeta.tunnelPid) {
+          try {
+            process.kill(oldMeta.tunnelPid);
+            console.log(`[Docker Deploy] Killed old tunnel process PID ${oldMeta.tunnelPid}`);
+          } catch (e) {
+            // ignore
+          }
+        }
+
+        // Check if we can reuse the Cloudflare tunnel (only if domainMode is custom, we have an existing token, and the custom domain is the same)
+        const targetUrl = customDomain ? (customDomain.startsWith('http') ? customDomain : `https://${customDomain}`) : '';
+        const oldTargetUrl = oldMeta.customDomain ? (oldMeta.customDomain.startsWith('http') ? oldMeta.customDomain : `https://${oldMeta.customDomain}`) : '';
+        
+        if (
+          domainMode === 'custom' &&
+          oldMeta.domainMode === 'custom' &&
+          oldMeta.tunnelToken &&
+          targetUrl &&
+          targetUrl === oldTargetUrl
+        ) {
+          console.log(`[Docker Deploy] Reusing existing Cloudflare tunnel token: ${oldMeta.tunnelId}`);
+          activeTunnelToken = oldMeta.tunnelToken;
+          activeTunnelId = oldMeta.tunnelId || '';
+          reuseTunnel = true;
+        } else {
+          // Clean up Cloudflare resources (tunnels, DNS) since we cannot reuse them
+          await cleanupCloudflareResources({
+            tunnelId: oldMeta.tunnelId,
+            customDomain: oldMeta.customDomain
+          });
+        }
       }
     }
     const cleanName = (name || 'custom-app').replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -182,8 +221,10 @@ export async function startCustomContainer(
       const ZONE_ID = getSanitizedEnv('CLOUDFLARE_ZONE_ID');
       const API_TOKEN = getSanitizedEnv('CLOUDFLARE_API_TOKEN');
 
-      let activeTunnelToken = tunnelToken;
-      let activeTunnelId = '';
+      // Use existing tunnel token if reuseTunnel is true, otherwise use the passed parameter
+      if (!reuseTunnel && tunnelToken) {
+        activeTunnelToken = tunnelToken;
+      }
 
       // If no tunnel token is provided, and we have Cloudflare credentials, auto-generate the tunnel
       if (!activeTunnelToken) {
@@ -289,6 +330,35 @@ export async function startCustomContainer(
         }
       }
 
+      if (reuseTunnel && ACCOUNT_ID && API_TOKEN && activeTunnelId) {
+        try {
+          console.log(`[Docker Deploy] Updating Ingress Rules for existing Cloudflare Tunnel ${activeTunnelId} to point to port ${hostPort}...`);
+          const configRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/cfd_tunnel/${activeTunnelId}/configurations`, {
+            method: 'PUT',
+            headers: {
+              'Authorization': `Bearer ${API_TOKEN}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              config: {
+                ingress: [
+                  { hostname: hostname, service: `http://localhost:${hostPort}` },
+                  { service: 'http_status:404' }
+                ]
+              }
+            })
+          });
+          const configData = await configRes.json() as any;
+          if (!configData.success) {
+            console.warn('[Docker Deploy] Failed to update Ingress Rules on reused tunnel:', configData.errors);
+          } else {
+            console.log('[Docker Deploy] Ingress Rules updated on reused tunnel.');
+          }
+        } catch (err: any) {
+          console.warn('[Docker Deploy] Failed to update Ingress Rules on reused tunnel:', err.message);
+        }
+      }
+
       let tunnelProcess: any = null;
       if (activeTunnelToken) {
         console.log(`[Docker Deploy] Starting Cloudflare Named Tunnel for ${targetUrl}...`);
@@ -298,12 +368,6 @@ export async function startCustomContainer(
 
         tunnelProcess.on('close', (code: any) => {
           console.log(`[Docker Deploy] Named tunnel closed with code ${code}`);
-          const currentSession = sessionManager.getSession(sessionId);
-          if (currentSession?.metadata?.tunnelPid === tunnelProcess.pid) {
-            sessionManager.removeSession(sessionId);
-          } else {
-            console.log(`[Docker Deploy] Old tunnel closed for session ${sessionId}, ignoring removal.`);
-          }
         });
       }
 
@@ -371,12 +435,6 @@ export async function startCustomContainer(
 
       tunnelProcess.on('close', (code) => {
         console.log(`[Docker Deploy] Cloudflare tunnel process closed with code ${code}`);
-        const currentSession = sessionManager.getSession(sessionId);
-        if (currentSession?.metadata?.tunnelPid === tunnelProcess.pid) {
-          sessionManager.removeSession(sessionId);
-        } else {
-          console.log(`[Docker Deploy] Old quick tunnel closed for session ${sessionId}, ignoring removal.`);
-        }
       });
 
       setTimeout(async () => {
@@ -456,13 +514,8 @@ export async function restoreDockerContainers(): Promise<void> {
             'tunnel', '--no-autoupdate', 'run', '--token', tunnelToken
           ]);
 
-          tunnelProcess.on('close', () => {
-            const currentSession = sessionManager.getSession(session.id);
-            if (currentSession?.metadata?.tunnelPid === tunnelProcess.pid) {
-              sessionManager.removeSession(session.id);
-            } else {
-              console.log(`[Docker Restore] Old tunnel closed for session ${session.id}, ignoring removal.`);
-            }
+          tunnelProcess.on('close', (code: any) => {
+            console.log(`[Docker Restore] Named tunnel closed with code ${code}`);
           });
 
           session.metadata = {
@@ -497,13 +550,8 @@ export async function restoreDockerContainers(): Promise<void> {
         }
       });
 
-      tunnelProcess.on('close', () => {
-        const currentSession = sessionManager.getSession(session.id);
-        if (currentSession?.metadata?.tunnelPid === tunnelProcess.pid) {
-          sessionManager.removeSession(session.id);
-        } else {
-          console.log(`[Docker Restore] Old quick tunnel closed for session ${session.id}, ignoring removal.`);
-        }
+      tunnelProcess.on('close', (code: any) => {
+        console.log(`[Docker Restore] Cloudflare Quick Tunnel closed with code ${code}`);
       });
 
       // Bind dynamic tunnel process object to in-memory session (if desired)
@@ -577,7 +625,7 @@ export async function stopCustomContainer(sessionId: string): Promise<{ success:
       } catch (err) {
         console.error(`[Docker Stop] Error deleting Cloudflare tunnel:`, err);
       }
-    }
+    } 
 
     if (customDomain && ZONE_ID && API_TOKEN) {
       try {
