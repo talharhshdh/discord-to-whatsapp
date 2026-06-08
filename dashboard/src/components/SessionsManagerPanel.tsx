@@ -364,7 +364,7 @@ export default function SessionsManagerPanel() {
 
               <div>
                 <label className="text-[10px] text-white/50 font-bold uppercase block mb-1">Network Mode</label>
-                <select value={domainMode} onChange={(e) => setDomainMode(e.target.value as 'quick' | 'custom')} className="w-full px-3 py-2 rounded-lg bg-[#161a26] border border-white/10 text-white focus:border-indigo-500 outline-none">
+                <select value={domainMode} onChange={(e) => setDomainMode(e.target.value as 'quick' | 'custom')} className="w-full px-3 py-2 rounded-lg bg-[#1E2330] border border-white/10 text-white focus:border-indigo-500 outline-none">
                   <option value="quick">Quick Tunnel (trycloudflare)</option>
                   <option value="custom">Custom Subdomain</option>
                 </select>
@@ -550,7 +550,7 @@ export default function SessionsManagerPanel() {
                 </div>
                 <div>
                   <label className="text-[10px] text-white/50 font-bold uppercase">Domain Mode</label>
-                  <select value={editDomainMode} onChange={(e) => setEditDomainMode(e.target.value as 'quick' | 'custom')} className="w-full mt-1 px-3 py-2 rounded-lg bg-[#161a26] border border-white/10 text-white outline-none focus:border-indigo-500">
+                  <select value={editDomainMode} onChange={(e) => setEditDomainMode(e.target.value as 'quick' | 'custom')} className="w-full mt-1 px-3 py-2 rounded-lg bg-[#1E2330] border border-white/10 text-white outline-none focus:border-indigo-500">
                     <option value="quick">Quick Tunnel</option>
                     <option value="custom">Custom Domain</option>
                   </select>

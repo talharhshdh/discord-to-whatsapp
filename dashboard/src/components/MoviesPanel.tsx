@@ -29,7 +29,7 @@ export default function MoviesPanel() {
   return (
     <div className="space-y-6 max-w-5xl mx-auto text-sm">
       <Card className="glass rounded-3xl p-6 md:p-8 space-y-4 border border-white/[0.08] shadow-2xl relative overflow-hidden">
-        <div className="absolute -top-24 -right-24 w-48 h-48 rounded-full bg-[#6c63ff]/5 blur-[80px] pointer-events-none" />
+        <div className="absolute -top-24 -right-24 w-48 h-48 rounded-full bg-[#0061FF]/5 blur-[80px] pointer-events-none" />
         
         <div>
           <CardTitle className="font-bold text-white text-base">🎬 Discover Movies & TV Shows</CardTitle>
@@ -44,13 +44,13 @@ export default function MoviesPanel() {
               onChange={e => setQuery(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && search()}
               placeholder="Search movies or TV shows..."
-              className="w-full bg-[#161b26]/50 border border-white/10 rounded-2xl pl-10 pr-4 py-3 text-sm text-white placeholder-white/20 outline-none focus:border-[#6c63ff]/40 transition-all focus:bg-[#161b26]/80"
+              className="w-full bg-[#151922]/50 border border-white/10 rounded-2xl pl-10 pr-4 py-3 text-sm text-white placeholder-white/20 outline-none focus:border-[#0061FF]/40 transition-all focus:bg-[#151922]/80"
             />
           </div>
           <Button
             onClick={search}
             disabled={searching || !query.trim()}
-            className="px-6 py-6 rounded-2xl bg-gradient-to-r from-[#6c63ff] to-[#00d4aa] text-white text-sm font-bold hover:opacity-95 transition-all disabled:opacity-30 flex items-center justify-center gap-2 shadow-lg shadow-[#6c63ff]/10 h-auto"
+            className="px-6 py-6 rounded-2xl bg-gradient-to-r from-[#0061FF] to-[#00E5FF] text-white text-sm font-bold hover:opacity-95 transition-all disabled:opacity-30 flex items-center justify-center gap-2 shadow-lg shadow-[#0061FF]/10 h-auto"
           >
             {searching ? (
               <>
@@ -80,7 +80,7 @@ export default function MoviesPanel() {
             >
               {/* Media Poster Wrapper */}
               <div className="relative aspect-[16/10] overflow-hidden bg-black/40 flex items-center justify-center flex-shrink-0">
-                <div className="absolute inset-0 bg-gradient-to-t from-[#070b14] via-transparent to-transparent opacity-80 z-10" />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#0A0E17] via-transparent to-transparent opacity-80 z-10" />
                 {m.posterUrl ? (
                   <img
                     src={m.posterUrl}
@@ -92,7 +92,7 @@ export default function MoviesPanel() {
                 )}
                 
                 {/* Media Type Tag */}
-                <Badge variant="outline" className="absolute top-3 left-3 px-2 py-0.5 rounded-lg bg-black/60 border border-white/10 text-[9px] font-bold uppercase tracking-wider text-[#00d4aa] z-20">
+                <Badge variant="outline" className="absolute top-3 left-3 px-2 py-0.5 rounded-lg bg-black/60 border border-white/10 text-[9px] font-bold uppercase tracking-wider text-[#00E5FF] z-20">
                   {m.mediaType === 'tv' ? '📺 TV Show' : '🎬 Movie'}
                 </Badge>
                 
@@ -108,7 +108,7 @@ export default function MoviesPanel() {
               <div className="p-5 flex-1 flex flex-col space-y-3">
                 <div className="space-y-1">
                   <div className="flex items-center justify-between gap-2">
-                    <CardTitle className="font-bold text-white text-sm line-clamp-1 leading-snug group-hover:text-[#6c63ff] transition-colors">{m.title}</CardTitle>
+                    <CardTitle className="font-bold text-white text-sm line-clamp-1 leading-snug group-hover:text-[#0061FF] transition-colors">{m.title}</CardTitle>
                     {m.voteAverage > 0 && (
                       <Badge variant="outline" className="text-[10px] font-bold text-yellow-400 flex items-center gap-0.5 bg-yellow-500/10 px-1.5 py-0.5 rounded border border-yellow-500/20">
                         ⭐ {m.voteAverage.toFixed(1)}
@@ -127,7 +127,7 @@ export default function MoviesPanel() {
                   href={m.watchUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-[#6c63ff]/10 hover:bg-[#6c63ff]/20 border border-[#6c63ff]/20 hover:border-[#6c63ff]/35 text-[#9d97ff] text-xs font-bold transition-all shadow-inner"
+                  className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-[#0061FF]/10 hover:bg-[#0061FF]/20 border border-[#0061FF]/20 hover:border-[#0061FF]/35 text-[#9d97ff] text-xs font-bold transition-all shadow-inner"
                 >
                   <span>▶</span>
                   <span>Watch Content</span>

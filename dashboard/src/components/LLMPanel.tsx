@@ -87,7 +87,7 @@ function ModelCard({
 
       <div>
         <div className="flex items-start gap-2 pr-12 xs:pr-16">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#6c63ff]/30 to-[#00d4aa]/20 flex items-center justify-center text-sm flex-shrink-0">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#0061FF]/30 to-[#00E5FF]/20 flex items-center justify-center text-sm flex-shrink-0">
             🧠
           </div>
           <div className="min-w-0">
@@ -116,7 +116,7 @@ function ModelCard({
           <Button
             onClick={() => onDownload(model.id)}
             variant="outline"
-            className="flex-1 py-1.5 h-auto rounded-lg bg-[#6c63ff]/20 hover:bg-[#6c63ff]/35 border border-[#6c63ff]/30 text-[#a8a3ff] text-xs font-medium transition-all"
+            className="flex-1 py-1.5 h-auto rounded-lg bg-[#0061FF]/20 hover:bg-[#0061FF]/35 border border-[#0061FF]/30 text-[#a8a3ff] text-xs font-medium transition-all"
           >
             ⬇ Download
           </Button>
@@ -338,13 +338,13 @@ function ChatPanel({ modelLabel }: { modelLabel: string }) {
         {history.map((msg, i) => (
           <div key={i} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             {msg.role === 'assistant' && (
-              <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#6c63ff] to-[#00d4aa] flex items-center justify-center text-xs flex-shrink-0 mt-0.5">
+              <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#0061FF] to-[#00E5FF] flex items-center justify-center text-xs flex-shrink-0 mt-0.5">
                 🤖
               </div>
             )}
             <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
               msg.role === 'user'
-                ? 'bg-[#6c63ff]/25 border border-[#6c63ff]/30 text-white rounded-br-sm'
+                ? 'bg-[#0061FF]/25 border border-[#0061FF]/30 text-white rounded-br-sm'
                 : 'bg-white/[0.05] border border-white/[0.08] text-white/85 rounded-bl-sm'
             }`}>
               {msg.role === 'assistant' && msg.streaming && !msg.content ? (
@@ -363,7 +363,7 @@ function ChatPanel({ modelLabel }: { modelLabel: string }) {
               )}
             </div>
             {msg.role === 'user' && (
-              <div className="w-6 h-6 rounded-full bg-[#6c63ff]/30 border border-[#6c63ff]/25 flex items-center justify-center text-xs flex-shrink-0 mt-0.5">
+              <div className="w-6 h-6 rounded-full bg-[#0061FF]/30 border border-[#0061FF]/25 flex items-center justify-center text-xs flex-shrink-0 mt-0.5">
                 👤
               </div>
             )}
@@ -399,7 +399,7 @@ function ChatPanel({ modelLabel }: { modelLabel: string }) {
           <Button
             onClick={send}
             disabled={!input.trim()}
-            className="px-4 rounded-xl bg-gradient-to-br from-[#6c63ff] to-[#5a54e0] hover:opacity-90 disabled:opacity-40 text-white text-sm font-medium transition-all shadow-lg shadow-[#6c63ff]/20 h-auto"
+            className="px-4 rounded-xl bg-gradient-to-br from-[#0061FF] to-[#5a54e0] hover:opacity-90 disabled:opacity-40 text-white text-sm font-medium transition-all shadow-lg shadow-[#0061FF]/20 h-auto"
           >
             ▶
           </Button>
@@ -538,7 +538,7 @@ export default function LLMPanel() {
             variant="outline"
             className={`flex-shrink-0 px-4 py-1.5 h-auto rounded-lg text-sm font-medium transition-all ${
               tab === t
-                ? 'bg-[#6c63ff]/25 text-white border border-[#6c63ff]/30'
+                ? 'bg-[#0061FF]/25 text-white border border-[#0061FF]/30'
                 : 'text-white/40 hover:text-white/70'
             }`}
           >
@@ -604,7 +604,7 @@ export default function LLMPanel() {
               <Button
                 onClick={() => setTab('models')}
                 variant="outline"
-                className="px-4 py-2 h-auto rounded-xl bg-[#6c63ff]/20 border border-[#6c63ff]/30 text-[#a8a3ff] text-sm hover:bg-[#6c63ff]/30 transition-all"
+                className="px-4 py-2 h-auto rounded-xl bg-[#0061FF]/20 border border-[#0061FF]/30 text-[#a8a3ff] text-sm hover:bg-[#0061FF]/30 transition-all"
               >
                 → Go to Models
               </Button>

@@ -54,7 +54,7 @@ function PlaceCard({ place, isNew }: { place: PlaceResult; isNew: boolean }) {
     <Card
       className={`glass rounded-2xl border transition-all duration-500 overflow-hidden group ${
         isNew
-          ? 'border-[#6c63ff]/40 shadow-lg shadow-[#6c63ff]/10 animate-in fade-in slide-in-from-bottom-2 duration-400'
+          ? 'border-[#0061FF]/40 shadow-lg shadow-[#0061FF]/10 animate-in fade-in slide-in-from-bottom-2 duration-400'
           : 'border-white/[0.06] hover:border-white/[0.12]'
       }`}
     >
@@ -62,7 +62,7 @@ function PlaceCard({ place, isNew }: { place: PlaceResult; isNew: boolean }) {
       <div className="p-5">
         <div className="flex items-start justify-between gap-3 mb-2">
           <div className="flex-1 min-w-0">
-            <CardTitle className="text-white font-semibold text-base leading-tight truncate group-hover:text-[#6c63ff] transition-colors">
+            <CardTitle className="text-white font-semibold text-base leading-tight truncate group-hover:text-[#0061FF] transition-colors">
               {place.name}
             </CardTitle>
             {place.category && (
@@ -70,7 +70,7 @@ function PlaceCard({ place, isNew }: { place: PlaceResult; isNew: boolean }) {
             )}
           </div>
           {place.priceLevel && (
-            <Badge variant="outline" className="flex-shrink-0 text-xs font-bold text-[#00d4aa] bg-[#00d4aa]/10 border border-[#00d4aa]/20 px-2 py-0.5 rounded-lg">
+            <Badge variant="outline" className="flex-shrink-0 text-xs font-bold text-[#00E5FF] bg-[#00E5FF]/10 border border-[#00E5FF]/20 px-2 py-0.5 rounded-lg">
               {place.priceLevel}
             </Badge>
           )}
@@ -105,7 +105,7 @@ function PlaceCard({ place, isNew }: { place: PlaceResult; isNew: boolean }) {
           {place.phone && (
             <div className="flex items-center gap-2 text-xs text-white/55">
               <span>📞</span>
-              <a href={`tel:${place.phone}`} className="hover:text-[#00d4aa] transition-colors">
+              <a href={`tel:${place.phone}`} className="hover:text-[#00E5FF] transition-colors">
                 {place.phone}
               </a>
             </div>
@@ -117,7 +117,7 @@ function PlaceCard({ place, isNew }: { place: PlaceResult; isNew: boolean }) {
                 href={place.website}
                 target="_blank"
                 rel="noreferrer"
-                className="text-[#6c63ff] hover:underline truncate max-w-[240px]"
+                className="text-[#0061FF] hover:underline truncate max-w-[240px]"
               >
                 {place.website.replace(/^https?:\/\//, '')}
               </a>
@@ -209,7 +209,7 @@ function PlaceCard({ place, isNew }: { place: PlaceResult; isNew: boolean }) {
             href={place.mapsUrl}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1.5 text-xs text-[#6c63ff] hover:text-[#00d4aa] transition-colors font-medium"
+            className="inline-flex items-center gap-1.5 text-xs text-[#0061FF] hover:text-[#00E5FF] transition-colors font-medium"
           >
             Open in Maps ↗
           </a>
@@ -223,12 +223,12 @@ function PlaceCard({ place, isNew }: { place: PlaceResult; isNew: boolean }) {
 
 function StreamProgress({ round, total, done }: { round: number; total: number; done: boolean }) {
   return (
-    <Card className="glass rounded-xl border border-[#6c63ff]/20 p-4 flex items-center gap-4">
+    <Card className="glass rounded-xl border border-[#0061FF]/20 p-4 flex items-center gap-4">
       <div className="relative w-8 h-8 flex-shrink-0">
         {!done ? (
           <>
-            <div className="absolute inset-0 rounded-full border-2 border-[#6c63ff]/20" />
-            <div className="absolute inset-0 rounded-full border-2 border-[#6c63ff] border-t-transparent animate-spin" />
+            <div className="absolute inset-0 rounded-full border-2 border-[#0061FF]/20" />
+            <div className="absolute inset-0 rounded-full border-2 border-[#0061FF] border-t-transparent animate-spin" />
           </>
         ) : (
           <div className="w-8 h-8 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 text-sm animate-in fade-in">
@@ -244,7 +244,7 @@ function StreamProgress({ round, total, done }: { round: number; total: number; 
           {done ? 'All results loaded' : `Scroll round ${round} of up to 20`}
         </p>
       </div>
-      <span className="text-2xl font-bold text-[#6c63ff] tabular-nums">{total}</span>
+      <span className="text-2xl font-bold text-[#0061FF] tabular-nums">{total}</span>
     </Card>
   );
 }
@@ -296,7 +296,7 @@ function PaginatedPanel() {
             <Input
               id="places-pool-query"
               type="text"
-              className="flex-1 bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-[#6c63ff]/50 transition-colors"
+              className="flex-1 bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-[#0061FF]/50 transition-colors"
               placeholder='e.g. "coffee shops in Chicago"'
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -305,7 +305,7 @@ function PaginatedPanel() {
             <Button
               type="submit"
               disabled={!query.trim() || loading}
-              className="px-6 py-2.5 h-auto bg-gradient-to-r from-[#6c63ff] to-[#00d4aa] rounded-xl text-white font-medium hover:opacity-90 disabled:opacity-50 transition-all shadow-lg shadow-[#6c63ff]/20 whitespace-nowrap"
+              className="px-6 py-2.5 h-auto bg-gradient-to-r from-[#0061FF] to-[#00E5FF] rounded-xl text-white font-medium hover:opacity-90 disabled:opacity-50 transition-all shadow-lg shadow-[#0061FF]/20 whitespace-nowrap"
             >
               {loading ? '⏳ Searching…' : '🔍 Search'}
             </Button>
@@ -314,7 +314,7 @@ function PaginatedPanel() {
           <label className="flex items-center gap-2 cursor-pointer select-none w-fit">
             <div
               onClick={() => setDeepScrape(v => !v)}
-              className={`relative w-9 h-5 rounded-full transition-colors ${deepScrape ? 'bg-[#6c63ff]' : 'bg-white/10'}`}
+              className={`relative w-9 h-5 rounded-full transition-colors ${deepScrape ? 'bg-[#0061FF]' : 'bg-white/10'}`}
             >
               <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${deepScrape ? 'translate-x-4' : ''}`} />
             </div>
@@ -468,7 +468,7 @@ function GoogleSearchPanel() {
             variant="outline"
             className={`px-4 py-1.5 h-auto rounded-lg text-sm font-medium transition-all ${
               subMode === id
-                ? 'bg-[#00d4aa] text-black shadow shadow-[#00d4aa]/30 hover:bg-[#00d4aa]/80'
+                ? 'bg-[#00E5FF] text-black shadow shadow-[#00E5FF]/30 hover:bg-[#00E5FF]/80'
                 : 'text-white/40 hover:text-white/70 border-transparent bg-transparent hover:bg-white/5'
             }`}
           >
@@ -498,7 +498,7 @@ function GoogleSearchPanel() {
                 <Input
                   id="gs-stream-query"
                   type="text"
-                  className="flex-1 bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-[#00d4aa]/50 transition-colors"
+                  className="flex-1 bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-[#00E5FF]/50 transition-colors"
                   placeholder='e.g. "banks in pakistan place"'
                   value={sQuery}
                   onChange={e => setSQuery(e.target.value)}
@@ -517,7 +517,7 @@ function GoogleSearchPanel() {
                   <Button
                     type="submit"
                     disabled={!sQuery.trim()}
-                    className="px-6 py-2.5 h-auto bg-gradient-to-r from-[#00d4aa] to-[#6c63ff] rounded-xl text-white font-medium hover:opacity-90 disabled:opacity-50 transition-all shadow-lg shadow-[#00d4aa]/20 whitespace-nowrap"
+                    className="px-6 py-2.5 h-auto bg-gradient-to-r from-[#00E5FF] to-[#0061FF] rounded-xl text-white font-medium hover:opacity-90 disabled:opacity-50 transition-all shadow-lg shadow-[#00E5FF]/20 whitespace-nowrap"
                   >
                     🔍 Search
                   </Button>
@@ -530,7 +530,7 @@ function GoogleSearchPanel() {
                   value={maxPages}
                   onChange={e => setMaxPages(Number(e.target.value))}
                   disabled={streaming}
-                  className="bg-black/20 border border-white/10 rounded-lg px-3 py-1.5 text-white text-xs focus:outline-none focus:border-[#00d4aa]/50"
+                  className="bg-black/20 border border-white/10 rounded-lg px-3 py-1.5 text-white text-xs focus:outline-none focus:border-[#00E5FF]/50"
                 >
                   {[1,2,5,10,20,50].map(n => (
                     <option key={n} value={n}>{n} ({n * 20} results max)</option>
@@ -553,7 +553,7 @@ function GoogleSearchPanel() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <span className="text-white/60 text-sm font-medium">
                   {sEntries.length} place{sEntries.length !== 1 ? 's' : ''}
-                  {streaming && <span className="ml-2 text-[#00d4aa] animate-pulse">● live</span>}
+                  {streaming && <span className="ml-2 text-[#00E5FF] animate-pulse">● live</span>}
                 </span>
                 {sDone && !streaming && (
                   <Badge variant="outline" className="text-xs text-emerald-400/70 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full font-normal">✓ Complete</Badge>
@@ -570,8 +570,8 @@ function GoogleSearchPanel() {
           {streaming && sEntries.length === 0 && (
             <div className="flex flex-col items-center justify-center gap-4 p-16">
               <div className="relative w-12 h-12">
-                <div className="absolute inset-0 rounded-full border-2 border-[#00d4aa]/20" />
-                <div className="absolute inset-0 rounded-full border-2 border-[#00d4aa] border-t-transparent animate-spin" />
+                <div className="absolute inset-0 rounded-full border-2 border-[#00E5FF]/20" />
+                <div className="absolute inset-0 rounded-full border-2 border-[#00E5FF] border-t-transparent animate-spin" />
               </div>
               <p className="text-white/40 text-sm">Navigating to Google Search…</p>
             </div>
@@ -596,7 +596,7 @@ function GoogleSearchPanel() {
                 <Input
                   id="gs-paged-query"
                   type="text"
-                  className="flex-1 bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-[#00d4aa]/50 transition-colors"
+                  className="flex-1 bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-[#00E5FF]/50 transition-colors"
                   placeholder='e.g. "banks in pakistan place"'
                   value={pQuery}
                   onChange={e => setPQuery(e.target.value)}
@@ -605,7 +605,7 @@ function GoogleSearchPanel() {
                 <Button
                   type="submit"
                   disabled={!pQuery.trim() || pLoading}
-                  className="px-6 py-2.5 h-auto bg-gradient-to-r from-[#00d4aa] to-[#6c63ff] rounded-xl text-white font-medium hover:opacity-90 disabled:opacity-50 transition-all shadow-lg shadow-[#00d4aa]/20 whitespace-nowrap"
+                  className="px-6 py-2.5 h-auto bg-gradient-to-r from-[#00E5FF] to-[#0061FF] rounded-xl text-white font-medium hover:opacity-90 disabled:opacity-50 transition-all shadow-lg shadow-[#00E5FF]/20 whitespace-nowrap"
                 >
                   {pLoading ? '⏳ Searching…' : '🔍 Search'}
                 </Button>
@@ -748,7 +748,7 @@ export default function PlacesPanel() {
             variant="outline"
             className={`px-4 py-1.5 h-auto rounded-lg text-sm font-medium transition-all ${
               mode === id
-                ? 'bg-[#6c63ff] text-white shadow shadow-[#6c63ff]/30 hover:bg-[#6c63ff]/80 border-transparent'
+                ? 'bg-[#0061FF] text-white shadow shadow-[#0061FF]/30 hover:bg-[#0061FF]/80 border-transparent'
                 : 'text-white/40 hover:text-white/70 border-transparent bg-transparent hover:bg-white/5'
             }`}
           >
@@ -781,7 +781,7 @@ export default function PlacesPanel() {
             <Input
               id="places-query"
               type="text"
-              className="flex-1 bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-[#6c63ff]/50 transition-colors"
+              className="flex-1 bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-[#0061FF]/50 transition-colors"
               placeholder='e.g. "pizza near Times Square" or "dentists in London"'
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -800,7 +800,7 @@ export default function PlacesPanel() {
               <Button
                 type="submit"
                 disabled={!query.trim()}
-                className="px-6 py-2.5 h-auto bg-gradient-to-r from-[#6c63ff] to-[#00d4aa] rounded-xl text-white font-medium hover:opacity-90 disabled:opacity-50 transition-all shadow-lg shadow-[#6c63ff]/20 whitespace-nowrap"
+                className="px-6 py-2.5 h-auto bg-gradient-to-r from-[#0061FF] to-[#00E5FF] rounded-xl text-white font-medium hover:opacity-90 disabled:opacity-50 transition-all shadow-lg shadow-[#0061FF]/20 whitespace-nowrap"
               >
                 🗺 Search Places
               </Button>
@@ -825,7 +825,7 @@ export default function PlacesPanel() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <span className="text-white/60 text-sm font-medium">
               {entries.length} place{entries.length !== 1 ? 's' : ''}
-              {streaming && <span className="ml-2 text-[#6c63ff] animate-pulse">● live</span>}
+              {streaming && <span className="ml-2 text-[#0061FF] animate-pulse">● live</span>}
             </span>
             {done && !streaming && (
               <Badge variant="outline" className="text-xs text-emerald-400/70 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full font-normal">
@@ -850,8 +850,8 @@ export default function PlacesPanel() {
       {streaming && entries.length === 0 && (
         <div className="flex flex-col items-center justify-center gap-4 p-16">
           <div className="relative w-12 h-12">
-            <div className="absolute inset-0 rounded-full border-2 border-[#6c63ff]/20" />
-            <div className="absolute inset-0 rounded-full border-2 border-[#6c63ff] border-t-transparent animate-spin" />
+            <div className="absolute inset-0 rounded-full border-2 border-[#0061FF]/20" />
+            <div className="absolute inset-0 rounded-full border-2 border-[#0061FF] border-t-transparent animate-spin" />
           </div>
           <p className="text-white/40 text-sm">Navigating to Google Maps…</p>
         </div>

@@ -104,7 +104,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
               <ArrowLeft className="w-3.5 h-3.5" /> Back Home
             </button>
           )}
-          <span className={`text-[10px] tracking-wider uppercase font-mono px-2 py-0.5 rounded ${darkMode ? 'bg-[#6c63ff]/10 text-[#6c63ff]' : 'bg-blue-100 text-blue-700'
+          <span className={`text-[10px] tracking-wider uppercase font-mono px-2 py-0.5 rounded ${darkMode ? 'bg-[#0061FF]/10 text-[#0061FF]' : 'bg-blue-100 text-blue-700'
             }`}>
             Google Clone
           </span>
@@ -135,7 +135,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
             <span className="text-blue-500">g</span>
             <span className="text-green-500">l</span>
             <span className="text-red-500">e</span>
-            <span className="text-xs ml-1 px-1.5 py-0.5 rounded font-mono font-bold bg-[#6c63ff]/20 text-[#6c63ff] self-end mb-2 shadow">
+            <span className="text-xs ml-1 px-1.5 py-0.5 rounded font-mono font-bold bg-[#0061FF]/20 text-[#0061FF] self-end mb-2 shadow">
               Clone
             </span>
           </div>
@@ -143,7 +143,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
           {/* Search Box */}
           <form onSubmit={handleSearchSubmit} className="w-full max-w-2xl px-2">
             <div className={`flex items-center rounded-full border px-4 py-3.5 md:px-5 md:py-4 transition-all duration-300 ${darkMode
-              ? 'bg-[#1b1b22] border-white/10 focus-within:bg-[#202029] focus-within:border-white/20 focus-within:shadow-lg focus-within:shadow-black/40'
+              ? 'bg-[#1E2330] border-white/10 focus-within:bg-[#202029] focus-within:border-white/20 focus-within:shadow-lg focus-within:shadow-black/40'
               : 'bg-white border-gray-200 focus-within:bg-white focus-within:border-blue-400 focus-within:shadow-lg focus-within:shadow-gray-200'
               }`}>
               <Search className={`w-5 h-5 mr-3 flex-shrink-0 ${darkMode ? 'text-white/30' : 'text-gray-400'}`} />
@@ -179,7 +179,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                 type="submit"
                 disabled={loading || !query.trim()}
                 className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all shadow ${darkMode
-                  ? 'bg-[#1b1b22] hover:bg-[#23232c] hover:text-white text-white/80 border border-white/5'
+                  ? 'bg-[#1E2330] hover:bg-[#23232c] hover:text-white text-white/80 border border-white/5'
                   : 'bg-gray-100 hover:bg-gray-200 hover:text-gray-900 text-gray-800 border border-gray-300/40'
                   }`}
               >
@@ -194,7 +194,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                   executeSearch(random, 1, activeTab);
                 }}
                 className={`px-5 py-2.5 rounded-lg text-sm font-semibold transition-all shadow ${darkMode
-                  ? 'bg-[#1b1b22] hover:bg-[#23232c] hover:text-white text-white/80 border border-white/5'
+                  ? 'bg-[#1E2330] hover:bg-[#23232c] hover:text-white text-white/80 border border-white/5'
                   : 'bg-gray-100 hover:bg-gray-200 hover:text-gray-900 text-gray-800 border border-gray-300/40'
                   }`}
               >
@@ -205,7 +205,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
 
           {/* Languages offered */}
           <div className={`text-xs mt-10 ${darkMode ? 'text-white/40' : 'text-gray-500'}`}>
-            Google offered in: <span className="text-[#6c63ff] hover:underline cursor-pointer">English</span> · <span className="text-[#6c63ff] hover:underline cursor-pointer">Urdu</span> · <span className="text-[#6c63ff] hover:underline cursor-pointer">Pushto</span> · <span className="text-[#6c63ff] hover:underline cursor-pointer">Punjabi</span>
+            Google offered in: <span className="text-[#0061FF] hover:underline cursor-pointer">English</span> · <span className="text-[#0061FF] hover:underline cursor-pointer">Urdu</span> · <span className="text-[#0061FF] hover:underline cursor-pointer">Pushto</span> · <span className="text-[#0061FF] hover:underline cursor-pointer">Punjabi</span>
           </div>
         </div>
       ) : (
@@ -231,7 +231,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
               {/* Input Box */}
               <form onSubmit={handleSearchSubmit} className="flex-1 max-w-2xl">
                 <div className={`flex items-center rounded-full border px-4 py-2 transition-all ${darkMode
-                  ? 'bg-[#1b1b22] border-white/10 focus-within:bg-[#202029] focus-within:border-white/20'
+                  ? 'bg-[#1E2330] border-white/10 focus-within:bg-[#202029] focus-within:border-white/20'
                   : 'bg-white border-gray-200 focus-within:border-blue-400 focus-within:shadow-sm'
                   }`}>
                   <input
@@ -268,7 +268,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                     setActiveTab(tab);
                   }}
                   className={`flex items-center gap-1.5 pb-3 pt-1 border-b-2 font-medium capitalize transition-all ${activeTab === tab
-                    ? (darkMode ? 'border-[#6c63ff] text-white' : 'border-blue-600 text-blue-600')
+                    ? (darkMode ? 'border-[#0061FF] text-white' : 'border-blue-600 text-blue-600')
                     : `border-transparent ${darkMode ? 'text-white/40 hover:text-white/60' : 'text-gray-500 hover:text-gray-800'}`
                     }`}
                 >
@@ -315,7 +315,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                 {/* 2. Direct Answer widget */}
                 {activeTab === 'all' && result.directAnswer && (
                   <div className={`p-6 rounded-2xl border shadow-md transition-all ${darkMode
-                    ? 'bg-[#1b1b22] border-white/[0.06]'
+                    ? 'bg-[#1E2330] border-white/[0.06]'
                     : 'bg-white border-gray-200'
                     }`}>
                     <div className={`flex items-center gap-2 text-xs mb-3 uppercase tracking-wider font-mono ${darkMode ? 'text-white/40' : 'text-gray-500'}`}>
@@ -347,7 +347,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                 {/* 3. Featured Snippet card */}
                 {activeTab === 'all' && result.featuredSnippet && (
                   <div className={`p-6 rounded-2xl border shadow-sm transition-all ${darkMode
-                    ? 'bg-[#1b1b22] border-white/[0.06]'
+                    ? 'bg-[#1E2330] border-white/[0.06]'
                     : 'bg-white border-gray-200'
                     }`}>
                     <div className={`flex items-center gap-1.5 text-xs mb-3 uppercase tracking-wider font-mono ${darkMode ? 'text-white/40' : 'text-gray-500'}`}>
@@ -378,12 +378,12 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                     {/* AI Overview (SGE) */}
                     {result.aiResponse && (
                       <div className={`p-6 rounded-2xl border shadow-md transition-all ${darkMode
-                        ? 'bg-[#1b1b22]/40 border-[#00d4aa]/30 text-white'
+                        ? 'bg-[#1E2330]/40 border-[#00E5FF]/30 text-white'
                         : 'bg-emerald-50/10 border-emerald-200 text-gray-800'
                         }`}>
                         <div className="flex items-center gap-2 mb-3">
-                          <span className="text-[#00d4aa] text-lg">✨</span>
-                          <h4 className={`font-bold text-sm tracking-wider uppercase font-sans ${darkMode ? 'text-[#00d4aa]' : 'text-emerald-700'}`}>AI Overview</h4>
+                          <span className="text-[#00E5FF] text-lg">✨</span>
+                          <h4 className={`font-bold text-sm tracking-wider uppercase font-sans ${darkMode ? 'text-[#00E5FF]' : 'text-emerald-700'}`}>AI Overview</h4>
                         </div>
                         <div
                           className={`text-sm leading-relaxed whitespace-pre-wrap ${darkMode ? 'text-white/80' : 'text-slate-800'}`}
@@ -490,7 +490,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                           <div
                             key={idx}
                             onClick={() => setSelectedImage(img)}
-                            className={`group rounded-2xl overflow-hidden border cursor-pointer transition-all hover:scale-[1.02] shadow-sm hover:shadow-md ${darkMode ? 'bg-[#1b1b22] border-white/[0.06]' : 'bg-white border-gray-200'
+                            className={`group rounded-2xl overflow-hidden border cursor-pointer transition-all hover:scale-[1.02] shadow-sm hover:shadow-md ${darkMode ? 'bg-[#1E2330] border-white/[0.06]' : 'bg-white border-gray-200'
                               }`}
                           >
                             <div className="relative aspect-video bg-black/40 overflow-hidden flex items-center justify-center">
@@ -528,7 +528,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                       result.videos.map((vid, idx) => (
                         <div
                           key={idx}
-                          className={`p-4 rounded-2xl border flex flex-col sm:flex-row gap-4 transition-all shadow-sm ${darkMode ? 'bg-[#1b1b22] border-white/[0.06]' : 'bg-white border-gray-200'
+                          className={`p-4 rounded-2xl border flex flex-col sm:flex-row gap-4 transition-all shadow-sm ${darkMode ? 'bg-[#1E2330] border-white/[0.06]' : 'bg-white border-gray-200'
                             }`}
                         >
                           {/* Left: Thumbnail Simulation */}
@@ -538,7 +538,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                             rel="noreferrer"
                             className="w-full sm:w-48 aspect-video bg-black/40 rounded-xl flex items-center justify-center relative overflow-hidden group flex-shrink-0"
                           >
-                            <div className="absolute inset-0 bg-[#6c63ff]/10 group-hover:bg-[#6c63ff]/20 transition-colors" />
+                            <div className="absolute inset-0 bg-[#0061FF]/10 group-hover:bg-[#0061FF]/20 transition-colors" />
                             <div className="w-10 h-10 rounded-full bg-blue-500 text-white flex items-center justify-center shadow-lg transform group-hover:scale-110 transition-transform">
                               <Play className="w-5 h-5 fill-current ml-0.5" />
                             </div>
@@ -640,7 +640,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
 
                 {/* A. Knowledge Panel Card */}
                 {result.knowledgePanel ? (
-                  <div className={`rounded-2xl border shadow-md overflow-hidden transition-all ${darkMode ? 'bg-[#1b1b22] border-white/[0.06]' : 'bg-white border-gray-200'
+                  <div className={`rounded-2xl border shadow-md overflow-hidden transition-all ${darkMode ? 'bg-[#1E2330] border-white/[0.06]' : 'bg-white border-gray-200'
                     }`}>
                     {/* Header Banner simulation */}
                     <div className={`p-5 border-b ${darkMode ? 'bg-gradient-to-r from-blue-500/10 to-indigo-500/10 border-white/5' : 'bg-gray-50 border-gray-200'}`}>
@@ -685,7 +685,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
                     </div>
                   </div>
                 ) : (
-                  <div className={`p-5 rounded-2xl border text-center text-xs transition-all ${darkMode ? 'bg-[#1b1b22]/50 border-white/[0.04] text-white/30' : 'bg-gray-50 border-gray-200 text-gray-400'
+                  <div className={`p-5 rounded-2xl border text-center text-xs transition-all ${darkMode ? 'bg-[#1E2330]/50 border-white/[0.04] text-white/30' : 'bg-gray-50 border-gray-200 text-gray-400'
                     }`}>
                     No direct sidebar knowledge graph exists for this exact search. Try querying a topic like a country, celebrity, or weather location.
                   </div>
@@ -716,7 +716,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
           </button>
 
           <div
-            className="bg-[#1b1b22] border border-white/10 max-w-4xl w-full rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300"
+            className="bg-[#1E2330] border border-white/10 max-w-4xl w-full rounded-3xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="relative bg-black flex items-center justify-center p-4 max-h-[70vh]">

@@ -191,7 +191,7 @@ export default function YoutubePanel() {
             placeholder="Search YouTube…"
             className="flex-1 bg-black/30 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/30 outline-none focus:border-white/30" />
           <Button onClick={search} disabled={searching || !query}
-            className="sm:px-5 py-2.5 h-auto rounded-xl bg-[#6c63ff] hover:bg-[#5a52e0] text-sm font-semibold transition-all disabled:opacity-50 text-white">
+            className="sm:px-5 py-2.5 h-auto rounded-xl bg-[#0061FF] hover:bg-[#004ecb] text-sm font-semibold transition-all disabled:opacity-50 text-white">
             {searching ? 'Searching…' : 'Search'}
           </Button>
         </div>

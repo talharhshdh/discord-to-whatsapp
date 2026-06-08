@@ -197,7 +197,7 @@ export default function WebProxyPanel() {
   return (
     <Card className="glass rounded-3xl overflow-hidden border border-white/[0.08] flex flex-col h-[78vh] transition-all duration-300 text-sm">
       {/* Browser Address Bar / Header */}
-      <div className="bg-[#0b0e17] border-b border-white/[0.06] px-4 py-3 flex items-center gap-3">
+      <div className="bg-[#0A0E17] border-b border-white/[0.06] px-4 py-3 flex items-center gap-3">
         <div className="flex items-center gap-1.5">
           {activeUrl && (
             <Button 
@@ -221,7 +221,7 @@ export default function WebProxyPanel() {
         </div>
 
         <form onSubmit={handleFormSubmit} className="flex-1">
-          <div className="flex items-center bg-[#161a26] border border-white/[0.08] rounded-xl px-3 py-1.5 focus-within:border-[#6c63ff]/40 focus-within:ring-1 focus-within:ring-[#6c63ff]/20 transition-all">
+          <div className="flex items-center bg-[#1E2330] border border-white/[0.08] rounded-xl px-3 py-1.5 focus-within:border-[#0061FF]/40 focus-within:ring-1 focus-within:ring-[#0061FF]/20 transition-all">
             <Search className="w-4 h-4 text-white/30 mr-2 flex-shrink-0" />
             <input 
               type="text" 
@@ -247,7 +247,7 @@ export default function WebProxyPanel() {
             href={getProxyUrl(activeUrl)} 
             target="_blank" 
             rel="noopener noreferrer"
-            className="p-2 rounded-xl bg-[#6c63ff]/10 hover:bg-[#6c63ff]/20 border border-[#6c63ff]/20 text-[#00d4aa] transition-colors text-xs flex items-center gap-1.5 font-semibold"
+            className="p-2 rounded-xl bg-[#0061FF]/10 hover:bg-[#0061FF]/20 border border-[#0061FF]/20 text-[#00E5FF] transition-colors text-xs flex items-center gap-1.5 font-semibold"
             title="Open Raw Proxy Tab"
           >
             <span className="hidden sm:inline">Raw View</span>
@@ -257,13 +257,13 @@ export default function WebProxyPanel() {
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 bg-[#07090f] relative overflow-hidden flex flex-col justify-center items-center">
+      <div className="flex-1 bg-[#0A0E17] relative overflow-hidden flex flex-col justify-center items-center">
         {!activeUrl ? (
           /* Landing page */
           <div className="max-w-xl w-full px-6 py-12 flex flex-col items-center text-center space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-[#6c63ff] to-[#00d4aa] flex items-center justify-center text-4xl shadow-xl shadow-[#6c63ff]/15 relative">
+            <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-[#0061FF] to-[#00E5FF] flex items-center justify-center text-4xl shadow-xl shadow-[#0061FF]/15 relative">
               🌐
-              <Badge variant="outline" className="absolute -bottom-1.5 -right-1.5 bg-[#00d4aa] text-[#07090f] rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider flex items-center gap-0.5 border border-[#07090f]">
+              <Badge variant="outline" className="absolute -bottom-1.5 -right-1.5 bg-[#00E5FF] text-[#0A0E17] rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider flex items-center gap-0.5 border border-[#0A0E17]">
                 <ShieldCheck className="w-2.5 h-2.5" /> SECURE
               </Badge>
             </div>
@@ -299,17 +299,17 @@ export default function WebProxyPanel() {
             {/* Search Instructions */}
             <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.04] text-[10px] text-white/30 text-left space-y-1 w-full leading-normal">
               <p className="font-semibold text-white/50 text-[11px] mb-1.5">💡 Pro Tips:</p>
-              <p>• Type any standard domain like <code className="text-[#00d4aa] font-mono">wikipedia.org</code> and press Enter to visit.</p>
+              <p>• Type any standard domain like <code className="text-[#00E5FF] font-mono">wikipedia.org</code> and press Enter to visit.</p>
               <p>• Enter regular keywords to perform a secure search automatically via Google.</p>
-              <p>• Click the <code className="text-[#00d4aa] font-mono">Raw View</code> button inside active browser sessions to open the proxy in its own standalone tab.</p>
+              <p>• Click the <code className="text-[#00E5FF] font-mono">Raw View</code> button inside active browser sessions to open the proxy in its own standalone tab.</p>
             </div>
           </div>
         ) : (
           /* Active Browser Iframe */
           <div className="w-full h-full flex flex-col relative">
             {loading && (
-              <div className="absolute inset-0 bg-[#07090f]/75 backdrop-blur-sm z-10 flex flex-col items-center justify-center gap-3">
-                <div className="w-10 h-10 rounded-full border-2 border-[#6c63ff] border-t-transparent animate-spin" />
+              <div className="absolute inset-0 bg-[#0A0E17]/75 backdrop-blur-sm z-10 flex flex-col items-center justify-center gap-3">
+                <div className="w-10 h-10 rounded-full border-2 border-[#0061FF] border-t-transparent animate-spin" />
                 <p className="text-xs text-white/40 tracking-wider font-mono animate-pulse">LOADING VIRTUAL FRAME...</p>
               </div>
             )}

@@ -44,7 +44,7 @@ export default function URLsPanel({ tools }: { tools: Record<string, ToolUrl> })
             className="glass glass-hover rounded-3xl p-6 space-y-4 border border-white/[0.08] shadow-lg flex flex-col relative overflow-hidden group"
           >
             {/* Ambient subtle card glow */}
-            <div className="absolute -top-12 -right-12 w-24 h-24 rounded-full bg-teal-500/5 blur-2xl pointer-events-none group-hover:bg-[#6c63ff]/10 transition-all duration-500" />
+            <div className="absolute -top-12 -right-12 w-24 h-24 rounded-full bg-teal-500/5 blur-2xl pointer-events-none group-hover:bg-[#0061FF]/10 transition-all duration-500" />
 
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
@@ -65,7 +65,7 @@ export default function URLsPanel({ tools }: { tools: Record<string, ToolUrl> })
             </div>
 
             {/* Connection link */}
-            <div className="flex gap-2 items-center bg-[#161b26]/50 border border-white/[0.08] rounded-2xl px-4 py-3 shadow-inner">
+            <div className="flex gap-2 items-center bg-[#151922]/50 border border-white/[0.08] rounded-2xl px-4 py-3 shadow-inner">
               <a
                 href={t.url}
                 target="_blank"

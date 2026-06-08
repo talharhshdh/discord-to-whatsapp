@@ -98,7 +98,7 @@ function VoiceCard({ voice, selected, onClick }: { voice: TTSVoice; selected: bo
       onClick={onClick}
       variant="outline"
       className={`relative flex flex-col items-start gap-1 p-3 rounded-xl border text-left transition-all h-auto ${selected
-        ? 'bg-[#6c63ff]/20 border-[#6c63ff]/40 text-white'
+        ? 'bg-[#0061FF]/20 border-[#0061FF]/40 text-white'
         : 'bg-white/[0.03] border-white/[0.07] text-white/60 hover:border-white/20 hover:text-white'
       }`}
     >
@@ -210,7 +210,7 @@ function GenerateTab({ voices, serverReady }: { voices: TTSVoice[]; serverReady:
       <Button
         onClick={generate}
         disabled={!text.trim() || busy || !serverReady || charCount > charLimit}
-        className="w-full py-3 h-auto bg-gradient-to-r from-[#6c63ff] to-[#00d4aa] hover:opacity-90 disabled:opacity-40 text-white font-semibold text-sm transition-all shadow-lg shadow-[#6c63ff]/20"
+        className="w-full py-3 h-auto bg-gradient-to-r from-[#0061FF] to-[#00E5FF] hover:opacity-90 disabled:opacity-40 text-white font-semibold text-sm transition-all shadow-lg shadow-[#0061FF]/20"
       >
         {busy ? '🎙️ Synthesising…' : '🎙️ Generate Speech'}
       </Button>
@@ -335,7 +335,7 @@ function CloneTab({ serverReady }: { serverReady: boolean }) {
       <Button
         onClick={clone}
         disabled={!canClone}
-        className="w-full py-3 h-auto bg-gradient-to-r from-[#ff6384] to-[#6c63ff] hover:opacity-90 disabled:opacity-40 text-white font-semibold text-sm transition-all shadow-lg shadow-[#ff6384]/20"
+        className="w-full py-3 h-auto bg-gradient-to-r from-[#ff6384] to-[#0061FF] hover:opacity-90 disabled:opacity-40 text-white font-semibold text-sm transition-all shadow-lg shadow-[#ff6384]/20"
       >
         {busy ? '🧬 Cloning voice…' : '🧬 Clone Voice'}
       </Button>
@@ -551,7 +551,7 @@ export default function TTSPanel() {
             onClick={() => setTab(t.id)}
             variant="outline"
             className={`flex-shrink-0 px-4 py-1.5 h-auto rounded-lg text-sm font-medium transition-all ${tab === t.id
-              ? 'bg-[#6c63ff]/25 text-white border border-[#6c63ff]/30'
+              ? 'bg-[#0061FF]/25 text-white border border-[#0061FF]/30'
               : 'text-white/40 hover:text-white/70'
               }`}
           >

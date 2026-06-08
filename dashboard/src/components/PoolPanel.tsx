@@ -75,7 +75,7 @@ export default function PoolPanel() {
   if (loading && !data) {
     return (
       <div className="flex flex-col items-center justify-center py-20 space-y-4">
-        <div className="w-10 h-10 border-4 border-[#6c63ff]/20 border-t-[#00d4aa] rounded-full animate-spin" />
+        <div className="w-10 h-10 border-4 border-[#0061FF]/20 border-t-[#00E5FF] rounded-full animate-spin" />
         <p className="text-white/40 text-sm">Loading browser worker pool status...</p>
       </div>
     );
@@ -136,7 +136,7 @@ export default function PoolPanel() {
         <Card className="glass rounded-2xl p-4 flex flex-col justify-between border border-white/[0.08]">
           <p className="text-[10px] text-white/30 uppercase font-bold tracking-wider">Pool Efficiency</p>
           <div className="flex items-baseline gap-2 mt-2">
-            <span className="text-3xl font-black text-[#6c63ff]">
+            <span className="text-3xl font-black text-[#0061FF]">
               {data?.active ? Math.round((cachedCount / data.active) * 100) : 0}%
             </span>
             <span className="text-xs text-white/30">pre-warmed</span>

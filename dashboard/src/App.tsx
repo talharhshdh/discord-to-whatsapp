@@ -189,13 +189,13 @@ export default function App() {
 
   if (!isAuthenticated && section !== 'google') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#070b14] relative p-4 font-sans text-white">
+      <div className="min-h-screen flex items-center justify-center bg-[#000000] relative p-4 font-sans text-white">
         {/* Theme toggle on login screen */}
         <div className="absolute top-4 right-4 z-20">
           <Button
             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
             variant="outline"
-            className="p-2.5 h-auto rounded-xl glass border border-white/10 text-white/60 hover:text-white/90 hover:scale-[1.02] active:scale-[0.98] text-xs transition-all flex items-center gap-1.5 font-medium shadow-lg shadow-black/10"
+            className="p-2.5 h-auto rounded-lg bg-[#151922] border border-white/10 text-white/60 hover:text-white/90 hover:scale-[1.02] active:scale-[0.98] text-xs transition-all flex items-center gap-1.5 font-medium shadow-none"
             title={theme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
           >
             <span>{theme === 'dark' ? '☀️' : '🌙'}</span>
@@ -203,18 +203,12 @@ export default function App() {
           </Button>
         </div>
 
-        {/* Ambient orbs */}
-        <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
-          <div className="absolute -top-40 -left-40 w-[600px] h-[600px] rounded-full bg-[#6c63ff]/10 blur-[120px]" />
-          <div className="absolute -bottom-40 -right-40 w-[500px] h-[500px] rounded-full bg-[#00d4aa]/10 blur-[120px]" />
-        </div>
-
-        <Card className="relative z-10 w-full max-w-md glass border border-white/[0.08] p-8 rounded-3xl shadow-2xl space-y-6">
+        <Card className="relative z-10 w-full max-w-md bg-[#151922] border border-white/5 p-8 rounded-lg shadow-none space-y-6">
           <div className="text-center">
-            <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-[#6c63ff] to-[#00d4aa] flex items-center justify-center text-3xl shadow-lg shadow-[#6c63ff]/20 mb-4 animate-pulse">
+            <div className="w-16 h-16 mx-auto rounded-xl bg-[#0061FF] flex items-center justify-center text-3xl shadow-none mb-4">
               🔒
             </div>
-            <CardTitle className="text-2xl font-black tracking-tight bg-gradient-to-r from-white via-white to-white/70 bg-clip-text text-transparent">Bridge Panel Login</CardTitle>
+            <CardTitle className="text-lg font-mono font-bold uppercase tracking-wider text-white">Bridge Panel Login</CardTitle>
             <CardDescription className="text-xs text-white/40 mt-1">Please authenticate to manage Discord/WhatsApp sessions</CardDescription>
           </div>
 
@@ -224,7 +218,7 @@ export default function App() {
               <Input
                 type="text"
                 required
-                className="w-full bg-[#1b1b22] border border-white/10 rounded-xl px-4 py-2.5 text-sm placeholder-white/20 focus:outline-none focus:border-[#6c63ff]/40 text-white"
+                className="w-full bg-[#11151F] border border-white/10 rounded-lg px-4 py-2.5 text-sm placeholder-white/20 focus:outline-none focus:border-[#0061FF]/40 text-white"
                 placeholder="Enter username"
                 value={loginUsername}
                 onChange={(e) => setLoginUsername(e.target.value)}
@@ -236,7 +230,7 @@ export default function App() {
               <Input
                 type="password"
                 required
-                className="w-full bg-[#1b1b22] border border-white/10 rounded-xl px-4 py-2.5 text-sm placeholder-white/20 focus:outline-none focus:border-[#6c63ff]/40 text-white"
+                className="w-full bg-[#11151F] border border-white/10 rounded-lg px-4 py-2.5 text-sm placeholder-white/20 focus:outline-none focus:border-[#0061FF]/40 text-white"
                 placeholder="Enter password"
                 value={loginPassword}
                 onChange={(e) => setLoginPassword(e.target.value)}
@@ -252,7 +246,7 @@ export default function App() {
             <Button
               type="submit"
               disabled={loginLoading}
-              className="w-full py-6 bg-gradient-to-r from-[#6c63ff] to-[#00d4aa] hover:opacity-90 disabled:opacity-50 text-sm font-semibold rounded-xl text-white transition-all shadow-lg shadow-[#6c63ff]/15"
+              className="w-full py-6 bg-[#0061FF] hover:bg-[#004ecb] disabled:opacity-50 text-sm font-semibold rounded-lg text-white transition-all shadow-none"
             >
               {loginLoading ? 'Authenticating...' : 'Sign In'}
             </Button>
@@ -265,7 +259,7 @@ export default function App() {
                 window.history.pushState(null, '', '/google');
               }}
               variant="link"
-              className="text-xs text-[#00d4aa] hover:underline p-0 h-auto font-normal"
+              className="text-xs text-[#00E5FF] hover:underline p-0 h-auto font-normal"
             >
               🌍 View public Google Clone instead
             </Button>
@@ -277,40 +271,38 @@ export default function App() {
 
   if (section === 'google') {
     return (
-      <React.Suspense fallback={<div className="flex items-center justify-center min-h-screen bg-[#070b14] text-white/50">Loading Google Clone...</div>}>
+      <React.Suspense fallback={<div className="flex items-center justify-center min-h-screen bg-[#000000] text-white/50">Loading Google Clone...</div>}>
         <GoogleClonePanel isStandalone={true} />
       </React.Suspense>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#070b14] text-sm">
-      {/* Ambient orbs */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
-        <div className="absolute -top-40 -left-40 w-[600px] h-[600px] rounded-full bg-[#6c63ff]/10 blur-[120px]" />
-        <div className="absolute -bottom-40 -right-40 w-[500px] h-[500px] rounded-full bg-[#00d4aa]/10 blur-[120px]" />
-      </div>
-
+    <div className="min-h-screen flex flex-col bg-[var(--bg-main)] text-sm font-sans">
       <div className="relative z-10 flex flex-col min-h-screen">
         {/* Header */}
-        <header className="glass border-b border-white/[0.07] px-4 md:px-6 py-3 md:py-4 sticky top-0 z-30">
+        <header className="bg-[var(--bg-sidebar)] border-b border-white/5 px-4 md:px-6 py-3 sticky top-0 z-30">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 md:gap-3">
-              <div className="w-7 h-7 md:w-10 md:h-10 rounded-lg md:rounded-xl bg-gradient-to-br from-[#6c63ff] to-[#00d4aa] flex items-center justify-center text-base md:text-xl shadow-lg shadow-[#6c63ff]/30">
+              <div className="w-8 h-8 rounded-lg bg-[#0061FF] flex items-center justify-center text-base shadow-none">
                 🤖
               </div>
               <div>
-                <h1 className="font-bold text-white text-xs md:text-base leading-tight">Bridge Panel</h1>
-                <p className="hidden sm:block text-[10px] md:text-xs text-white/30">Discord ↔ WhatsApp</p>
+                <h1 className="font-bold text-white text-xs md:text-sm leading-tight tracking-wider uppercase font-mono">Bridge Panel</h1>
+                <p className="hidden sm:block text-[9px] text-white/30 uppercase tracking-widest font-mono">Discord ↔ WhatsApp</p>
+              </div>
+              <div className="hidden sm:flex items-center gap-1.5 ml-4 px-2.5 py-1 rounded-full bg-emerald-950/20 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold tracking-wider uppercase">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                SYSTEM LIVE
               </div>
             </div>
 
             <div className="flex items-center gap-2 md:gap-3">
               {/* Countdown - simplified on mobile */}
-              <Badge variant="outline" className={`flex items-center gap-1.5 px-2 md:px-3 py-1 md:py-1.5 rounded-full border text-[10px] md:text-xs font-mono font-normal ${
-                cd.urgent ? 'bg-red-500/10 border-red-500/20 text-red-400' : 'bg-white/[0.04] border-white/10 text-white/60'
+              <Badge variant="outline" className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-mono font-normal tracking-wider ${
+                cd.urgent ? 'bg-red-500/10 border-red-500/20 text-red-400' : 'bg-[#11151F] border-white/5 text-white/60'
               }`}>
-                <span className="hidden sm:inline">⏱</span> {cd.display}
+                <span className="text-white/40">SESSION REMAINING:</span> <span className="font-bold">{cd.display}</span>
               </Badge>
 
               {/* Theme toggle button */}
@@ -349,14 +341,14 @@ export default function App() {
         {/* Session progress bar */}
         <div className="h-0.5 bg-white/[0.04] sticky top-[57px] md:top-[73px] z-30">
           <div
-            className={`h-full transition-all duration-1000 ${cd.urgent ? 'bg-red-500' : 'bg-gradient-to-r from-[#6c63ff] to-[#00d4aa]'}`}
+            className={`h-full transition-all duration-1000 ${cd.urgent ? 'bg-red-500' : 'bg-[#0061FF]'}`}
             style={{ width: `${cd.pct}%` }}
           />
         </div>
 
         <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
           {/* Desktop Sidebar */}
-          <nav className="w-60 flex-shrink-0 glass border-r border-white/[0.07] p-4 space-y-5 hidden md:block overflow-y-auto scrollbar-thin">
+          <nav className="w-60 flex-shrink-0 bg-[var(--bg-sidebar)] border-r border-white/5 p-4 space-y-5 hidden md:block overflow-y-auto scrollbar-thin">
             {/* Sidebar Search */}
             <div className="relative px-1">
               <span className="absolute inset-y-0 left-4 flex items-center text-white/30 text-xs">🔍</span>
@@ -365,7 +357,7 @@ export default function App() {
                 placeholder="Search tools..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                className="w-full bg-white/[0.04] border border-white/[0.08] hover:border-white/15 focus:border-[#6c63ff]/40 rounded-xl pl-8 pr-7 py-2 text-xs text-white placeholder-white/35 focus:outline-none transition-all"
+                className="w-full bg-[#11151F] border border-white/5 hover:border-white/10 focus:border-[#0061FF]/40 rounded-lg pl-8 pr-7 py-2 text-xs text-white placeholder-white/35 focus:outline-none transition-all"
               />
               {searchQuery && (
                 <button
@@ -380,7 +372,7 @@ export default function App() {
             <div className="space-y-4">
               {filteredCategories.map(category => (
                 <div key={category.title} className="space-y-1.5">
-                  <h3 className="text-[10px] font-black uppercase tracking-wider text-white/25 px-2 flex items-center gap-1.5">
+                  <h3 className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/30 px-2 flex items-center gap-1.5 font-mono">
                     <span>{category.icon}</span>
                     {category.title}
                   </h3>
@@ -390,16 +382,16 @@ export default function App() {
                         key={n.id}
                         onClick={() => handleNavClick(n.id)}
                         variant="ghost"
-                        className={`w-full flex items-center justify-start gap-2.5 px-3 py-2 h-auto rounded-xl text-xs font-semibold transition-all duration-200 ${
+                        className={`w-full flex items-center justify-start gap-2.5 px-3 py-2 h-auto rounded-none text-xs font-semibold transition-all duration-200 ${
                           section === n.id
-                            ? 'bg-gradient-to-r from-[#6c63ff]/20 to-[#00d4aa]/10 text-white border border-[#6c63ff]/30 shadow-lg shadow-[#6c63ff]/5 hover:bg-[#6c63ff]/25 hover:text-white'
+                            ? 'border-l-2 border-[#0061FF] bg-[#1a1f2c] text-[#00E5FF] hover:bg-[#1a1f2c] hover:text-[#00E5FF]'
                             : 'text-white/50 hover:text-white hover:bg-white/[0.04]'
                         }`}
                       >
                         <span className="text-sm">{n.icon}</span>
-                        <span className="truncate">{n.label}</span>
+                        <span className="truncate uppercase font-mono tracking-wider text-[11px]">{n.label}</span>
                         {n.id === 'urls' && data?.tools && Object.keys(data.tools).length > 0 && (
-                          <Badge variant="outline" className="ml-auto text-[10px] bg-teal-500/20 text-teal-400 font-bold rounded-full px-1.5 py-0.5 border-teal-500/25">
+                          <Badge variant="outline" className="ml-auto text-[9px] bg-cyan-950/20 text-[#00E5FF] font-bold rounded-full px-1.5 py-0.5 border-cyan-500/25">
                             {Object.keys(data.tools).length}
                           </Badge>
                         )}
@@ -409,7 +401,7 @@ export default function App() {
                 </div>
               ))}
               {filteredCategories.length === 0 && (
-                <p className="text-[11px] text-white/30 text-center py-4">No tools found</p>
+                <p className="text-[11px] text-white/30 text-center py-4 uppercase tracking-wider font-mono">No tools found</p>
               )}
             </div>
 
@@ -429,7 +421,7 @@ export default function App() {
           {isMenuOpen && (
             <div className="fixed inset-0 z-40 md:hidden bg-black/60 backdrop-blur-sm" onClick={() => setIsMenuOpen(false)}>
               <nav 
-                className="absolute right-0 top-0 bottom-0 w-64 bg-[#0d1424] border-l border-white/[0.07] p-4 flex flex-col shadow-2xl"
+                className="absolute right-0 top-0 bottom-0 w-64 bg-[var(--bg-sidebar)] border-l border-white/[0.07] p-4 flex flex-col shadow-2xl"
                 onClick={e => e.stopPropagation()}
               >
                 <div className="flex items-center justify-between mb-4">
@@ -445,7 +437,7 @@ export default function App() {
                     placeholder="Search tools..."
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
-                    className="w-full bg-white/[0.04] border border-white/[0.08] hover:border-white/15 focus:border-[#6c63ff]/40 rounded-xl pl-8 pr-7 py-2 text-xs text-white placeholder-white/35 focus:outline-none transition-all"
+                    className="w-full bg-white/[0.04] border border-white/[0.08] hover:border-white/15 focus:border-[#0061FF]/40 rounded-xl pl-8 pr-7 py-2 text-xs text-white placeholder-white/35 focus:outline-none transition-all"
                   />
                   {searchQuery && (
                     <button
@@ -472,7 +464,7 @@ export default function App() {
                             variant="ghost"
                             className={`w-full flex items-center justify-start gap-3 px-3 py-2.5 h-auto rounded-xl text-sm font-medium transition-all ${
                               section === n.id
-                                ? 'bg-gradient-to-r from-[#6c63ff]/20 to-[#00d4aa]/10 text-white border border-[#6c63ff]/30 hover:bg-[#6c63ff]/25 hover:text-white'
+                                ? 'bg-gradient-to-r from-[#0061FF]/20 to-[#00E5FF]/10 text-white border border-[#0061FF]/30 hover:bg-[#0061FF]/25 hover:text-white'
                                 : 'text-white/45 hover:text-white hover:bg-white/[0.05]'
                             }`}
                           >

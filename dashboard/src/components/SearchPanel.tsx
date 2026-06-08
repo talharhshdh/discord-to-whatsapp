@@ -78,7 +78,7 @@ export default function SearchPanel() {
               variant="outline"
               className={`flex-shrink-0 px-3 py-1 h-auto rounded-lg text-xs font-medium transition-all border ${
                 engine === eng
-                  ? 'bg-[#6c63ff]/20 border-[#6c63ff]/40 text-[#6c63ff]'
+                  ? 'bg-[#0061FF]/20 border-[#0061FF]/40 text-[#0061FF]'
                   : 'bg-white/[0.03] border-white/10 text-white/40 hover:text-white/60 hover:bg-white/[0.06]'
               }`}
             >
@@ -94,7 +94,7 @@ export default function SearchPanel() {
             variant="outline"
             className={`flex items-center gap-2 px-3 py-1 h-auto rounded-lg text-xs font-medium transition-all border ${
               includeAI
-                ? 'bg-[#00d4aa]/20 border-[#00d4aa]/40 text-[#00d4aa]'
+                ? 'bg-[#00E5FF]/20 border-[#00E5FF]/40 text-[#00E5FF]'
                 : 'bg-white/[0.03] border-white/10 text-white/40 hover:text-white/60 hover:bg-white/[0.06]'
             }`}
           >
@@ -109,7 +109,7 @@ export default function SearchPanel() {
         <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-3">
           <Input
             type="text"
-            className="flex-1 bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-[#6c63ff]/50 transition-colors"
+            className="flex-1 bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-[#0061FF]/50 transition-colors"
             placeholder="Enter search query..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -117,7 +117,7 @@ export default function SearchPanel() {
           <Button
             type="submit"
             disabled={loading || !query.trim()}
-            className="px-6 py-2.5 h-auto bg-gradient-to-r from-[#6c63ff] to-[#00d4aa] rounded-xl text-white font-medium hover:opacity-90 disabled:opacity-50 transition-all shadow-lg shadow-[#6c63ff]/20"
+            className="px-6 py-2.5 h-auto bg-gradient-to-r from-[#0061FF] to-[#00E5FF] rounded-xl text-white font-medium hover:opacity-90 disabled:opacity-50 transition-all shadow-lg shadow-[#0061FF]/20"
           >
             {loading ? 'Searching...' : 'Search'}
           </Button>
@@ -127,7 +127,7 @@ export default function SearchPanel() {
 
       {loading && (
         <div className="flex justify-center p-12">
-          <div className="w-8 h-8 rounded-full border-2 border-[#6c63ff] border-t-transparent animate-spin" />
+          <div className="w-8 h-8 rounded-full border-2 border-[#0061FF] border-t-transparent animate-spin" />
         </div>
       )}
 
@@ -143,10 +143,10 @@ export default function SearchPanel() {
           )}
 
           {result.aiResponse && (
-            <Card className="glass p-6 rounded-2xl border border-[#00d4aa]/30 bg-[#00d4aa]/5 shadow-xl overflow-hidden">
+            <Card className="glass p-6 rounded-2xl border border-[#00E5FF]/30 bg-[#00E5FF]/5 shadow-xl overflow-hidden">
               <div className="flex items-center gap-2 mb-4">
                 <span className="text-xl">✨</span>
-                <CardTitle className="text-[#00d4aa] font-bold text-base">AI Overview</CardTitle>
+                <CardTitle className="text-[#00E5FF] font-bold text-base">AI Overview</CardTitle>
               </div>
               <div
                 ref={aiRef}
@@ -164,7 +164,7 @@ export default function SearchPanel() {
               result.organic.map((item, idx) => (
                 <Card key={idx} className="glass p-5 rounded-xl border border-white/[0.05] hover:border-white/10 transition-colors">
                   <a href={item.link} target="_blank" rel="noreferrer" className="block group">
-                    <h5 className="text-[#6c63ff] group-hover:underline font-medium text-lg mb-1">{item.title}</h5>
+                    <h5 className="text-[#0061FF] group-hover:underline font-medium text-lg mb-1">{item.title}</h5>
                     <div className="text-xs text-white/40 mb-2 truncate">{item.link}</div>
                     <p className="text-sm text-white/70 leading-relaxed">{item.snippet}</p>
                   </a>
@@ -214,11 +214,11 @@ export default function SearchPanel() {
         }
         .ai-response-content li { margin-bottom: 0.3em; }
         .ai-response-content a {
-          color: #6c63ff;
+          color: #0061FF;
           text-decoration: underline;
           text-underline-offset: 2px;
         }
-        .ai-response-content a:hover { color: #00d4aa; }
+        .ai-response-content a:hover { color: #00E5FF; }
         .ai-response-content img { max-width: 100%; border-radius: 8px; margin: 0.5em 0; }
         .ai-response-content strong, .ai-response-content b { color: rgba(255,255,255,0.95); }
         .ai-response-content br + br { display: none; }

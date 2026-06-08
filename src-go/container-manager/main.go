@@ -92,6 +92,7 @@ func main() {
 	http.HandleFunc("/api/go/containers/sessions", handleGetSessions)
 	http.HandleFunc("/api/go/containers/start", handleStartContainer)
 	http.HandleFunc("/api/go/containers/stop", handleStopContainer)
+	http.HandleFunc("/api/go/containers/compose/parse", handleParseCompose)
 
 	// Start server
 	log.Println("[Go Container Manager] Listening on port 18080...")
@@ -389,6 +390,35 @@ func handleGetSessions(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(list)
 }
 
+type ParseComposeRequest struct {
+	YAML string `json:"yaml"`
+}
+
+func handleParseCompose(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	if r.Method == "OPTIONS" {
+		return
+	}
+
+	var req ParseComposeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	normalized, err := ParseAndNormalizeCompose([]byte(req.YAML))
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	json.NewEncoder(w).Encode(normalized)
+}
+
 func handleStartContainer(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -422,11 +452,43 @@ func handleStartContainer(w http.ResponseWriter, r *http.Request) {
 	sessionsMu.Unlock()
 
 	webhookSecret := generateHash()
+	var activeTunnelToken = req.TunnelToken
+	var activeTunnelID = ""
+	var reuseTunnel = false
+
 	if exists {
 		webhookSecret = oldSess.Metadata.WebhookSecret
 		log.Printf("[Docker Go Start] Stopping old container %s...", oldSess.Metadata.ContainerName)
 		_ = exec.Command("docker", "stop", oldSess.Metadata.ContainerName).Run()
-		cleanupCloudflareResources(oldSess.Metadata)
+
+		targetURL := req.CustomDomain
+		if targetURL != "" && !strings.HasPrefix(targetURL, "http") {
+			targetURL = "https://" + targetURL
+		}
+		oldTargetURL := oldSess.Metadata.CustomDomain
+		if oldTargetURL != "" && !strings.HasPrefix(oldTargetURL, "http") {
+			oldTargetURL = "https://" + oldTargetURL
+		}
+
+		if req.DomainMode == "custom" &&
+			oldSess.Metadata.DomainMode == "custom" &&
+			oldSess.Metadata.TunnelToken != "" &&
+			targetURL != "" &&
+			targetURL == oldTargetURL {
+			log.Printf("[Docker Go Deploy] Reusing existing Cloudflare tunnel token: %s", oldSess.Metadata.TunnelID)
+			activeTunnelToken = oldSess.Metadata.TunnelToken
+			activeTunnelID = oldSess.Metadata.TunnelID
+			reuseTunnel = true
+
+			if oldSess.Metadata.TunnelPid > 0 {
+				if proc, err := os.FindProcess(oldSess.Metadata.TunnelPid); err == nil {
+					_ = proc.Kill()
+					log.Printf("[Cloudflare Cleanup] Killed tunnel process PID %d", oldSess.Metadata.TunnelPid)
+				}
+			}
+		} else {
+			cleanupCloudflareResources(oldSess.Metadata)
+		}
 	}
 
 	cleanName := regexp.MustCompile(`[^a-zA-Z0-9_-]`).ReplaceAllString(req.Name, "_")
@@ -460,8 +522,6 @@ func handleStartContainer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var tunnelPid int
-	var tunnelToken = req.TunnelToken
-	var tunnelID = ""
 	var targetURL = ""
 
 	if req.DomainMode == "custom" {
@@ -479,71 +539,133 @@ func handleStartContainer(w http.ResponseWriter, r *http.Request) {
 		zoneID := getSanitizedEnv("CLOUDFLARE_ZONE_ID")
 		apiToken := getSanitizedEnv("CLOUDFLARE_API_TOKEN")
 
-		if tunnelToken == "" && accountID != "" && zoneID != "" && apiToken != "" {
-			// Auto create tunnel
-			log.Println("[Docker Go Deploy] Auto-configuring Cloudflare Tunnel...")
-			tSecret := generateHash() + generateHash() // 32 bytes hex
-			tSecretBase64 := base64.StdEncoding.EncodeToString([]byte(tSecret))
-			tunnelName := fmt.Sprintf("tunnel-%s-%s", cleanName, hash)
+		if !reuseTunnel && req.TunnelToken != "" {
+			activeTunnelToken = req.TunnelToken
+		}
 
-			// 1. Create Tunnel
-			tBody, _ := json.Marshal(map[string]string{
-				"name":          tunnelName,
-				"tunnel_secret": tSecretBase64,
-			})
-			cReq, _ := http.NewRequest("POST", fmt.Sprintf("https://api.cloudflare.com/client/v4/accounts/%s/cfd_tunnel", accountID), bytes.NewBuffer(tBody))
-			cReq.Header.Set("Authorization", "Bearer "+apiToken)
-			cReq.Header.Set("Content-Type", "application/json")
-			if cResp, err := http.DefaultClient.Do(cReq); err == nil {
-				defer cResp.Body.Close()
-				var tunnelRes map[string]interface{}
-				json.NewDecoder(cResp.Body).Decode(&tunnelRes)
-				if result, _ := tunnelRes["result"].(map[string]interface{}); result != nil {
-					tunnelID, _ = result["id"].(string)
+		if activeTunnelToken == "" {
+			if accountID != "" && zoneID != "" && apiToken != "" {
+				// Auto create tunnel
+				log.Println("[Docker Go Deploy] Auto-configuring Cloudflare Tunnel...")
+				tSecret := generateHash() + generateHash() // 32 bytes hex
+				tSecretBase64 := base64.StdEncoding.EncodeToString([]byte(tSecret))
+				tunnelName := fmt.Sprintf("tunnel-%s-%s", cleanName, hash)
+
+				// 1. Create Tunnel
+				tBody, _ := json.Marshal(map[string]string{
+					"name":          tunnelName,
+					"tunnel_secret": tSecretBase64,
+				})
+				cReq, _ := http.NewRequest("POST", fmt.Sprintf("https://api.cloudflare.com/client/v4/accounts/%s/cfd_tunnel", accountID), bytes.NewBuffer(tBody))
+				cReq.Header.Set("Authorization", "Bearer "+apiToken)
+				cReq.Header.Set("Content-Type", "application/json")
+				if cResp, err := http.DefaultClient.Do(cReq); err == nil {
+					defer cResp.Body.Close()
+					var tunnelRes map[string]interface{}
+					json.NewDecoder(cResp.Body).Decode(&tunnelRes)
+					if result, _ := tunnelRes["result"].(map[string]interface{}); result != nil {
+						activeTunnelID, _ = result["id"].(string)
+					}
+				}
+
+				if activeTunnelID != "" {
+					// 2. Configure Ingress Rules
+					ingressBody, _ := json.Marshal(map[string]interface{}{
+						"config": map[string]interface{}{
+							"ingress": []map[string]interface{}{
+								{"hostname": hostname, "service": fmt.Sprintf("http://localhost:%d", hostPort)},
+								{"service": "http_status:404"},
+							},
+						},
+					})
+					cfReq, _ := http.NewRequest("PUT", fmt.Sprintf("https://api.cloudflare.com/client/v4/accounts/%s/cfd_tunnel/%s/configurations", accountID, activeTunnelID), bytes.NewBuffer(ingressBody))
+					cfReq.Header.Set("Authorization", "Bearer "+apiToken)
+					cfReq.Header.Set("Content-Type", "application/json")
+					if cfResp, err := http.DefaultClient.Do(cfReq); err == nil {
+						cfResp.Body.Close()
+					}
+
+					// 3. Create or Update DNS CNAME Mapping
+					var dnsRecordID = ""
+					dnsListUrl := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/dns_records?name=%s&type=CNAME", zoneID, hostname)
+					dnsListReq, _ := http.NewRequest("GET", dnsListUrl, nil)
+					dnsListReq.Header.Set("Authorization", "Bearer "+apiToken)
+					dnsListReq.Header.Set("Content-Type", "application/json")
+					if dnsListResp, err := http.DefaultClient.Do(dnsListReq); err == nil {
+						defer dnsListResp.Body.Close()
+						var dnsList map[string]interface{}
+						json.NewDecoder(dnsListResp.Body).Decode(&dnsList)
+						if success, _ := dnsList["success"].(bool); success {
+							results, _ := dnsList["result"].([]interface{})
+							if len(results) > 0 {
+								record, _ := results[0].(map[string]interface{})
+								dnsRecordID, _ = record["id"].(string)
+							}
+						}
+					}
+
+					dnsUrl := ""
+					dnsMethod := ""
+					if dnsRecordID != "" {
+						dnsUrl = fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/dns_records/%s", zoneID, dnsRecordID)
+						dnsMethod = "PUT"
+					} else {
+						dnsUrl = fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/dns_records", zoneID)
+						dnsMethod = "POST"
+					}
+
+					dnsBody, _ := json.Marshal(map[string]interface{}{
+						"type":    "CNAME",
+						"name":    hostname,
+						"content": fmt.Sprintf("%s.cfargotunnel.com", activeTunnelID),
+						"proxied": true,
+					})
+					dnsReq, _ := http.NewRequest(dnsMethod, dnsUrl, bytes.NewBuffer(dnsBody))
+					dnsReq.Header.Set("Authorization", "Bearer "+apiToken)
+					dnsReq.Header.Set("Content-Type", "application/json")
+					if dnsResp, err := http.DefaultClient.Do(dnsReq); err == nil {
+						dnsResp.Body.Close()
+					}
+
+					// Token base64
+					tokenPayload := map[string]string{"a": accountID, "t": activeTunnelID, "s": tSecretBase64}
+					tokenJson, _ := json.Marshal(tokenPayload)
+					activeTunnelToken = base64.StdEncoding.EncodeToString(tokenJson)
 				}
 			}
-
-			if tunnelID != "" {
-				// 2. Configure Ingress Rules
-				ingressBody, _ := json.Marshal(map[string]interface{}{
-					"config": map[string]interface{}{
-						"ingress": []map[string]interface{}{
-							{"hostname": hostname, "service": fmt.Sprintf("http://localhost:%d", hostPort)},
-							{"service": "http_status:404"},
-						},
-					},
-				})
-				cfReq, _ := http.NewRequest("PUT", fmt.Sprintf("https://api.cloudflare.com/client/v4/accounts/%s/cfd_tunnel/%s/configurations", accountID, tunnelID), bytes.NewBuffer(ingressBody))
-				cfReq.Header.Set("Authorization", "Bearer "+apiToken)
-				cfReq.Header.Set("Content-Type", "application/json")
-				if cfResp, err := http.DefaultClient.Do(cfReq); err == nil {
-					cfResp.Body.Close()
+		} else {
+			if activeTunnelID == "" && activeTunnelToken != "" {
+				if decodedBytes, err := base64.StdEncoding.DecodeString(activeTunnelToken); err == nil {
+					var decoded map[string]interface{}
+					if err := json.Unmarshal(decodedBytes, &decoded); err == nil {
+						if t, ok := decoded["t"].(string); ok {
+							activeTunnelID = t
+						}
+					}
 				}
-
-				// 3. DNS CNAME Mapping
-				dnsBody, _ := json.Marshal(map[string]interface{}{
-					"type":    "CNAME",
-					"name":    hostname,
-					"content": fmt.Sprintf("%s.cfargotunnel.com", tunnelID),
-					"proxied": true,
-				})
-				dnsUrl := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/dns_records", zoneID)
-				dnsReq, _ := http.NewRequest("POST", dnsUrl, bytes.NewBuffer(dnsBody))
-				dnsReq.Header.Set("Authorization", "Bearer "+apiToken)
-				dnsReq.Header.Set("Content-Type", "application/json")
-				if dnsResp, err := http.DefaultClient.Do(dnsReq); err == nil {
-					dnsResp.Body.Close()
-				}
-
-				// Token base64
-				tokenPayload := map[string]string{"a": accountID, "t": tunnelID, "s": tSecretBase64}
-				tokenJson, _ := json.Marshal(tokenPayload)
-				tunnelToken = base64.StdEncoding.EncodeToString(tokenJson)
 			}
 		}
 
-		if tunnelToken != "" {
-			tCmd := exec.Command("cloudflared", "tunnel", "--no-autoupdate", "run", "--token", tunnelToken)
+		if reuseTunnel && accountID != "" && apiToken != "" && activeTunnelID != "" {
+			log.Printf("[Docker Go Deploy] Updating Ingress Rules for existing Cloudflare Tunnel %s to point to port %d...", activeTunnelID, hostPort)
+			ingressBody, _ := json.Marshal(map[string]interface{}{
+				"config": map[string]interface{}{
+					"ingress": []map[string]interface{}{
+						{"hostname": hostname, "service": fmt.Sprintf("http://localhost:%d", hostPort)},
+						{"service": "http_status:404"},
+					},
+				},
+			})
+			cfReq, _ := http.NewRequest("PUT", fmt.Sprintf("https://api.cloudflare.com/client/v4/accounts/%s/cfd_tunnel/%s/configurations", accountID, activeTunnelID), bytes.NewBuffer(ingressBody))
+			cfReq.Header.Set("Authorization", "Bearer "+apiToken)
+			cfReq.Header.Set("Content-Type", "application/json")
+			if cfResp, err := http.DefaultClient.Do(cfReq); err == nil {
+				cfResp.Body.Close()
+			}
+		}
+
+		if activeTunnelToken != "" {
+			tCmd := exec.Command("cloudflared", "tunnel", "--no-autoupdate", "run", "--token", activeTunnelToken)
 			if err := tCmd.Start(); err == nil {
 				tunnelPid = tCmd.Process.Pid
 			}
@@ -564,8 +686,8 @@ func handleStartContainer(w http.ResponseWriter, r *http.Request) {
 				CustomDomain:   targetURL,
 				CloudflaredURL: targetURL,
 				TunnelPid:      tunnelPid,
-				TunnelToken:    tunnelToken,
-				TunnelID:       tunnelID,
+				TunnelToken:    activeTunnelToken,
+				TunnelID:       activeTunnelID,
 				WebhookSecret:  webhookSecret,
 			},
 		}
