@@ -6,19 +6,30 @@ import re
 import sys
 import threading
 import io
-from rembg import remove
-import whisper
-import easyocr
 import tempfile
 import os
 
 app = FastAPI()
 
-# Pre-load models (will download on first run in GH Actions)
-print("Loading Whisper tiny model...")
-whisper_model = whisper.load_model("tiny")
-print("Loading EasyOCR reader...")
-reader = easyocr.Reader(['en']) # Add more languages if needed
+# Lazy load model references
+whisper_model = None
+reader = None
+
+def get_whisper_model():
+    global whisper_model
+    if whisper_model is None:
+        print("Loading Whisper tiny model...")
+        import whisper
+        whisper_model = whisper.load_model("tiny")
+    return whisper_model
+
+def get_reader():
+    global reader
+    if reader is None:
+        print("Loading EasyOCR reader...")
+        import easyocr
+        reader = easyocr.Reader(['en']) # Add more languages if needed
+    return reader
 
 class FetchRequest(BaseModel):
     url: str
@@ -85,6 +96,7 @@ def get_html(req: FetchRequest):
 @app.post("/remove_bg")
 async def remove_bg(file: UploadFile = File(...)):
     try:
+        from rembg import remove
         input_image = await file.read()
         output_image = remove(input_image)
         return Response(content=output_image, media_type="image/png")
@@ -96,7 +108,7 @@ async def remove_bg(file: UploadFile = File(...)):
 async def ocr_image(file: UploadFile = File(...)):
     try:
         content = await file.read()
-        results = reader.readtext(content)
+        results = get_reader().readtext(content)
         text = " ".join([res[1] for res in results])
         return {"text": text}
     except Exception as e:
@@ -113,7 +125,7 @@ async def transcribe_audio(file: UploadFile = File(...)):
             tmp_path = tmp.name
 
         try:
-            result = whisper_model.transcribe(tmp_path)
+            result = get_whisper_model().transcribe(tmp_path)
             return {"text": result["text"]}
         finally:
             if os.path.exists(tmp_path):
@@ -279,32 +291,17 @@ class ExtractHtmlRequest(BaseModel):
 def extract_html(req: ExtractHtmlRequest):
     html = req.html
 
-    # Tier 1: mineru_html (heavy, optional)
-    try:
-        from mineru_html import MinerUHTML_Transformers, MinerUHTMLConfig
-        global html_extractor
-        if "html_extractor" not in globals():
-            config = MinerUHTMLConfig(use_fall_back='trafilatura', early_load=True)
-            html_extractor = MinerUHTML_Transformers(config=config)
-        result = html_extractor.process(html)
-        content = result[0].output_data.main_content
-        if content and content.strip():
-            print("extract_html: used mineru_html")
-            return {"content": content}
-    except Exception as e1:
-        print(f"extract_html: mineru_html failed ({e1}), trying trafilatura...")
-
-    # Tier 2: trafilatura (lightweight, usually installed)
+    # Tier 1: trafilatura (lightweight, usually installed)
     try:
         import trafilatura
         content = trafilatura.extract(html, include_comments=False, include_tables=True)
         if content and content.strip():
             print("extract_html: used trafilatura")
             return {"content": content}
-    except Exception as e2:
-        print(f"extract_html: trafilatura failed ({e2}), trying html2text...")
+    except Exception as e1:
+        print(f"extract_html: trafilatura failed ({e1}), trying html2text...")
 
-    # Tier 3: html2text (markdown-style output)
+    # Tier 2: html2text (markdown-style output)
     try:
         import html2text
         h = html2text.HTML2Text()
@@ -314,10 +311,10 @@ def extract_html(req: ExtractHtmlRequest):
         if content:
             print("extract_html: used html2text")
             return {"content": content}
-    except Exception as e3:
-        print(f"extract_html: html2text failed ({e3}), falling back to regex strip...")
+    except Exception as e2:
+        print(f"extract_html: html2text failed ({e2}), falling back to regex strip...")
 
-    # Tier 4: bare regex strip — always works, zero deps
+    # Tier 3: bare regex strip — always works, zero deps
     try:
         import re
         text = re.sub(r'<style[^>]*>.*?</style>', ' ', html, flags=re.DOTALL | re.IGNORECASE)
@@ -331,8 +328,8 @@ def extract_html(req: ExtractHtmlRequest):
         text = re.sub(r'\s+', ' ', text).strip()
         print("extract_html: used regex fallback")
         return {"content": text}
-    except Exception as e4:
-        raise HTTPException(status_code=500, detail=f"All extraction methods failed: {e4}")
+    except Exception as e3:
+        raise HTTPException(status_code=500, detail=f"All extraction methods failed: {e3}")
 
 @app.get("/health")
 def health():

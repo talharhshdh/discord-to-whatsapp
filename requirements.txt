@@ -7,4 +7,5 @@ onnxruntime
 python-multipart
 openai-whisper
 easyocr
-mineru_html
+trafilatura
+html2text

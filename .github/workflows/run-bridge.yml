@@ -146,13 +146,26 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: "pip"
+
+      - name: Cache Python virtualenv
+        id: cache-venv
+        uses: actions/cache@v4
+        with:
+          path: venv
+          key: ${{ runner.os }}-venv-${{ hashFiles('requirements.txt') }}
 
       - name: Install Python dependencies
+        if: steps.cache-venv.outputs.cache-hit != 'true'
         run: |
+          python -m venv venv
+          source venv/bin/activate
           python -m pip install --upgrade pip
           pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-          pip install seleniumbase fastapi uvicorn pydantic rembg onnxruntime python-multipart openai-whisper easyocr
+          pip install -r requirements.txt
+
+      - name: Install Chromedriver
+        run: |
+          source venv/bin/activate
           seleniumbase install chromedriver
 
       - name: Install System Dependencies
@@ -177,6 +190,7 @@ jobs:
 
       - name: Start Cloudflare Bypasser API
         run: |
+          source venv/bin/activate
           python src/scripts/cf_bypasser.py > bypasser.log 2>&1 &
           echo "Waiting for API to start..."
           for i in {1..15}; do
@@ -210,7 +224,7 @@ jobs:
       # [DISABLED] LLM Server — uncomment to re-enable
       # - name: Start LLM Server
       #   run: |
-      #     python src/scripts/llm_server.py > llm_server.log 2>&1 &
+      #     source venv/bin/activate && python src/scripts/llm_server.py > llm_server.log 2>&1 &
       #     echo "Waiting for LLM server to start..."
       #     for i in {1..15}; do
       #       if curl -s http://127.0.0.1:8001/health > /dev/null; then
@@ -219,11 +233,10 @@ jobs:
       #       fi
       #       sleep 2
       #     done
-
       # [DISABLED] TTS Server — uncomment to re-enable
       # - name: Start TTS Server
       #   run: |
-      #     python src/scripts/tts_server.py > tts_server.log 2>&1 &
+      #     source venv/bin/activate && python src/scripts/tts_server.py > tts_server.log 2>&1 &
       #     echo "Waiting for TTS server to start..."
       #     for i in {1..15}; do
       #       if curl -s http://127.0.0.1:8002/health > /dev/null; then
