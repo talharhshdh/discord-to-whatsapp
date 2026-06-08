@@ -99,7 +99,7 @@ jobs:
             echo "🔄 Merging GitHub secrets into .env..."
             node -e "
               const fs = require('fs');
-              
+
               function parseEnv(filePath) {
                 if (!fs.existsSync(filePath)) return {};
                 const content = fs.readFileSync(filePath, 'utf8');
@@ -120,7 +120,7 @@ jobs:
               const r2Env = parseEnv('.env');
               const secretEnv = parseEnv('.env.secret');
               const merged = { ...r2Env, ...secretEnv };
-              
+
               let output = '';
               for (const [k, v] of Object.entries(merged)) {
                 output += \`\${k}=\${v}\n\`;
@@ -206,12 +206,12 @@ jobs:
         run: |
           echo "🔨 Building Go container-manager..."
           cd src-go/container-manager
-          go build -o ../../container-manager main.go
+          go build -o ../../container-manager .
           cd ../..
           echo "🚀 Starting Go container-manager..."
           chmod +x container-manager
           ./container-manager > container-manager.log 2>&1 &
-          
+
           echo "⏳ Waiting for Go container-manager to start..."
           for i in {1..10}; do
             if curl -s http://127.0.0.1:18080/api/go/containers/sessions > /dev/null; then
