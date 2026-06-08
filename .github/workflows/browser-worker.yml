@@ -11,7 +11,7 @@ jobs:
     timeout-minutes: 310 # 5 hours + 10 min buffer
     strategy:
       matrix:
-        worker: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        worker: [1, 2, 3]
       fail-fast: false # Don't kill siblings if one crashes
 
     steps:
@@ -27,7 +27,7 @@ jobs:
           OTHER_RUNS=$(echo "$RUNS_JSON" | jq -c '.workflow_runs[] | select(.id != ${{ github.run_id }})' | jq -s 'sort_by(.created_at)')
           OTHER_RUNS_COUNT=$(echo "$OTHER_RUNS" | jq '. | length')
           TOTAL_RUNS=$((OTHER_RUNS_COUNT + 1))
-          LIMIT=3
+          LIMIT=5
 
           echo "📊 Currently running: $TOTAL_RUNS (Limit: $LIMIT)"
 

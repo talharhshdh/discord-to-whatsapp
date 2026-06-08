@@ -505,6 +505,42 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     }
   }
 
+  // ── Proxy Go Container Manager ──────────────────────────────────────────────
+  if (url.startsWith('/api/go/')) {
+    const targetUrl = `http://127.0.0.1:18080${url}`;
+    const parsedTarget = new URL(targetUrl);
+    
+    const headers: Record<string, string> = {};
+    for (const [k, v] of Object.entries(req.headers)) {
+      if (v !== undefined) {
+        headers[k] = Array.isArray(v) ? v.join(', ') : v;
+      }
+    }
+    headers['host'] = parsedTarget.host;
+
+    const proxyReq = require('http').request({
+      method: req.method,
+      hostname: parsedTarget.hostname,
+      port: parsedTarget.port,
+      path: parsedTarget.pathname + parsedTarget.search,
+      headers: headers
+    }, (proxyRes: any) => {
+      res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
+      proxyRes.pipe(res);
+    });
+
+    proxyReq.on('error', (proxyErr: Error) => {
+      console.error('[Go Proxy Error]:', proxyErr.message);
+      if (!res.headersSent) {
+        res.writeHead(502, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: `Go container manager is offline: ${proxyErr.message}` }));
+      }
+    });
+
+    req.pipe(proxyReq);
+    return;
+  }
+
   // ── POST /api/auth/login ───────────────────────────────────────────────────
   if (method === 'POST' && url === '/api/auth/login') {
     try {

@@ -21,6 +21,7 @@ const PlacesPanel = React.lazy(() => import('./components/PlacesPanel'));
 const GoogleClonePanel = React.lazy(() => import('./components/GoogleClonePanel'));
 const WebProxyPanel = React.lazy(() => import('./components/WebProxyPanel'));
 const PoolPanel = React.lazy(() => import('./components/PoolPanel'));
+const BetaGoContainerPanel = React.lazy(() => import('./components/BetaGoContainerPanel'));
 
 interface NavItem {
   id: NavSection;
@@ -60,6 +61,7 @@ const NAV_CATEGORIES: NavCategory[] = [
       { id: 'manager',   label: 'Session Manager', icon: '📊' },
       { id: 'android',   label: 'Android',        icon: '📱' },
       { id: 'urls',      label: 'Live URLs',      icon: '🔗' },
+      { id: 'go-containers', label: 'Beta Containers (Go)', icon: '⚡' },
     ]
   },
   {
@@ -528,6 +530,7 @@ export default function App() {
                   {section === 'pool' && <PoolPanel />}
                   {section === 'tts' && <TTSPanel />}
                   {section === 'web-proxy' && <WebProxyPanel />}
+                  {section === 'go-containers' && <BetaGoContainerPanel />}
                 </React.Suspense>
               </div>
             </div>

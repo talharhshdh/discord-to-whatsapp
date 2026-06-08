@@ -103,7 +103,7 @@ export interface UrlsPayload {
   tools: Record<string, ToolUrl>;
 }
 export interface SessionResult {
-  url?: string; username?: string; password?: string; error?: string;
+  url?: string; username?: string; password?: string; error?: string; containerName?: string;
 }
 export interface BrowserSearchResult {
   organic: { title: string; link: string; snippet: string; displayedLink?: string; favicon?: string }[];
@@ -268,6 +268,12 @@ export const api = {
   startBrowser: () => post<SessionResult>('/api/sessions/browser', {}),
   startDocker: (image: string, port: number, env: Record<string, string>, name?: string, domainMode?: string, customDomain?: string) =>
     post<SessionResult>('/api/sessions/docker', { image, port, env, name, domainMode, customDomain }),
+
+  getGoSessions: () => authFetch(`${BASE}/api/go/containers/sessions`).then(r => r.json()) as Promise<any[]>,
+  startGoDocker: (image: string, port: number, env: Record<string, string>, name?: string, domainMode?: string, customDomain?: string, hostPort?: number, tunnelToken?: string, sessionId?: string) =>
+    post<SessionResult>('/api/go/containers/start', { image, port, env, name, domainMode, customDomain, hostPort, tunnelToken, sessionId }),
+  stopGoDocker: (sessionId: string) =>
+    post<{ success: boolean; message: string }>('/api/go/containers/stop', { sessionId }),
 
   removeBg: (file: File) => {
     const fd = new FormData(); fd.append('file', file);
