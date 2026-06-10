@@ -274,6 +274,8 @@ export const api = {
     post<SessionResult>('/api/go/containers/start', { image, port, env, name, domainMode, customDomain, hostPort, tunnelToken, sessionId }),
   stopGoDocker: (sessionId: string) =>
     post<{ success: boolean; message: string }>('/api/go/containers/stop', { sessionId }),
+  parseCompose: (yaml: string) =>
+    post<any>('/api/go/containers/compose/parse', { yaml }),
 
   removeBg: (file: File) => {
     const fd = new FormData(); fd.append('file', file);

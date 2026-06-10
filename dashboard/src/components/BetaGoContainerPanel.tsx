@@ -176,15 +176,7 @@ volumes:
     setIsParsing(true);
     setParseError(null);
     try {
-      const res = await fetch('http://localhost:18080/api/go/containers/compose/parse', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ yaml: yamlInput }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Parsing failed');
-      }
+      const data = await api.parseCompose(yamlInput);
       setParsedCompose(data);
       setResult('✅ Successfully parsed Compose configuration!');
 
