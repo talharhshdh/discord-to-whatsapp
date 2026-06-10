@@ -5,6 +5,18 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 
+interface ServiceSessionMetadata {
+  serviceName: string;
+  port: number;
+  hostPort: number;
+  domainMode: string;
+  customDomain?: string;
+  cloudflaredUrl?: string;
+  tunnelPid?: number;
+  tunnelToken?: string;
+  tunnelId?: string;
+}
+
 interface GoSession {
   id: string;
   type: string;
@@ -22,6 +34,8 @@ interface GoSession {
     webhookSecret?: string;
     tunnelToken?: string;
     tunnelId?: string;
+    composeFile?: string;
+    services?: Record<string, ServiceSessionMetadata>;
   };
 }
 
@@ -227,8 +241,19 @@ volumes:
     }));
   };
 
-  const handleDeployCompose = () => {
-    setResult('✅ Deployment simulation successful! Compose payload ready.');
+  const handleDeployCompose = async () => {
+    setLoading(true);
+    setResult('');
+    try {
+      const res = await api.deployCompose(yamlInput, serviceSettings);
+      if (res.error) throw new Error(res.error);
+      setResult(`✅ Compose stack deployed successfully!\nPrimary URL: ${res.url}`);
+      await loadSessions();
+    } catch (err: any) {
+      setResult(`❌ Error: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const startEditing = (session: GoSession) => {

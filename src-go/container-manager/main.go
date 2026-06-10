@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -16,23 +17,39 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
+
+type ServiceSessionMetadata struct {
+	ServiceName    string `json:"serviceName"`
+	Port           int    `json:"port"`
+	HostPort       int    `json:"hostPort"`
+	DomainMode     string `json:"domainMode"`
+	CustomDomain   string `json:"customDomain,omitempty"`
+	CloudflaredURL string `json:"cloudflaredUrl,omitempty"`
+	TunnelPid      int    `json:"tunnelPid,omitempty"`
+	TunnelToken    string `json:"tunnelToken,omitempty"`
+	TunnelID       string `json:"tunnelId,omitempty"`
+}
 
 // Session structure matching TS backend
 type SessionMetadata struct {
-	Port           int               `json:"port,omitempty"`
-	HostPort       int               `json:"hostPort,omitempty"`
-	ContainerName  string            `json:"containerName,omitempty"`
-	TargetURL      string            `json:"targetUrl,omitempty"`
-	Image          string            `json:"image,omitempty"`
-	Env            map[string]string `json:"env,omitempty"`
-	DomainMode     string            `json:"domainMode,omitempty"`
-	CustomDomain   string            `json:"customDomain,omitempty"`
-	TunnelPid      int               `json:"tunnelPid,omitempty"`
-	CloudflaredURL string            `json:"cloudflaredUrl,omitempty"`
-	WebhookSecret  string            `json:"webhookSecret,omitempty"`
-	TunnelToken    string            `json:"tunnelToken,omitempty"`
-	TunnelID       string            `json:"tunnelId,omitempty"`
+	Port           int                               `json:"port,omitempty"`
+	HostPort       int                               `json:"hostPort,omitempty"`
+	ContainerName  string                            `json:"containerName,omitempty"`
+	TargetURL      string                            `json:"targetUrl,omitempty"`
+	Image          string                            `json:"image,omitempty"`
+	Env            map[string]string                 `json:"env,omitempty"`
+	DomainMode     string                            `json:"domainMode,omitempty"`
+	CustomDomain   string                            `json:"customDomain,omitempty"`
+	TunnelPid      int                               `json:"tunnelPid,omitempty"`
+	CloudflaredURL string                            `json:"cloudflaredUrl,omitempty"`
+	WebhookSecret  string                            `json:"webhookSecret,omitempty"`
+	TunnelToken    string                            `json:"tunnelToken,omitempty"`
+	TunnelID       string                            `json:"tunnelId,omitempty"`
+	ComposeFile    string                            `json:"composeFile,omitempty"`
+	Services       map[string]ServiceSessionMetadata `json:"services,omitempty"`
 }
 
 type Session struct {
@@ -93,6 +110,7 @@ func main() {
 	http.HandleFunc("/api/go/containers/start", handleStartContainer)
 	http.HandleFunc("/api/go/containers/stop", handleStopContainer)
 	http.HandleFunc("/api/go/containers/compose/parse", handleParseCompose)
+	http.HandleFunc("/api/go/containers/compose/deploy", handleDeployCompose)
 
 	// Start server
 	log.Println("[Go Container Manager] Listening on port 18080...")
@@ -304,7 +322,7 @@ func restoreDockerContainers() {
 	sessionsMu.RLock()
 	var toRestore []Session
 	for _, s := range sessions {
-		if s.Type == "docker-container" {
+		if s.Type == "docker-container" || s.Type == "docker-compose" {
 			toRestore = append(toRestore, s)
 		}
 	}
@@ -313,6 +331,63 @@ func restoreDockerContainers() {
 	for _, s := range toRestore {
 		go func(sess Session) {
 			meta := sess.Metadata
+			if sess.Type == "docker-compose" {
+				log.Printf("[Docker Restore] Restoring compose stack %s...", sess.ID)
+				_ = exec.Command("docker", "compose", "-f", meta.ComposeFile, "up", "-d").Run()
+				_ = exec.Command("docker-compose", "-f", meta.ComposeFile, "up", "-d").Run()
+
+				updatedServices := make(map[string]ServiceSessionMetadata)
+				for name, svc := range meta.Services {
+					if svc.DomainMode == "custom" {
+						if svc.TunnelToken != "" {
+							tCmd := exec.Command("cloudflared", "tunnel", "--no-autoupdate", "run", "--token", svc.TunnelToken)
+							if err := tCmd.Start(); err == nil {
+								svc.TunnelPid = tCmd.Process.Pid
+							}
+						}
+					} else if svc.DomainMode == "quick" {
+						tCmd := exec.Command("cloudflared", "tunnel", "--url", fmt.Sprintf("http://localhost:%d", svc.HostPort))
+						stderr, err := tCmd.StderrPipe()
+						if err == nil && tCmd.Start() == nil {
+							svc.TunnelPid = tCmd.Process.Pid
+							go func(serviceName string, sID string, hostPort int) {
+								scanner := bufio.NewScanner(stderr)
+								re := regexp.MustCompile(`https://[-0-9a-z]*\.trycloudflare\.com`)
+								for scanner.Scan() {
+									line := scanner.Text()
+									if match := re.FindString(line); match != "" {
+										sessionsMu.Lock()
+										if s, ok := sessions[sID]; ok {
+											if svcMeta, ok2 := s.Metadata.Services[serviceName]; ok2 {
+												svcMeta.CloudflaredURL = match
+												s.Metadata.Services[serviceName] = svcMeta
+												if s.URL == "" || strings.Contains(s.URL, "trycloudflare.com") || s.URL == "http://localhost" {
+													s.URL = match
+												}
+												sessions[sID] = s
+											}
+										}
+										sessionsMu.Unlock()
+										saveSessions()
+										break
+									}
+								}
+							}(name, sess.ID, svc.HostPort)
+						}
+					}
+					updatedServices[name] = svc
+				}
+
+				sessionsMu.Lock()
+				if s, ok := sessions[sess.ID]; ok {
+					s.Metadata.Services = updatedServices
+					sessions[sess.ID] = s
+				}
+				sessionsMu.Unlock()
+				saveSessions()
+				return
+			}
+
 			// Check if container is running
 			cmd := exec.Command("docker", "ps", "--filter", "name="+meta.ContainerName, "--format", "{{.Names}}")
 			out, _ := cmd.Output()
@@ -791,14 +866,526 @@ func handleStopContainer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	meta := sess.Metadata
-	log.Printf("[Docker Go Stop] Stopping container: %s", meta.ContainerName)
-	_ = exec.Command("docker", "stop", meta.ContainerName).Run()
-	cleanupCloudflareResources(meta)
+	if sess.Type == "docker-compose" {
+		log.Printf("[Docker Go Stop] Stopping compose stack: %s", meta.ComposeFile)
+		_ = exec.Command("docker", "compose", "-f", meta.ComposeFile, "down").Run()
+		_ = exec.Command("docker-compose", "-f", meta.ComposeFile, "down").Run()
+
+		for _, svc := range meta.Services {
+			svcMeta := SessionMetadata{
+				TunnelPid:    svc.TunnelPid,
+				TunnelID:     svc.TunnelID,
+				CustomDomain: svc.CustomDomain,
+			}
+			cleanupCloudflareResources(svcMeta)
+		}
+	} else {
+		log.Printf("[Docker Go Stop] Stopping container: %s", meta.ContainerName)
+		_ = exec.Command("docker", "stop", meta.ContainerName).Run()
+		cleanupCloudflareResources(meta)
+	}
 
 	saveSessions()
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
-		"message": "Docker container stopped and resources cleaned up.",
+		"message": "Docker resources stopped and cleaned up.",
+	})
+}
+
+type ServiceSetting struct {
+	DomainMode   string            `json:"domainMode"`
+	CustomDomain string            `json:"customDomain"`
+	Env          map[string]string `json:"env"`
+}
+
+type DeployComposeRequest struct {
+	YAML            string                    `json:"yaml"`
+	ServiceSettings map[string]ServiceSetting `json:"serviceSettings"`
+	SessionID       string                    `json:"sessionId,omitempty"`
+}
+
+func parsePorts(portStr string) (int, int, error) {
+	parts := strings.Split(portStr, ":")
+	if len(parts) == 1 {
+		var containerPort int
+		_, err := fmt.Sscanf(parts[0], "%d", &containerPort)
+		return 0, containerPort, err
+	} else if len(parts) == 2 {
+		var hostPort, containerPort int
+		_, err := fmt.Sscanf(parts[0], "%d", &hostPort)
+		if err != nil {
+			return 0, 0, err
+		}
+		_, err = fmt.Sscanf(parts[1], "%d", &containerPort)
+		return hostPort, containerPort, err
+	} else if len(parts) == 3 {
+		var hostPort, containerPort int
+		_, err := fmt.Sscanf(parts[1], "%d", &hostPort)
+		if err != nil {
+			return 0, 0, err
+		}
+		_, err = fmt.Sscanf(parts[2], "%d", &containerPort)
+		return hostPort, containerPort, err
+	}
+	return 0, 0, fmt.Errorf("invalid port format: %s", portStr)
+}
+
+func mergeEnvironment(service map[string]interface{}, overrides map[string]string) {
+	env, exists := service["environment"]
+	merged := make(map[string]string)
+
+	if exists {
+		switch envVal := env.(type) {
+		case map[string]interface{}:
+			for k, v := range envVal {
+				merged[k] = fmt.Sprintf("%v", v)
+			}
+		case []interface{}:
+			for _, item := range envVal {
+				if itemStr, ok := item.(string); ok {
+					parts := strings.SplitN(itemStr, "=", 2)
+					if len(parts) == 2 {
+						merged[parts[0]] = parts[1]
+					} else if len(parts) == 1 {
+						merged[parts[0]] = ""
+					}
+				}
+			}
+		case map[interface{}]interface{}:
+			for k, v := range envVal {
+				merged[fmt.Sprintf("%v", k)] = fmt.Sprintf("%v", v)
+			}
+		}
+	}
+
+	for k, v := range overrides {
+		if k != "" {
+			merged[k] = v
+		}
+	}
+
+	service["environment"] = merged
+}
+
+func startServiceTunnel(serviceName string, domainMode string, customDomain string, hostPort int, sessionHash string, reuseTunnel bool, oldTunnelToken string, oldTunnelID string) (url string, pid int, token string, tunnelID string, err error) {
+	if domainMode == "custom" {
+		if customDomain == "" {
+			return "", 0, "", "", errors.New("custom domain is required for custom domain mode")
+		}
+		targetURL := customDomain
+		if !strings.HasPrefix(targetURL, "http") {
+			targetURL = "https://" + targetURL
+		}
+		hostname := strings.TrimPrefix(strings.TrimPrefix(targetURL, "https://"), "http://")
+
+		accountID := getSanitizedEnv("CLOUDFLARE_ACCOUNT_ID")
+		zoneID := getSanitizedEnv("CLOUDFLARE_ZONE_ID")
+		apiToken := getSanitizedEnv("CLOUDFLARE_API_TOKEN")
+
+		activeTunnelToken := oldTunnelToken
+		activeTunnelID := oldTunnelID
+
+		if !reuseTunnel || activeTunnelToken == "" {
+			if accountID != "" && zoneID != "" && apiToken != "" {
+				log.Printf("[Docker Go Deploy] Auto-configuring Cloudflare Tunnel for service %s...", serviceName)
+				tSecret := generateHash() + generateHash() // 32 bytes hex
+				tSecretBase64 := base64.StdEncoding.EncodeToString([]byte(tSecret))
+				cleanSvcName := regexp.MustCompile(`[^a-zA-Z0-9_-]`).ReplaceAllString(serviceName, "_")
+				tunnelName := fmt.Sprintf("tunnel-comp-%s-%s-%s", cleanSvcName, sessionHash, generateHash())
+
+				// 1. Create Tunnel
+				tBody, _ := json.Marshal(map[string]string{
+					"name":          tunnelName,
+					"tunnel_secret": tSecretBase64,
+				})
+				cReq, _ := http.NewRequest("POST", fmt.Sprintf("https://api.cloudflare.com/client/v4/accounts/%s/cfd_tunnel", accountID), bytes.NewBuffer(tBody))
+				cReq.Header.Set("Authorization", "Bearer "+apiToken)
+				cReq.Header.Set("Content-Type", "application/json")
+				if cResp, err := http.DefaultClient.Do(cReq); err == nil {
+					defer cResp.Body.Close()
+					var tunnelRes map[string]interface{}
+					json.NewDecoder(cResp.Body).Decode(&tunnelRes)
+					if result, _ := tunnelRes["result"].(map[string]interface{}); result != nil {
+						activeTunnelID, _ = result["id"].(string)
+					}
+				}
+
+				if activeTunnelID != "" {
+					// 2. Configure Ingress Rules
+					ingressBody, _ := json.Marshal(map[string]interface{}{
+						"config": map[string]interface{}{
+							"ingress": []map[string]interface{}{
+								{"hostname": hostname, "service": fmt.Sprintf("http://localhost:%d", hostPort)},
+								{"service": "http_status:404"},
+							},
+						},
+					})
+					cfReq, _ := http.NewRequest("PUT", fmt.Sprintf("https://api.cloudflare.com/client/v4/accounts/%s/cfd_tunnel/%s/configurations", accountID, activeTunnelID), bytes.NewBuffer(ingressBody))
+					cfReq.Header.Set("Authorization", "Bearer "+apiToken)
+					cfReq.Header.Set("Content-Type", "application/json")
+					if cfResp, err := http.DefaultClient.Do(cfReq); err == nil {
+						cfResp.Body.Close()
+					}
+
+					// 3. Create or Update DNS CNAME Mapping
+					var dnsRecordID = ""
+					dnsListUrl := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/dns_records?name=%s&type=CNAME", zoneID, hostname)
+					dnsListReq, _ := http.NewRequest("GET", dnsListUrl, nil)
+					dnsListReq.Header.Set("Authorization", "Bearer "+apiToken)
+					dnsListReq.Header.Set("Content-Type", "application/json")
+					if dnsListResp, err := http.DefaultClient.Do(dnsListReq); err == nil {
+						defer dnsListResp.Body.Close()
+						var dnsList map[string]interface{}
+						json.NewDecoder(dnsListResp.Body).Decode(&dnsList)
+						if success, _ := dnsList["success"].(bool); success {
+							results, _ := dnsList["result"].([]interface{})
+							if len(results) > 0 {
+								record, _ := results[0].(map[string]interface{})
+								dnsRecordID, _ = record["id"].(string)
+							}
+						}
+					}
+
+					dnsUrl := ""
+					dnsMethod := ""
+					if dnsRecordID != "" {
+						dnsUrl = fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/dns_records/%s", zoneID, dnsRecordID)
+						dnsMethod = "PUT"
+					} else {
+						dnsUrl = fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/dns_records", zoneID)
+						dnsMethod = "POST"
+					}
+
+					dnsBody, _ := json.Marshal(map[string]interface{}{
+						"type":    "CNAME",
+						"name":    hostname,
+						"content": fmt.Sprintf("%s.cfargotunnel.com", activeTunnelID),
+						"proxied": true,
+					})
+					dnsReq, _ := http.NewRequest(dnsMethod, dnsUrl, bytes.NewBuffer(dnsBody))
+					dnsReq.Header.Set("Authorization", "Bearer "+apiToken)
+					dnsReq.Header.Set("Content-Type", "application/json")
+					if dnsResp, err := http.DefaultClient.Do(dnsReq); err == nil {
+						dnsResp.Body.Close()
+					}
+
+					// Token base64
+					tokenPayload := map[string]string{"a": accountID, "t": activeTunnelID, "s": tSecretBase64}
+					tokenJson, _ := json.Marshal(tokenPayload)
+					activeTunnelToken = base64.StdEncoding.EncodeToString(tokenJson)
+				}
+			}
+		} else {
+			if activeTunnelID == "" && activeTunnelToken != "" {
+				if decodedBytes, err := base64.StdEncoding.DecodeString(activeTunnelToken); err == nil {
+					var decoded map[string]interface{}
+					if err := json.Unmarshal(decodedBytes, &decoded); err == nil {
+						if t, ok := decoded["t"].(string); ok {
+							activeTunnelID = t
+						}
+					}
+				}
+			}
+		}
+
+		if reuseTunnel && accountID != "" && apiToken != "" && activeTunnelID != "" {
+			log.Printf("[Docker Go Deploy] Updating Ingress Rules for existing Cloudflare Tunnel %s to point to port %d...", activeTunnelID, hostPort)
+			ingressBody, _ := json.Marshal(map[string]interface{}{
+				"config": map[string]interface{}{
+					"ingress": []map[string]interface{}{
+						{"hostname": hostname, "service": fmt.Sprintf("http://localhost:%d", hostPort)},
+						{"service": "http_status:404"},
+					},
+				},
+			})
+			cfReq, _ := http.NewRequest("PUT", fmt.Sprintf("https://api.cloudflare.com/client/v4/accounts/%s/cfd_tunnel/%s/configurations", accountID, activeTunnelID), bytes.NewBuffer(ingressBody))
+			cfReq.Header.Set("Authorization", "Bearer "+apiToken)
+			cfReq.Header.Set("Content-Type", "application/json")
+			if cfResp, err := http.DefaultClient.Do(cfReq); err == nil {
+				cfResp.Body.Close()
+			}
+		}
+
+		if activeTunnelToken != "" {
+			tCmd := exec.Command("cloudflared", "tunnel", "--no-autoupdate", "run", "--token", activeTunnelToken)
+			if err := tCmd.Start(); err == nil {
+				return targetURL, tCmd.Process.Pid, activeTunnelToken, activeTunnelID, nil
+			} else {
+				return "", 0, "", "", fmt.Errorf("failed to start cloudflared tunnel: %w", err)
+			}
+		}
+		return "", 0, "", "", errors.New("failed to configure tunnel: credentials missing or tunnel creation failed")
+	}
+
+	if domainMode == "quick" {
+		tCmd := exec.Command("cloudflared", "tunnel", "--url", fmt.Sprintf("http://localhost:%d", hostPort))
+		stderr, err := tCmd.StderrPipe()
+		if err != nil {
+			return "", 0, "", "", fmt.Errorf("failed to open stderr pipe for cloudflared: %w", err)
+		}
+
+		if err := tCmd.Start(); err != nil {
+			return "", 0, "", "", fmt.Errorf("failed to start cloudflared quick tunnel: %w", err)
+		}
+
+		urlChan := make(chan string, 1)
+		go func() {
+			scanner := bufio.NewScanner(stderr)
+			re := regexp.MustCompile(`https://[-0-9a-z]*\.trycloudflare\.com`)
+			for scanner.Scan() {
+				line := scanner.Text()
+				if match := re.FindString(line); match != "" {
+					urlChan <- match
+					break
+				}
+			}
+		}()
+
+		select {
+		case cUrl := <-urlChan:
+			return cUrl, tCmd.Process.Pid, "", "", nil
+		case <-time.After(30 * time.Second):
+			tCmd.Process.Kill()
+			return "", 0, "", "", errors.New("cloudflare quick tunnel timed out")
+		}
+	}
+
+	return "", 0, "", "", nil
+}
+
+func handleDeployCompose(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	if r.Method == "OPTIONS" {
+		return
+	}
+
+	var req DeployComposeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// 1. Verify Docker is running
+	if err := exec.Command("docker", "--version").Run(); err != nil {
+		json.NewEncoder(w).Encode(map[string]string{"error": "Docker is not running on the host system."})
+		return
+	}
+
+	hash := req.SessionID
+	if hash == "" {
+		hash = generateHash()
+	} else {
+		hash = strings.TrimPrefix(hash, "compose-")
+	}
+	sessionID := "compose-" + hash
+
+	// Clean up old instance first if updating
+	sessionsMu.Lock()
+	oldSess, exists := sessions[sessionID]
+	sessionsMu.Unlock()
+
+	if exists {
+		log.Printf("[Compose Go Deploy] Stopping old compose stack %s...", oldSess.Metadata.ComposeFile)
+		_ = exec.Command("docker", "compose", "-f", oldSess.Metadata.ComposeFile, "down").Run()
+		_ = exec.Command("docker-compose", "-f", oldSess.Metadata.ComposeFile, "down").Run()
+
+		for _, svc := range oldSess.Metadata.Services {
+			svcMeta := SessionMetadata{
+				TunnelPid:    svc.TunnelPid,
+				TunnelID:     svc.TunnelID,
+				CustomDomain: svc.CustomDomain,
+			}
+			cleanupCloudflareResources(svcMeta)
+		}
+	}
+
+	root := findWorkspaceRoot()
+	stackDir := filepath.Join(root, "stacks", "compose-"+hash)
+	if err := os.MkdirAll(stackDir, 0755); err != nil {
+		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to create stack directory: " + err.Error()})
+		return
+	}
+	composeFilePath := filepath.Join(stackDir, "docker-compose.yml")
+
+	// 2. Parse Compose YAML to modify env & ports dynamically
+	var composeMap map[string]interface{}
+	if err := yaml.Unmarshal([]byte(req.YAML), &composeMap); err != nil {
+		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to parse compose YAML: " + err.Error()})
+		return
+	}
+
+	servicesMap, ok := composeMap["services"].(map[string]interface{})
+	if !ok || len(servicesMap) == 0 {
+		json.NewEncoder(w).Encode(map[string]string{"error": "No services defined in compose file"})
+		return
+	}
+
+	servicePorts := make(map[string]int)
+
+	for svcName, svcVal := range servicesMap {
+		service, ok := svcVal.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		setting := req.ServiceSettings[svcName]
+
+		// Merge environment
+		mergeEnvironment(service, setting.Env)
+
+		// Parse/adjust ports
+		ports, exists := service["ports"]
+		var hostPort, containerPort int
+		var foundPort = false
+
+		if exists {
+			if portList, ok := ports.([]interface{}); ok && len(portList) > 0 {
+				if firstPort, ok := portList[0].(string); ok {
+					h, c, err := parsePorts(firstPort)
+					if err == nil {
+						hostPort = h
+						containerPort = c
+						foundPort = true
+					}
+				} else if firstPortNum, ok := portList[0].(int); ok {
+					hostPort = firstPortNum
+					containerPort = firstPortNum
+					foundPort = true
+				}
+			}
+		}
+
+		if setting.DomainMode == "quick" || setting.DomainMode == "custom" {
+			if foundPort {
+				if hostPort == 0 {
+					nextPortMu.Lock()
+					hostPort = nextPort
+					nextPort++
+					nextPortMu.Unlock()
+					service["ports"] = []interface{}{fmt.Sprintf("%d:%d", hostPort, containerPort)}
+				}
+			} else {
+				containerPort = 80
+				nextPortMu.Lock()
+				hostPort = nextPort
+				nextPort++
+				nextPortMu.Unlock()
+				service["ports"] = []interface{}{fmt.Sprintf("%d:%d", hostPort, containerPort)}
+			}
+			servicePorts[svcName] = hostPort
+		}
+	}
+
+	// Write modified compose back to file
+	modifiedYaml, err := yaml.Marshal(composeMap)
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to marshal modified compose: " + err.Error()})
+		return
+	}
+
+	if err := os.WriteFile(composeFilePath, modifiedYaml, 0644); err != nil {
+		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to write docker-compose.yml: " + err.Error()})
+		return
+	}
+
+	// Run docker compose up -d
+	log.Printf("[Compose Go Deploy] Starting stack in %s...", stackDir)
+	runCmd := func(name string, args ...string) error {
+		cmd := exec.Command(name, args...)
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("%s failed: %w (stderr: %s)", name, err, stderr.String())
+		}
+		return nil
+	}
+
+	err = runCmd("docker", "compose", "-f", composeFilePath, "up", "-d")
+	if err != nil {
+		log.Printf("[Compose Go Deploy] 'docker compose' failed, trying 'docker-compose': %v", err)
+		err = runCmd("docker-compose", "-f", composeFilePath, "up", "-d")
+		if err != nil {
+			json.NewEncoder(w).Encode(map[string]string{"error": "Docker Compose failed to start stack: " + err.Error()})
+			return
+		}
+	}
+
+	// 3. Configure Tunnels for routed services
+	serviceSessionMetas := make(map[string]ServiceSessionMetadata)
+	var mainURL = ""
+
+	for svcName, setting := range req.ServiceSettings {
+		if setting.DomainMode == "quick" || setting.DomainMode == "custom" {
+			hostPort := servicePorts[svcName]
+			if hostPort <= 0 {
+				continue
+			}
+
+			reuseTunnel := false
+			oldToken := ""
+			oldTID := ""
+			if exists {
+				if oldSvc, ok := oldSess.Metadata.Services[svcName]; ok {
+					if oldSvc.DomainMode == setting.DomainMode && oldSvc.CustomDomain == setting.CustomDomain {
+						reuseTunnel = true
+						oldToken = oldSvc.TunnelToken
+						oldTID = oldSvc.TunnelID
+					}
+				}
+			}
+
+			tUrl, tPid, tToken, tID, err := startServiceTunnel(svcName, setting.DomainMode, setting.CustomDomain, hostPort, hash, reuseTunnel, oldToken, oldTID)
+			if err != nil {
+				log.Printf("[Compose Go Deploy] Failed to start tunnel for service %s: %v", svcName, err)
+				continue
+			}
+
+			if mainURL == "" {
+				mainURL = tUrl
+			}
+
+			serviceSessionMetas[svcName] = ServiceSessionMetadata{
+				ServiceName:    svcName,
+				Port:           80,
+				HostPort:       hostPort,
+				DomainMode:     setting.DomainMode,
+				CustomDomain:   setting.CustomDomain,
+				CloudflaredURL: tUrl,
+				TunnelPid:      tPid,
+				TunnelToken:    tToken,
+				TunnelID:       tID,
+			}
+		}
+	}
+
+	if mainURL == "" {
+		mainURL = "http://localhost"
+	}
+
+	sess := Session{
+		ID:        sessionID,
+		Type:      "docker-compose",
+		URL:       mainURL,
+		StartedAt: time.Now(),
+		Metadata: SessionMetadata{
+			ComposeFile: composeFilePath,
+			Services:    serviceSessionMetas,
+		},
+	}
+
+	sessionsMu.Lock()
+	sessions[sessionID] = sess
+	sessionsMu.Unlock()
+	saveSessions()
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"url":       mainURL,
+		"services":  serviceSessionMetas,
+		"success":   true,
+		"sessionId": sessionID,
 	})
 }

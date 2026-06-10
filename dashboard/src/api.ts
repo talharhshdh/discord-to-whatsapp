@@ -276,6 +276,8 @@ export const api = {
     post<{ success: boolean; message: string }>('/api/go/containers/stop', { sessionId }),
   parseCompose: (yaml: string) =>
     post<any>('/api/go/containers/compose/parse', { yaml }),
+  deployCompose: (yaml: string, serviceSettings: Record<string, { domainMode: string; customDomain: string; env: Record<string, string> }>, sessionId?: string) =>
+    post<any>('/api/go/containers/compose/deploy', { yaml, serviceSettings, sessionId }),
 
   removeBg: (file: File) => {
     const fd = new FormData(); fd.append('file', file);
