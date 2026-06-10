@@ -244,13 +244,15 @@ function isCloudflareBlock(err, html) {
  * Puppeteer bundles its own Chromium — no separate install step needed.
  */
 function fetchHtmlViaBrowser(url, referer) {
+    throw new Error('Browser fallback search is disabled (Python server offline).');
+    /*
     return __awaiter(this, void 0, void 0, function () {
         var response, errorText, data, err_1;
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
                     _a.trys.push([0, 5, , 6]);
-                    return [4 /*yield*/, fetch('http://127.0.0.1:8000/get_html', {
+                    return [4 / *yield* / , fetch('http://127.0.0.1:8000/get_html', {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
@@ -259,35 +261,38 @@ function fetchHtmlViaBrowser(url, referer) {
                         })];
                 case 1:
                     response = _a.sent();
-                    if (!!response.ok) return [3 /*break*/, 3];
-                    return [4 /*yield*/, response.text()];
+                    if (!!response.ok) return [3 / *break* / , 3];
+                    return [4 / *yield* / , response.text()];
                 case 2:
                     errorText = _a.sent();
                     throw new Error("Python API failed: ".concat(response.status, " ").concat(errorText));
-                case 3: return [4 /*yield*/, response.json()];
+                case 3: return [4 / *yield* / , response.json()];
                 case 4:
                     data = (_a.sent());
-                    return [2 /*return*/, data.html];
+                    return [2 / *return* / , data.html];
                 case 5:
                     err_1 = _a.sent();
                     throw err_1;
-                case 6: return [2 /*return*/];
+                case 6: return [2 / *return* /];
             }
         });
     });
+    */
 }
 /**
  * Extract the /prorcp/ URL from the cloudnestra /rcp/ page using a local Python SeleniumBase API.
  * The python server bypasses Cloudflare and extracts the URL.
  */
 function browserGetProRcpUrl(rcpUrl) {
+    throw new Error('Browser fallback getProRcpUrl is disabled (Python server offline).');
+    /*
     return __awaiter(this, void 0, void 0, function () {
         var response, errorText, data, err_2;
         return __generator(this, function (_a) {
             switch (_a.label) {
                 case 0:
                     _a.trys.push([0, 5, , 6]);
-                    return [4 /*yield*/, fetch('http://127.0.0.1:8000/get_prorcp', {
+                    return [4 / *yield* / , fetch('http://127.0.0.1:8000/get_prorcp', {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
@@ -296,22 +301,23 @@ function browserGetProRcpUrl(rcpUrl) {
                         })];
                 case 1:
                     response = _a.sent();
-                    if (!!response.ok) return [3 /*break*/, 3];
-                    return [4 /*yield*/, response.text()];
+                    if (!!response.ok) return [3 / *break* / , 3];
+                    return [4 / *yield* / , response.text()];
                 case 2:
                     errorText = _a.sent();
                     throw new Error("Python API failed: ".concat(response.status, " ").concat(errorText));
-                case 3: return [4 /*yield*/, response.json()];
+                case 3: return [4 / *yield* / , response.json()];
                 case 4:
                     data = (_a.sent());
-                    return [2 /*return*/, data.url];
+                    return [2 / *return* / , data.url];
                 case 5:
                     err_2 = _a.sent();
                     throw err_2;
-                case 6: return [2 /*return*/];
+                case 6: return [2 / *return* /];
             }
         });
     });
+    */
 }
 /**
  * Fetch HTML for a URL — fast raw HTTP first, Playwright fallback on Cloudflare block.

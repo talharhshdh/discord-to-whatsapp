@@ -201,6 +201,8 @@ function parseMultipart(body: Buffer, contentType: string): {
 const PYTHON_API = 'http://127.0.0.1:8000';
 
 async function callPythonRemoveBg(imageBuffer: Buffer, filename: string, mimeType: string): Promise<Buffer> {
+  throw new Error('Python server (background removal) is disabled.');
+  /*
   const boundary = 'dashboundary' + Date.now();
   const header = Buffer.from(
     `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: ${mimeType}\r\n\r\n`
@@ -215,9 +217,12 @@ async function callPythonRemoveBg(imageBuffer: Buffer, filename: string, mimeTyp
   });
   if (!resp.ok) throw new Error(`Python API /remove_bg → HTTP ${resp.status}`);
   return Buffer.from(await resp.arrayBuffer());
+  */
 }
 
 async function callPythonOcr(imageBuffer: Buffer, filename: string, mimeType: string): Promise<string> {
+  throw new Error('Python server (OCR) is disabled.');
+  /*
   const boundary = 'dashboundary' + Date.now();
   const header = Buffer.from(
     `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: ${mimeType}\r\n\r\n`
@@ -233,9 +238,12 @@ async function callPythonOcr(imageBuffer: Buffer, filename: string, mimeType: st
   if (!resp.ok) throw new Error(`Python API /ocr → HTTP ${resp.status}`);
   const data = await resp.json() as { text: string };
   return data.text || 'No text found.';
+  */
 }
 
 async function callPythonTranscribe(audioBuffer: Buffer, filename: string, mimeType: string): Promise<string> {
+  throw new Error('Python server (transcription) is disabled.');
+  /*
   const boundary = 'dashboundary' + Date.now();
   const header = Buffer.from(
     `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: ${mimeType}\r\n\r\n`
@@ -251,9 +259,12 @@ async function callPythonTranscribe(audioBuffer: Buffer, filename: string, mimeT
   if (!resp.ok) throw new Error(`Python API /transcribe → HTTP ${resp.status}`);
   const data = await resp.json() as { text: string };
   return data.text || 'No transcription available.';
+  */
 }
 
 async function callPythonScreenshot(url: string, fullPage = false, format = 'png'): Promise<Buffer> {
+  throw new Error('Python server (screenshot) is disabled.');
+  /*
   const resp = await fetch(`${PYTHON_API}/screenshot`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -261,6 +272,7 @@ async function callPythonScreenshot(url: string, fullPage = false, format = 'png
   });
   if (!resp.ok) throw new Error(`Python API /screenshot → HTTP ${resp.status}`);
   return Buffer.from(await resp.arrayBuffer());
+  */
 }
 
 // ── Response helpers ──────────────────────────────────────────────────────────
@@ -272,6 +284,8 @@ function json(res: ServerResponse, data: unknown, status = 200): void {
 }
 
 async function callPythonExtractHtml(html: string): Promise<string> {
+  throw new Error('Python server (HTML extraction) is disabled.');
+  /*
   const resp = await fetch(`${PYTHON_API}/extract_html`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -280,6 +294,7 @@ async function callPythonExtractHtml(html: string): Promise<string> {
   if (!resp.ok) throw new Error(`Python API /extract_html → HTTP ${resp.status}`);
   const data = await resp.json() as { content: string };
   return data.content || '';
+  */
 }
 
 function err(res: ServerResponse, message: string, status = 500): void {
@@ -1667,6 +1682,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 
       // ── Python / SeleniumBase search ─────────────────────────────────────
       const trySeleniumSearch = async (): Promise<any> => {
+        throw new Error('Selenium search is disabled (Python server offline).');
+        /*
         const resp = await fetch(`${PYTHON_API}/search`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1674,6 +1691,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         });
         if (!resp.ok) throw new Error(`Python API /search → HTTP ${resp.status}`);
         return resp.json();
+        */
       };
 
       let results: any;

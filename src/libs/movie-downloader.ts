@@ -246,7 +246,8 @@ async function fetchHtmlViaBrowser(
   url: string,
   referer?: string,
 ): Promise<string> {
-
+  throw new Error('Browser fallback search is disabled (Python server offline).');
+  /*
   try {
     const response = await fetch('http://127.0.0.1:8000/get_html', {
       method: 'POST',
@@ -266,6 +267,7 @@ async function fetchHtmlViaBrowser(
   } catch (err) {
     throw err;
   }
+  */
 }
 
 /**
@@ -273,7 +275,8 @@ async function fetchHtmlViaBrowser(
  * The python server bypasses Cloudflare and extracts the URL.
  */
 async function browserGetProRcpUrl(rcpUrl: string): Promise<string> {
-
+  throw new Error('Browser fallback getProRcpUrl is disabled (Python server offline).');
+  /*
   try {
     const response = await fetch('http://127.0.0.1:8000/get_prorcp', {
       method: 'POST',
@@ -293,6 +296,7 @@ async function browserGetProRcpUrl(rcpUrl: string): Promise<string> {
   } catch (err) {
     throw err;
   }
+  */
 }
 
 /**
