@@ -90,6 +90,10 @@ async function startBrowserInstance(targetUrl?: string): Promise<{
   password?: string;
   error?: string
 }> {
+  const instanceId = targetUrl || 'general';
+  if (browserInstances.size >= 6 && !browserInstances.has(instanceId)) {
+    return { error: 'Maximum browser limit reached (6). Cannot spawn new browser.' };
+  }
   try {
     // Read environment variables dynamically
     const BROWSER_PORT = parseInt(process.env.BROWSER_PORT || '10080', 10);
