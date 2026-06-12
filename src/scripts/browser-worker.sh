@@ -30,6 +30,9 @@ CDP_PORT=9222
 TUNNEL_URL=""
 CHROME_PID=""
 TUNNEL_PID=""
+TUNNEL_API_URL=""
+API_PID=""
+TUNNEL_API_PID=""
 
 # ---------------------------------------------------------------------------
 # Cleanup handler
@@ -41,7 +44,7 @@ cleanup() {
       HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
         -X POST "$WEBHOOK_URL" \
         -H "Content-Type: application/json" \
-        -d "{\"event\":\"deregister\",\"workerId\":\"${WORKER_ID}\",\"cdpUrl\":\"${TUNNEL_URL}\",\"runId\":\"${GITHUB_RUN_ID:-}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
+        -d "{\"event\":\"deregister\",\"workerId\":\"${WORKER_ID}\",\"cdpUrl\":\"${TUNNEL_URL}\",\"apiUrl\":\"${TUNNEL_API_URL}\",\"runId\":\"${GITHUB_RUN_ID:-}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
         2>/dev/null || echo "000")
       if [ "$HTTP_CODE" = "200" ]; then
         break
@@ -51,6 +54,8 @@ cleanup() {
   fi
 
   # Kill child processes
+  [ -n "$TUNNEL_API_PID" ] && kill "$TUNNEL_API_PID" 2>/dev/null || true
+  [ -n "$API_PID" ] && kill "$API_PID" 2>/dev/null || true
   [ -n "$TUNNEL_PID" ] && kill "$TUNNEL_PID" 2>/dev/null || true
   [ -n "$CHROME_PID" ] && kill "$CHROME_PID" 2>/dev/null || true
 
@@ -101,7 +106,27 @@ for i in $(seq 1 30); do
 done
 
 # ---------------------------------------------------------------------------
-# 2. Start cloudflared tunnel (with Host header rewrite for Chrome CDP)
+# 1b. Start FastAPI server
+# ---------------------------------------------------------------------------
+echo "🚀 Starting Python FastAPI server on :8000..."
+python3 worker_browser/worker_api.py > /tmp/worker_api.log 2>&1 &
+API_PID=$!
+
+echo "⏳ Waiting for FastAPI to be ready..."
+for i in $(seq 1 30); do
+  if curl -s "http://127.0.0.1:8000/health" > /dev/null 2>&1; then
+    echo "✅ FastAPI is ready!"
+    break
+  fi
+  if [ $i -eq 30 ]; then
+    echo "❌ FastAPI failed to start within 30 seconds"
+    exit 1
+  fi
+  sleep 1
+done
+
+# ---------------------------------------------------------------------------
+# 2. Start cloudflared tunnels
 # ---------------------------------------------------------------------------
 echo "🌐 Starting cloudflared tunnel for CDP port ${CDP_PORT}..."
 
@@ -118,10 +143,30 @@ for i in $(seq 1 30); do
     break
   fi
   if [ $i -eq 30 ]; then
+    echo "❌ CDP tunnel failed to start within 30 seconds"
     exit 1
   fi
   sleep 1
 done
+
+echo "🌐 Starting cloudflared tunnel for FastAPI port 8000..."
+TUNNEL_API_LOG="/tmp/cloudflared-api-tunnel.log"
+cloudflared tunnel --url "http://127.0.0.1:8000" > "$TUNNEL_API_LOG" 2>&1 &
+TUNNEL_API_PID=$!
+
+# Wait for tunnel URL to appear in logs
+for i in $(seq 1 30); do
+  TUNNEL_API_URL=$(grep -oP 'https://[-0-9a-z]+\.trycloudflare\.com' "$TUNNEL_API_LOG" 2>/dev/null | head -1 || true)
+  if [ -n "$TUNNEL_API_URL" ]; then
+    break
+  fi
+  if [ $i -eq 30 ]; then
+    echo "❌ FastAPI tunnel failed to start within 30 seconds"
+    exit 1
+  fi
+  sleep 1
+done
+echo "FastAPI Tunnel URL: $TUNNEL_API_URL"
 
 # Pre-warm: open google.com so DNS + TCP are warm for the first real request
 echo "🔥 Pre-warming browser on google.com..."
@@ -137,7 +182,7 @@ for attempt in $(seq 1 20); do
   HTTP_CODE=$(curl -s -o /tmp/register-resp.txt -w "%{http_code}" --max-time 15 \
     -X POST "$WEBHOOK_URL" \
     -H "Content-Type: application/json" \
-    -d "{\"event\":\"register\",\"workerId\":\"${WORKER_ID}\",\"cdpUrl\":\"${TUNNEL_URL}\",\"runId\":\"${GITHUB_RUN_ID:-}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
+    -d "{\"event\":\"register\",\"workerId\":\"${WORKER_ID}\",\"cdpUrl\":\"${TUNNEL_URL}\",\"apiUrl\":\"${TUNNEL_API_URL}\",\"runId\":\"${GITHUB_RUN_ID:-}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
     2>/dev/null || echo "000")
 
   if [ "$HTTP_CODE" = "200" ]; then
@@ -186,7 +231,7 @@ while true; do
   HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 \
     -X POST "$WEBHOOK_URL" \
     -H "Content-Type: application/json" \
-    -d "{\"event\":\"heartbeat\",\"workerId\":\"${WORKER_ID}\",\"cdpUrl\":\"${TUNNEL_URL}\",\"runId\":\"${GITHUB_RUN_ID:-}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
+    -d "{\"event\":\"heartbeat\",\"workerId\":\"${WORKER_ID}\",\"cdpUrl\":\"${TUNNEL_URL}\",\"apiUrl\":\"${TUNNEL_API_URL}\",\"runId\":\"${GITHUB_RUN_ID:-}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
     2>/dev/null || echo "000")
 
   if [ "$HTTP_CODE" = "200" ]; then
@@ -196,7 +241,7 @@ while true; do
     curl -s -o /dev/null --max-time 15 \
       -X POST "$WEBHOOK_URL" \
       -H "Content-Type: application/json" \
-      -d "{\"event\":\"register\",\"workerId\":\"${WORKER_ID}\",\"cdpUrl\":\"${TUNNEL_URL}\",\"runId\":\"${GITHUB_RUN_ID:-}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
+      -d "{\"event\":\"register\",\"workerId\":\"${WORKER_ID}\",\"cdpUrl\":\"${TUNNEL_URL}\",\"apiUrl\":\"${TUNNEL_API_URL}\",\"runId\":\"${GITHUB_RUN_ID:-}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
       2>/dev/null || true
     CONSECUTIVE_FAILURES=0
   else

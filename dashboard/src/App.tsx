@@ -22,6 +22,7 @@ const GoogleClonePanel = React.lazy(() => import('./components/GoogleClonePanel'
 const WebProxyPanel = React.lazy(() => import('./components/WebProxyPanel'));
 const PoolPanel = React.lazy(() => import('./components/PoolPanel'));
 const BetaGoContainerPanel = React.lazy(() => import('./components/BetaGoContainerPanel'));
+const IndeedPanel = React.lazy(() => import('./components/IndeedPanel'));
 
 interface NavItem {
   id: NavSection;
@@ -51,6 +52,7 @@ const NAV_CATEGORIES: NavCategory[] = [
       { id: 'search',    label: 'Browser Search', icon: '🔍' },
       { id: 'places',    label: 'Maps Places',    icon: '🗺️' },
       { id: 'pool',      label: 'Browser Pool',   icon: '🕸️' },
+      { id: 'indeed',    label: 'Indeed Jobs',    icon: '💼' },
     ]
   },
   {
@@ -523,6 +525,7 @@ export default function App() {
                   {section === 'tts' && <TTSPanel />}
                   {section === 'web-proxy' && <WebProxyPanel />}
                   {section === 'go-containers' && <BetaGoContainerPanel />}
+                  {section === 'indeed' && <IndeedPanel />}
                 </React.Suspense>
               </div>
             </div>

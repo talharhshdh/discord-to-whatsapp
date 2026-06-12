@@ -29,6 +29,7 @@ import * as cheerio from 'cheerio';
 export interface RemoteBrowser {
   workerId: string;
   cdpUrl: string;          // https://xxx.trycloudflare.com  (proxies CDP :9222)
+  apiUrl?: string;         // https://xxx.trycloudflare.com  (proxies Python API :8000)
   registeredAt: number;    // Date.now() ms
   lastHeartbeat: number;   // Date.now() ms — updated on every heartbeat
   status: 'active' | 'stale' | 'dead';
@@ -44,6 +45,7 @@ export interface WebhookPayload {
   event: WebhookEvent;
   workerId: string;
   cdpUrl: string;
+  apiUrl?: string;
   runId?: string;
   timestamp: string;       // ISO-8601
 }
@@ -77,12 +79,13 @@ class BrowserPool {
   // ── Lifecycle ──────────────────────────────────────────────────────────
 
   /** Register a new remote browser (or update existing — idempotent upsert). */
-  register(workerId: string, cdpUrl: string, runId?: string, skipWarmup = false): void {
+  register(workerId: string, cdpUrl: string, runId?: string, skipWarmup = false, apiUrl?: string): void {
     const now = Date.now();
     const existing = this.browsers.get(workerId);
     let browserEntry: RemoteBrowser;
     if (existing) {
       existing.cdpUrl = cdpUrl;
+      existing.apiUrl = apiUrl;
       existing.lastHeartbeat = now;
       existing.status = 'active';
       if (runId) existing.runId = runId;
@@ -91,6 +94,7 @@ class BrowserPool {
       browserEntry = {
         workerId,
         cdpUrl,
+        apiUrl,
         registeredAt: now,
         lastHeartbeat: now,
         status: 'active',

@@ -1487,7 +1487,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   if (method === 'POST' && url === '/api/browsers/webhook') {
     try {
       const body = await parseJsonBody(req) as unknown as WebhookPayload;
-      const { event, workerId, cdpUrl, runId } = body;
+      const { event, workerId, cdpUrl, apiUrl, runId } = body;
 
       if (!event || !workerId) {
         return err(res, 'event and workerId are required', 400);
@@ -1496,7 +1496,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       switch (event) {
         case 'register':
           if (!cdpUrl) return err(res, 'cdpUrl is required for register', 400);
-          browserPool.register(workerId, cdpUrl, runId);
+          browserPool.register(workerId, cdpUrl, runId, false, apiUrl);
           json(res, { ok: true, message: 'Registered', poolSize: browserPool.size });
           break;
 
@@ -1544,6 +1544,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       browsers: all.map(b => ({
         workerId: b.workerId,
         cdpUrl: b.cdpUrl,
+        apiUrl: b.apiUrl,
         status: b.status,
         registeredAt: new Date(b.registeredAt).toISOString(),
         lastHeartbeat: new Date(b.lastHeartbeat).toISOString(),
@@ -1560,6 +1561,69 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       await browserPool.restartWorkers();
       json(res, { ok: true, message: 'Restart command sent to GitHub Actions' });
     } catch (e) { err(res, (e as Error).message); }
+    return;
+  }
+
+  // ── POST /api/scrape/indeed ──────────────────────────────────────────────
+  if (method === 'POST' && url === '/api/scrape/indeed') {
+    try {
+      const body = await parseJsonBody(req);
+      const query = (body['query'] as string) || 'software engineer';
+      const location = (body['location'] as string) || '';
+      const pagesCount = (body['pages'] as number) || 3;
+
+      const activeWorkers = browserPool.getActive().filter(b => b.apiUrl);
+      if (activeWorkers.length === 0) {
+        return err(res, 'No active browser workers with API support available', 503);
+      }
+
+      console.log(`[Indeed Scrape] Query: "${query}", Location: "${location}", Pages: ${pagesCount}. Active workers: ${activeWorkers.length}`);
+
+      // Distribute pages to workers in parallel
+      const promises = [];
+      for (let i = 0; i < pagesCount; i++) {
+        const worker = activeWorkers[i % activeWorkers.length];
+        const pageIdx = i; // 0-based
+        promises.push((async () => {
+          try {
+            console.log(`[Indeed Scrape] Dispatching Page ${pageIdx + 1} to worker ${worker.workerId} at ${worker.apiUrl}`);
+            const response = await fetch(`${worker.apiUrl}/scrape/indeed`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ query, location, page: pageIdx + 1 }),
+            });
+            if (!response.ok) {
+              const text = await response.text();
+              throw new Error(`Worker returned HTTP ${response.status}: ${text}`);
+            }
+            const data = await response.json() as any[];
+            console.log(`[Indeed Scrape] Worker ${worker.workerId} returned ${data.length} jobs for Page ${pageIdx + 1}`);
+            return data;
+          } catch (e) {
+            console.error(`[Indeed Scrape] Error on Page ${pageIdx + 1} using worker ${worker.workerId}:`, e);
+            return [];
+          }
+        })());
+      }
+
+      const results = await Promise.all(promises);
+      const allJobs: any[] = [];
+      const seen = new Set<string>();
+      for (const list of results) {
+        if (!Array.isArray(list)) continue;
+        for (const job of list) {
+          if (job && job.jk && !seen.has(job.jk)) {
+            seen.add(job.jk);
+            allJobs.push(job);
+          }
+        }
+      }
+
+      console.log(`[Indeed Scrape] Finished. Scraped ${allJobs.length} jobs in total.`);
+      json(res, { success: true, jobsCount: allJobs.length, jobs: allJobs });
+    } catch (e) {
+      err(res, (e as Error).message);
+    }
     return;
   }
 

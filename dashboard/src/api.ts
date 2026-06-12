@@ -83,6 +83,7 @@ async function postFormBinary(path: string, form: FormData): Promise<Blob> {
 export interface BrowserPoolItem {
   workerId: string;
   cdpUrl: string;
+  apiUrl?: string;
   status: 'active' | 'stale' | 'dead';
   registeredAt: string;
   lastHeartbeat: string;
@@ -458,4 +459,6 @@ export const api = {
     post<{ success: boolean; message: string }>('/api/config', config),
   syncConfig: () =>
     post<{ success: boolean; message: string }>('/api/config/sync', {}),
+  indeedSearch: (query: string, location: string, pages: number) =>
+    post<{ success: boolean; jobsCount: number; jobs: any[] }>('/api/scrape/indeed', { query, location, pages }),
 };

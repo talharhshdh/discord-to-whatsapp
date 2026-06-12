@@ -1,3 +1,4 @@
+# DEPRECATED DON'T USE
 from fastapi import FastAPI, HTTPException, File, UploadFile, Response
 from pydantic import BaseModel
 from seleniumbase import SB
