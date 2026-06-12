@@ -408,6 +408,7 @@ const gzipCache = new Map<string, { mtime: number; content: Buffer }>();
 
 async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const url = req.url ?? '/';
+  const pathname = url.split('?')[0];
   const method = req.method?.toUpperCase() ?? 'GET';
   const ct = req.headers['content-type'] ?? '';
 
@@ -419,9 +420,9 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   }
 
   // ── Static React build (dashboard/dist/) ──────────────────────────────────
-  if (method === 'GET' && !url.startsWith('/api/')) {
+  if (method === 'GET' && !pathname.startsWith('/api/')) {
     // Resolve path: strip query string
-    const cleanPath = url.split('?')[0];
+    const cleanPath = pathname;
     // Try exact file first, fall back to SPA index.html
     const distDir = join(__dirname, '..', '..', 'dashboard', 'dist');
     const tryPaths = [
@@ -482,12 +483,12 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   const usernameEnv = process.env.DASHBOARD_USERNAME;
   const passwordEnv = process.env.DASHBOARD_PASSWORD;
 
-  if (url.startsWith('/api/') && 
-      url !== '/api/auth/login' && 
-      url !== '/api/browser/search' && 
-      url !== '/api/browser/cookie-search' && 
-      url !== '/api/browsers/webhook' &&
-      !url.startsWith('/api/webhook/docker/')) {
+  if (pathname.startsWith('/api/') && 
+      pathname !== '/api/auth/login' && 
+      pathname !== '/api/browser/search' && 
+      pathname !== '/api/browser/cookie-search' && 
+      pathname !== '/api/browsers/webhook' &&
+      !pathname.startsWith('/api/webhook/docker/')) {
     if (usernameEnv && passwordEnv) {
       const expectedToken = Buffer.from(`${usernameEnv}:${passwordEnv}`).toString('base64');
       let providedToken: string | null = null;
@@ -1502,7 +1503,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 
   // ── POST /api/browsers/webhook ─────────────────────────────────────────
   // Remote browser workers register, heartbeat, and deregister via this endpoint.
-  if (method === 'POST' && url.startsWith('/api/browsers/webhook')) {
+  if (method === 'POST' && pathname.startsWith('/api/browsers/webhook')) {
     try {
       const urlObj = new URL(url, 'http://localhost');
       const secretParam = urlObj.searchParams.get('secret');
