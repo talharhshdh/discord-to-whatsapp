@@ -5,8 +5,11 @@ import uvicorn
 import random
 import tempfile
 import os
+import asyncio
 
 app = FastAPI(title="Worker Browser API")
+
+browser_semaphore = asyncio.Semaphore(1)
 
 class ScrapeIndeedRequest(BaseModel):
     query: str
@@ -38,11 +41,10 @@ def is_captcha_present(sb):
             return True
             
     except Exception:
-        return True
+        return False
     return False
 
-@app.post("/scrape/indeed")
-def scrape_indeed(req: ScrapeIndeedRequest):
+def sync_scrape_indeed(req: ScrapeIndeedRequest):
     try:
         # We run headlessly with UC mode inside SB
         with SB(uc=True, xvfb=True) as sb:
@@ -100,10 +102,13 @@ def scrape_indeed(req: ScrapeIndeedRequest):
                 
                 # Take a diagnostic screenshot to help the test kit see what happened
                 try:
-                    sb.save_screenshot("indeed_timeout_debug.png")
-                    with open("indeed_timeout_debug.html", "w", encoding="utf-8") as f:
+                    temp_dir = tempfile.gettempdir()
+                    screenshot_path = os.path.join(temp_dir, "indeed_timeout_debug.png")
+                    html_path = os.path.join(temp_dir, "indeed_timeout_debug.html")
+                    sb.save_screenshot(screenshot_path)
+                    with open(html_path, "w", encoding="utf-8") as f:
                         f.write(sb.get_page_source())
-                    print("[Indeed UC] Timeout waiting for cards. Saved diagnostic screenshot and html.")
+                    print(f"[Indeed UC] Timeout waiting for cards. Saved diagnostic screenshot to {screenshot_path} and html to {html_path}.")
                 except Exception:
                     pass
                 return []
@@ -178,8 +183,7 @@ def scrape_indeed(req: ScrapeIndeedRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/screenshot")
-def take_screenshot(req: ScreenshotRequest):
+def sync_take_screenshot(req: ScreenshotRequest):
     try:
         with SB(uc=True, xvfb=True) as sb:
             sb.driver.set_window_size(1400, 900)
@@ -198,8 +202,7 @@ def take_screenshot(req: ScreenshotRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/get_html")
-def get_html(req: GetHtmlRequest):
+def sync_get_html(req: GetHtmlRequest):
     try:
         with SB(uc=True, xvfb=True) as sb:
             sb.uc_open_with_reconnect(req.url, 5)
@@ -207,6 +210,21 @@ def get_html(req: GetHtmlRequest):
             return {"html": sb.get_page_source()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/scrape/indeed")
+async def scrape_indeed(req: ScrapeIndeedRequest):
+    async with browser_semaphore:
+        return await asyncio.to_thread(sync_scrape_indeed, req)
+
+@app.post("/screenshot")
+async def take_screenshot(req: ScreenshotRequest):
+    async with browser_semaphore:
+        return await asyncio.to_thread(sync_take_screenshot, req)
+
+@app.post("/get_html")
+async def get_html(req: GetHtmlRequest):
+    async with browser_semaphore:
+        return await asyncio.to_thread(sync_get_html, req)
 
 @app.get("/logs")
 def get_logs():

@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /mnt/d/discord-whatsapp count-objects -vH)",
+      "Bash(git -C /mnt/d/discord-whatsapp remote -v)",
+      "Bash(gh repo *)",
+      "Bash(gh api *)",
+      "Bash(git -C /mnt/d/discord-whatsapp log --all --oneline -- browser_data/youtube-cookies.txt)",
+      "Bash(git -C /mnt/d/discord-whatsapp ls-files)",
+      "Bash(gh run *)"
+    ]
+  }
+}

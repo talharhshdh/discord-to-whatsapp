@@ -104,7 +104,7 @@ export interface UrlsPayload {
   tools: Record<string, ToolUrl>;
 }
 export interface SessionResult {
-  url?: string; username?: string; password?: string; error?: string; containerName?: string;
+  url?: string; username?: string; password?: string; error?: string; containerName?: string; jobId?: string;
 }
 export interface BrowserSearchResult {
   organic: { title: string; link: string; snippet: string; displayedLink?: string; favicon?: string }[];
@@ -271,14 +271,45 @@ export const api = {
     post<SessionResult>('/api/sessions/docker', { image, port, env, name, domainMode, customDomain }),
 
   getGoSessions: () => authFetch(`${BASE}/api/go/containers/sessions`).then(r => r.json()) as Promise<any[]>,
-  startGoDocker: (image: string, port: number, env: Record<string, string>, name?: string, domainMode?: string, customDomain?: string, hostPort?: number, tunnelToken?: string, sessionId?: string) =>
-    post<SessionResult>('/api/go/containers/start', { image, port, env, name, domainMode, customDomain, hostPort, tunnelToken, sessionId }),
+  startGoDocker: (req: any) =>
+    post<SessionResult>('/api/go/containers/start', req),
   stopGoDocker: (sessionId: string) =>
     post<{ success: boolean; message: string }>('/api/go/containers/stop', { sessionId }),
   parseCompose: (yaml: string) =>
     post<any>('/api/go/containers/compose/parse', { yaml }),
   deployCompose: (yaml: string, serviceSettings: Record<string, { domainMode: string; customDomain: string; env: Record<string, string> }>, sessionId?: string) =>
     post<any>('/api/go/containers/compose/deploy', { yaml, serviceSettings, sessionId }),
+  getGoJobStatus: (id: string) =>
+    authFetch(`${BASE}/api/go/containers/jobs?id=${encodeURIComponent(id)}`).then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json() as Promise<any>;
+    }),
+  inspectGoContainer: (sessionId: string, service?: string) =>
+    authFetch(`${BASE}/api/go/containers/inspect?sessionId=${encodeURIComponent(sessionId)}${service ? `&service=${encodeURIComponent(service)}` : ''}`).then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json() as Promise<any>;
+    }),
+  getGoDeployments: () =>
+    authFetch(`${BASE}/api/go/containers/deployments`).then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json() as Promise<any[]>;
+    }),
+  rollbackGoContainer: (deploymentId: string) =>
+    post<{ jobId: string }>('/api/go/containers/rollback', { deploymentId }),
+  backupGoVolume: (volume: string) =>
+    post<{ success: boolean; message: string }>('/api/go/volumes/backup', { volume }),
+  restoreGoVolume: (volume: string) =>
+    post<{ success: boolean; message: string }>('/api/go/volumes/restore', { volume }),
+  listGoVolumeBackups: () =>
+    authFetch(`${BASE}/api/go/volumes/backups`).then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json() as Promise<{ backups: string[] }>;
+    }),
+  getGoContainerStats: (sessionId: string) =>
+    authFetch(`${BASE}/api/go/containers/stats?sessionId=${encodeURIComponent(sessionId)}`).then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json() as Promise<any[]>;
+    }),
 
   removeBg: (file: File) => {
     const fd = new FormData(); fd.append('file', file);

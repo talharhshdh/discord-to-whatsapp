@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   discord-whatsapp-bridge:
     build: .
@@ -13,4 +11,4 @@ services:
       # Persist WhatsApp authentication state
       - ./auth_info:/app/auth_info
       # Optional: persist the local .env changes back to the host machine
-      - ./.env:/app/.env
+      # - ./.env:/app/.env

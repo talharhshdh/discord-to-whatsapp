@@ -4,11 +4,12 @@ on:
   push:
     branches: [main] # Restart bridge on every push to main
   workflow_dispatch: # Allows manual trigger
-# schedule:
-#   - cron: "0 */5 * * *" # Fallback every 6h in case the self-trigger fails
+  schedule:
+    - cron: "0 */5 * * *" # Fallback in case the self-trigger fails
 
-# No concurrency limit - allow overlapping runs for graceful handoff
-# Each run will naturally end after 5 hours, preventing runaway accumulation
+concurrency:
+  group: whatsapp-bridge
+  cancel-in-progress: true
 
 jobs:
   run-bridge:
@@ -16,42 +17,6 @@ jobs:
     timeout-minutes: 310 # 5 hours + 10 min buffer for setup/teardown
 
     steps:
-      - name: Manage concurrent runs (cancel oldest if limit exceeded)
-        run: |
-          echo "🔍 Checking for concurrent workflow runs..."
-          RUNS_JSON=$(curl -s \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${{ secrets.PAT_TOKEN }}" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/run-bridge.yml/runs?status=in_progress&per_page=100")
-
-          OTHER_RUNS=$(echo "$RUNS_JSON" | jq -c '.workflow_runs[] | select(.id != ${{ github.run_id }})' | jq -s 'sort_by(.created_at)')
-          OTHER_RUNS_COUNT=$(echo "$OTHER_RUNS" | jq '. | length')
-          TOTAL_RUNS=$((OTHER_RUNS_COUNT + 1))
-          LIMIT=5
-
-          echo "📊 Currently running: $TOTAL_RUNS (Limit: $LIMIT)"
-
-          if [ "$TOTAL_RUNS" -gt "$LIMIT" ]; then
-            TO_CANCEL=$((TOTAL_RUNS - LIMIT))
-            echo "⚠️ Limit exceeded. Cancelling the oldest $TO_CANCEL run(s)."
-
-            for i in $(seq 0 $((TO_CANCEL - 1))); do
-              RUN_TO_CANCEL_ID=$(echo "$OTHER_RUNS" | jq -r ".[$i].id")
-              RUN_TO_CANCEL_CREATED=$(echo "$OTHER_RUNS" | jq -r ".[$i].created_at")
-              if [ "$RUN_TO_CANCEL_ID" != "null" ] && [ -n "$RUN_TO_CANCEL_ID" ]; then
-                echo "🛑 Cancelling oldest run ID $RUN_TO_CANCEL_ID (created at $RUN_TO_CANCEL_CREATED)..."
-                curl -s -X POST \
-                  -H "Accept: application/vnd.github+json" \
-                  -H "Authorization: Bearer ${{ secrets.PAT_TOKEN }}" \
-                  -H "X-GitHub-Api-Version: 2022-11-28" \
-                  "https://api.github.com/repos/${{ github.repository }}/actions/runs/$RUN_TO_CANCEL_ID/cancel"
-              fi
-            done
-          else
-            echo "✅ Concurrency limit not exceeded. Proceeding..."
-          fi
-
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -65,13 +30,17 @@ jobs:
         run: mkdir -p auth_info browser_data
 
       - name: Restore creds.json from GitHub Secret
+        env:
+          CREDS_JSON: ${{ secrets.CREDS_JSON }}
         run: |
-          echo '${{ secrets.CREDS_JSON }}' > auth_info/creds.json
+          printf '%s' "$CREDS_JSON" > auth_info/creds.json
           echo "✅ creds.json restored"
 
       - name: Create .env from GitHub Secret
+        env:
+          ENV_FILE: ${{ secrets.ENV_FILE }}
         run: |
-          echo '${{ secrets.ENV_FILE }}' > .env.secret
+          printf '%s' "$ENV_FILE" > .env.secret
           cp .env.secret .env
           echo "✅ .env file created"
 
@@ -131,7 +100,7 @@ jobs:
           fi
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Build project
         run: npm run build
@@ -160,6 +129,12 @@ jobs:
           curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
           sudo dpkg -i cloudflared.deb
           # Tunnel is spawned by the application code instead of bash
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'src-go/container-manager/go.mod'
+          cache-dependency-path: src-go/container-manager/go.sum
+
       - name: Build and Start Go Container Manager
         run: |
           echo "🔨 Building Go container-manager..."
@@ -171,13 +146,20 @@ jobs:
           ./container-manager > container-manager.log 2>&1 &
 
           echo "⏳ Waiting for Go container-manager to start..."
+          SUCCESS=0
           for i in {1..10}; do
             if curl -s http://127.0.0.1:18080/api/go/containers/sessions > /dev/null; then
               echo "✅ Go container-manager is up!"
+              SUCCESS=1
               break
             fi
             sleep 1
           done
+          if [ $SUCCESS -ne 1 ]; then
+            echo "❌ Go container-manager failed to start"
+            cat container-manager.log
+            exit 1
+          fi
 
       # [DISABLED] LLM Server — uncomment to re-enable
       # - name: Start LLM Server
@@ -211,22 +193,11 @@ jobs:
         run: |
           echo "🚀 Starting Discord WhatsApp Bridge..."
 
-          # Spawn browser workers after 60s (dashboard needs to be up first)
-          (sleep 60 && \
-            echo "🌐 Spawning browser worker fleet..." && \
-            curl -X POST \
-              -H "Accept: application/vnd.github+json" \
-              -H "Authorization: Bearer ${{ secrets.PAT_TOKEN }}" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
-              https://api.github.com/repos/${{ github.repository }}/actions/workflows/browser-worker.yml/dispatches \
-              -d '{"ref":"${{ github.ref_name }}"}' && \
-            echo "✅ Browser workers dispatched!") &
-
           # Trigger next workflow 15 minutes BEFORE timeout (runner takes ~12 min to start)
           # IMPORTANT: Backup state FIRST, then trigger — so the new runner always gets fresh data
           (sleep 17100 && \
             echo "📦 Pre-trigger backup: archiving state before handoff..." && \
-            sudo tar -czf /tmp/state_pretrigger.tar.gz -C $(pwd) auth_info .env && \
+            sudo tar -czf /tmp/state_pretrigger.tar.gz -C $(pwd) auth_info && \
             sudo chmod 666 /tmp/state_pretrigger.tar.gz && \
             source .env && \
             echo "📤 Uploading pre-trigger backup to R2..." && \
@@ -273,7 +244,7 @@ jobs:
           # The pre-trigger backup (inside "Run bridge") already uploaded a fresh snapshot before
           # triggering the next runner, so this step ensures nothing is lost at teardown.
           echo "📦 Archiving final state (safety net backup)..."
-          sudo tar -czf state.tar.gz -C $(pwd) auth_info .env || echo "Tar completed with warnings"
+          sudo tar -czf state.tar.gz -C $(pwd) auth_info || echo "Tar completed with warnings"
           sudo chmod 666 state.tar.gz
 
           source .env

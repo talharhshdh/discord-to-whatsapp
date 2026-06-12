@@ -310,6 +310,21 @@ function binary(res: ServerResponse, buffer: Buffer, mimeType: string, filename:
   res.end(buffer);
 }
 
+// ── Authentication Check Helpers ──────────────────────────────────────────────
+
+function safeCompare(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false;
+  const aBuf = Buffer.from(a, 'utf-8');
+  const bBuf = Buffer.from(b, 'utf-8');
+  if (aBuf.length !== bBuf.length) {
+    try {
+      require('crypto').timingSafeEqual(aBuf, aBuf);
+    } catch {}
+    return false;
+  }
+  return require('crypto').timingSafeEqual(aBuf, bBuf);
+}
+
 // ── Environment Variable Helpers ──────────────────────────────────────────────
 
 function readEnvFile(): Record<string, string> {
@@ -504,7 +519,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         }
       }
 
-      if (providedToken === expectedToken) {
+      if (safeCompare(providedToken, expectedToken)) {
         // Correctly authorized!
         // Ensure the client has the dashboard_token cookie so subresources load successfully
         const cookieHeader = req.headers['cookie'] || req.headers['Cookie'];
@@ -540,6 +555,9 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       path: parsedTarget.pathname + parsedTarget.search,
       headers: headers
     }, (proxyRes: any) => {
+      if (url.includes('/containers/logs') || proxyRes.headers['content-type'] === 'text/event-stream') {
+        proxyRes.headers['x-accel-buffering'] = 'no';
+      }
       res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
       proxyRes.pipe(res);
     });
@@ -568,7 +586,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         return;
       }
 
-      if (username === usernameEnv && password === passwordEnv) {
+      if (safeCompare(username, usernameEnv) && safeCompare(password, passwordEnv)) {
         const token = Buffer.from(`${username}:${password}`).toString('base64');
         res.setHeader('Set-Cookie', `dashboard_token=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000`);
         json(res, { success: true, token });
@@ -718,7 +736,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       }
 
       const meta = session.metadata as any;
-      if (!meta || meta.webhookSecret !== secret) {
+      if (!meta || !safeCompare(meta.webhookSecret, secret)) {
         return err(res, 'Invalid or missing webhook secret', 401);
       }
 
@@ -1484,8 +1502,16 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 
   // ── POST /api/browsers/webhook ─────────────────────────────────────────
   // Remote browser workers register, heartbeat, and deregister via this endpoint.
-  if (method === 'POST' && url === '/api/browsers/webhook') {
+  if (method === 'POST' && url.startsWith('/api/browsers/webhook')) {
     try {
+      const urlObj = new URL(url, 'http://localhost');
+      const secretParam = urlObj.searchParams.get('secret');
+      const expectedSecret = process.env.WEBHOOK_SECRET || process.env.DASHBOARD_PASSWORD;
+
+      if (expectedSecret && !safeCompare(secretParam, expectedSecret)) {
+        return err(res, 'Invalid or missing webhook secret', 401);
+      }
+
       const body = await parseJsonBody(req) as unknown as WebhookPayload;
       const { event, workerId, cdpUrl, apiUrl, runId } = body;
 

@@ -27,8 +27,7 @@ FROM node:24-alpine
 WORKDIR /app
 
 # Install system dependencies
-RUN apk add --no-cache --repository=https://dl-cdn.alpinelinux.org/alpine/edge/testing/ \
-    cloudflared \
+RUN apk add --no-cache \
     tar \
     ffmpeg \
     python3 \
@@ -37,11 +36,18 @@ RUN apk add --no-cache --repository=https://dl-cdn.alpinelinux.org/alpine/edge/t
     chromium \
     chromium-chromedriver
 
+RUN apk add --no-cache --repository=https://dl-cdn.alpinelinux.org/alpine/edge/testing/ \
+    cloudflared
+
+# Set Puppeteer environment variables
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+
 # Copy package files and requirements
 COPY package*.json requirements.txt ./
 
 # Install production dependencies only
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Install Python requirements
 RUN pip3 install --no-cache-dir --break-system-packages -r requirements.txt

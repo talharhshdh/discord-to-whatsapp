@@ -72,12 +72,43 @@ func ParseAndNormalizeCompose(yamlData []byte) (*NormalizedComposeConfig, error)
 			normSvc.Labels = make(map[string]string)
 		}
 
-		// 1. Normalize Ports (can be list of strings or integers)
+		// 1. Normalize Ports (can be list of strings, integers, or maps/objects)
 		for _, p := range rawSvc.Ports {
 			if str, ok := p.(string); ok {
-				normSvc.Ports = append(normSvc.Ports, str)
+				// strip /tcp or /udp suffix if present
+				cleaned := strings.Split(str, "/")[0]
+				normSvc.Ports = append(normSvc.Ports, cleaned)
 			} else if num, ok := p.(int); ok {
 				normSvc.Ports = append(normSvc.Ports, fmt.Sprintf("%d", num))
+			} else if portMap, ok := p.(map[string]interface{}); ok {
+				// Long-syntax: target, published, protocol, mode
+				target, _ := portMap["target"].(int)
+				published, _ := portMap["published"].(int)
+				if published > 0 && target > 0 {
+					normSvc.Ports = append(normSvc.Ports, fmt.Sprintf("%d:%d", published, target))
+				} else if target > 0 {
+					normSvc.Ports = append(normSvc.Ports, fmt.Sprintf("%d", target))
+				}
+			} else if portMap, ok := p.(map[interface{}]interface{}); ok {
+				// Handle yaml.v3 mapping type which might decode as map[interface{}]interface{}
+				var target, published int
+				for k, v := range portMap {
+					kStr := fmt.Sprintf("%v", k)
+					if kStr == "target" {
+						if vInt, ok := v.(int); ok {
+							target = vInt
+						}
+					} else if kStr == "published" {
+						if vInt, ok := v.(int); ok {
+							published = vInt
+						}
+					}
+				}
+				if published > 0 && target > 0 {
+					normSvc.Ports = append(normSvc.Ports, fmt.Sprintf("%d:%d", published, target))
+				} else if target > 0 {
+					normSvc.Ports = append(normSvc.Ports, fmt.Sprintf("%d", target))
+				}
 			} else {
 				normSvc.Ports = append(normSvc.Ports, fmt.Sprintf("%v", p))
 			}

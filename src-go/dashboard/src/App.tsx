@@ -4,9 +4,11 @@ import {
   Cpu, 
   Terminal as TerminalIcon, 
   RefreshCw, 
+  Share2,
 } from 'lucide-react';
 import ContainerManager from './components/ContainerManager';
 import BrowserCDP from './components/BrowserCDP';
+import ContactScraper from './components/ContactScraper';
 
 interface SessionMetadata {
   port?: number;
@@ -33,7 +35,7 @@ interface Session {
 const API_BASE = 'http://localhost:18080';
 
 export default function App() {
-  const [activePackage, setActivePackage] = useState<'containers' | 'browser-cdp'>('containers');
+  const [activePackage, setActivePackage] = useState<'containers' | 'browser-cdp' | 'contact-scraper'>('containers');
   const [sessions, setSessions] = useState<Session[]>([]);
   const [isLoadingSessions, setIsLoadingSessions] = useState<boolean>(false);
   const [logs, setLogs] = useState<string[]>([]);
@@ -91,6 +93,13 @@ export default function App() {
             <Cpu className="h-3.5 w-3.5" />
             browser-cdp-connection
           </button>
+          <button 
+            onClick={() => setActivePackage('contact-scraper')}
+            className={`px-4 py-2 rounded-lg font-bold text-xs transition-all duration-200 flex items-center gap-2 ${activePackage === 'contact-scraper' ? 'bg-brand text-white shadow-lg shadow-brand/20' : 'text-muted hover:text-white'}`}
+          >
+            <Share2 className="h-3.5 w-3.5" />
+            contact-scraper
+          </button>
         </div>
 
         <div className="flex items-center gap-4">
@@ -114,8 +123,12 @@ export default function App() {
             fetchSessions={fetchSessions}
             isLoadingSessions={isLoadingSessions}
           />
-        ) : (
+        ) : activePackage === 'browser-cdp' ? (
           <BrowserCDP 
+            addLog={addLog}
+          />
+        ) : (
+          <ContactScraper 
             addLog={addLog}
           />
         )}

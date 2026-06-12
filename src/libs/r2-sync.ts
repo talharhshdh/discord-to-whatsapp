@@ -18,23 +18,20 @@ export async function saveStateToR2(): Promise<{ success: boolean; message: stri
 
   try {
     const rootDir = resolve(__dirname, '../../');
-    const envExists = existsSync(resolve(rootDir, '.env'));
     const authExists = existsSync(resolve(rootDir, 'auth_info'));
 
-    if (!envExists && !authExists) {
-      return { success: false, message: 'Nothing to back up (.env and auth_info do not exist).' };
+    if (!authExists) {
+      return { success: false, message: 'Nothing to back up (auth_info does not exist).' };
     }
 
-    const filesToArchive = [];
-    if (authExists) filesToArchive.push('auth_info');
-    if (envExists) filesToArchive.push('.env');
+    const filesToArchive = ['auth_info'];
 
     console.log(`[R2-Sync] Creating state archive with: ${filesToArchive.join(', ')}`);
     
     // Windows vs Linux tar compatibility
     const tarCmd = `tar -czf state.tar.gz ${filesToArchive.join(' ')}`;
       
-    execSync(tarCmd, { cwd: rootDir, stdio: 'ignore' });
+    execSync(tarCmd, { cwd: rootDir });
 
     const tarPath = resolve(rootDir, 'state.tar.gz');
     if (!existsSync(tarPath)) {

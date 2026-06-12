@@ -103,6 +103,7 @@ export async function acquirePage(
 
         const newConn = { browserConn, wsUrl, freePages: [], busyPages: new Set() };
         workerConnections.set(browser.workerId, newConn);
+        connectionPromises.delete(browser.workerId); // Clear promise on success
         console.log(`🔗 New puppeteer connection cached for ${browser.workerId}`);
         return newConn;
       })();
@@ -119,23 +120,31 @@ export async function acquirePage(
 
   // Re-use idle page or open a new one
   let page = conn.freePages.pop();
+  let isNew = false;
   if (!page) {
     page = await conn.browserConn.newPage();
+    isNew = true;
+  }
 
-    await page.setRequestInterception(true);
-    page.on('request', (req: any) => {
-      const rt = req.resourceType();
-      const u = req.url().toLowerCase();
-      if (
-        ['image', 'font', 'media', 'stylesheet'].includes(rt) ||
-        u.includes('google-analytics.com') ||
-        u.includes('doubleclick.net')
-      ) {
-        req.abort();
-      } else {
-        req.continue();
-      }
-    });
+  // Always reset and set the default request interception handler to avoid leaks/races
+  page.removeAllListeners('request');
+  await page.setRequestInterception(true);
+  page.on('request', (req: any) => {
+    if (req.isInterceptResolutionHandled()) return;
+    const rt = req.resourceType();
+    const u = req.url().toLowerCase();
+    if (
+      ['image', 'font', 'media', 'stylesheet'].includes(rt) ||
+      u.includes('google-analytics.com') ||
+      u.includes('doubleclick.net')
+    ) {
+      req.abort().catch(() => {});
+    } else {
+      req.continue().catch(() => {});
+    }
+  });
+
+  if (isNew) {
     await page.setUserAgent(
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
     );

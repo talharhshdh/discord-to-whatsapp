@@ -208,16 +208,15 @@ class BrowserPool {
     }
   }
 
-  /** Record a CAPTCHA / hard failure and trigger restart if threshold reached. */
+  /** Record a CAPTCHA / hard failure. */
   recordFailure(): void {
     const now = Date.now();
     this.failureTimestamps.push(now);
     this.failureTimestamps = this.failureTimestamps.filter((t) => now - t < 60_000);
 
     if (this.failureTimestamps.length >= 20) {
-      console.error(`🚨 ERROR LIMIT REACHED: ${this.failureTimestamps.length} failures in last minute.`);
+      console.warn(`⚠️ Warning: ${this.failureTimestamps.length} failures recorded in last minute.`);
       this.failureTimestamps = [];
-      this.restartWorkers();
     }
   }
 
@@ -250,7 +249,7 @@ class BrowserPool {
   /** Cancel the GitHub Actions workflow run for a worker and deregister all its browsers. */
   async stopWorker(runId: string): Promise<boolean> {
     const pat = process.env.GITHUB_PAT || process.env.PAT_TOKEN;
-    const repo = process.env.GITHUB_REPO || 'talharhshdh/discord-to-whatsapp';
+    const repo = process.env.GITHUB_REPOSITORY || process.env.GITHUB_REPO || 'talharhshdh/discord-to-whatsapp';
 
     if (!pat || !runId) {
       console.warn(`[BrowserPool] Cannot stop worker run ${runId} (missing token or runId).`);
@@ -295,7 +294,7 @@ class BrowserPool {
     this.lastRestartTime = now;
 
     const pat = process.env.GITHUB_PAT || process.env.PAT_TOKEN;
-    const repo = process.env.GITHUB_REPO || 'talharhshdh/discord-to-whatsapp';
+    const repo = process.env.GITHUB_REPOSITORY || process.env.GITHUB_REPO || 'talharhshdh/discord-to-whatsapp';
 
     if (!pat) {
       return;

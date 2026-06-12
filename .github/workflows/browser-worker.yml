@@ -6,14 +6,8 @@ on:
     types: [spawn-browsers]
 
 jobs:
-  browser:
+  cancel-old:
     runs-on: ubuntu-latest
-    timeout-minutes: 310 # 5 hours + 10 min buffer
-    strategy:
-      matrix:
-        worker: [1, 2, 3]
-      fail-fast: false # Don't kill siblings if one crashes
-
     steps:
       - name: Manage concurrent worker runs (cancel oldest if limit exceeded)
         run: |
@@ -51,12 +45,24 @@ jobs:
             echo "✅ Concurrency limit not exceeded. Proceeding..."
           fi
 
+  browser:
+    needs: cancel-old
+    runs-on: ubuntu-latest
+    timeout-minutes: 310 # 5 hours + 10 min buffer
+    strategy:
+      matrix:
+        worker: [1, 2, 3]
+      fail-fast: false # Don't kill siblings if one crashes
+
+    steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Create .env from GitHub Secret
+        env:
+          ENV_FILE: ${{ secrets.ENV_FILE }}
         run: |
-          echo '${{ secrets.ENV_FILE }}' > .env
+          printf '%s' "$ENV_FILE" > .env
           echo "✅ .env file created"
 
       - name: Install Chrome
@@ -87,8 +93,9 @@ jobs:
 
       - name: Run browser worker
         run: |
+          set -a
           source .env
-          export DASHBOARD_DOMAIN="${DASHBOARD_DOMAIN}"
+          set +a
           export GITHUB_RUN_ID="${{ github.run_id }}"
           export WORKER_ID="browser-worker-${{ matrix.worker }}-$(hostname | cut -c1-6)-$(head -c4 /dev/urandom | xxd -p)"
           export MAX_RUNTIME=18000
