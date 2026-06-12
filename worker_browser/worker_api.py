@@ -189,6 +189,19 @@ def get_html(req: GetHtmlRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/logs")
+def get_logs():
+    try:
+        log_path = "/tmp/worker_api.log"
+        if os.path.exists(log_path):
+            with open(log_path, "r", encoding="utf-8") as f:
+                # return last 100 lines or full logs
+                lines = f.readlines()
+                return {"logs": "".join(lines[-200:])}
+        return {"logs": "Log file not found"}
+    except Exception as e:
+        return {"logs": f"Error reading log: {str(e)}"}
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
