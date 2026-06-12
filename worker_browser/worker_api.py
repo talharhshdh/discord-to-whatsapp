@@ -45,7 +45,7 @@ def is_captcha_present(sb):
 def scrape_indeed(req: ScrapeIndeedRequest):
     try:
         # We run headlessly with UC mode inside SB
-        with SB(uc=True, headless=True) as sb:
+        with SB(uc=True, xvfb=True) as sb:
             sb.driver.set_window_size(1400, 900)
             
             start_offset = (req.page - 1) * 10
@@ -162,7 +162,7 @@ def scrape_indeed(req: ScrapeIndeedRequest):
 @app.post("/screenshot")
 def take_screenshot(req: ScreenshotRequest):
     try:
-        with SB(uc=True, headless=True) as sb:
+        with SB(uc=True, xvfb=True) as sb:
             sb.driver.set_window_size(1400, 900)
             sb.uc_open_with_reconnect(req.url, 5)
             sb.sleep(4)
@@ -182,7 +182,7 @@ def take_screenshot(req: ScreenshotRequest):
 @app.post("/get_html")
 def get_html(req: GetHtmlRequest):
     try:
-        with SB(uc=True, headless=True) as sb:
+        with SB(uc=True, xvfb=True) as sb:
             sb.uc_open_with_reconnect(req.url, 5)
             sb.sleep(4)
             return {"html": sb.get_page_source()}

@@ -70,6 +70,11 @@ jobs:
           sudo dpkg -i cloudflared.deb
           echo "✅ cloudflared installed"
 
+      - name: Install Xvfb and GUI dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb python3-tk scrot
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
