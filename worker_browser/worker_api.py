@@ -54,11 +54,15 @@ def scrape_indeed(req: ScrapeIndeedRequest):
             if req.location and any(p in req.location.lower() for p in ["pakistan", "pk", "rawalpindi", "islamabad", "lahore", "karachi", "punjab", "sindh", "kpk", "balochistan"]):
                 domain = "pk.indeed.com"
             
-            search_url = f"https://{domain}/jobs?q={req.query}&l={req.location}&start={start_offset}"
+            import urllib.parse
+            safe_query = urllib.parse.quote_plus(req.query)
+            safe_location = urllib.parse.quote_plus(req.location)
+            search_url = f"https://{domain}/jobs?q={safe_query}&l={safe_location}&start={start_offset}"
             print(f"[Indeed UC] Navigating to: {search_url}")
             
             sb.uc_open_with_reconnect(search_url, 6)
             sb.sleep(2)
+            print(f"[Indeed UC] Loaded URL: {sb.get_current_url()}")
             
             # Try to bypass Cloudflare Turnstile if present
             for attempt in range(3):
