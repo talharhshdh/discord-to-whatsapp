@@ -1,8 +1,10 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel
 from seleniumbase import SB
 import uvicorn
 import random
+import tempfile
+import os
 
 app = FastAPI(title="Worker Browser API")
 
@@ -11,6 +13,13 @@ class ScrapeIndeedRequest(BaseModel):
     location: str
     page: int = 1
 
+class ScreenshotRequest(BaseModel):
+    url: str
+    full_page: bool = False
+
+class GetHtmlRequest(BaseModel):
+    url: str
+
 def is_captcha_present(sb):
     """
     Checks the current page state for common captcha and verification indicators.
@@ -18,11 +27,11 @@ def is_captcha_present(sb):
     """
     try:
         title = sb.get_title()
-        if "Just a moment..." in title or "Attention Required" in title:
+        if "Just a moment..." in title or "Attention Required" in title or "Security | Indeed" in title:
             return True
         
         source = sb.get_page_source()
-        if "Verify you are human" in source or "Additional Verification Required" in source:
+        if "Verify you are human" in source or "Additional Verification Required" in source or "hcaptcha" in source or "g-recaptcha" in source:
             return True
             
         if sb.is_element_visible("form[action='/sorry/index']") or sb.is_element_visible("#captcha") or sb.is_element_visible(".g-recaptcha"):
@@ -62,6 +71,15 @@ def scrape_indeed(req: ScrapeIndeedRequest):
             except Exception:
                 if is_captcha_present(sb):
                     raise HTTPException(status_code=403, detail="Captcha detected on search page timeout")
+                
+                # Take a diagnostic screenshot to help the test kit see what happened
+                try:
+                    sb.save_screenshot("indeed_timeout_debug.png")
+                    with open("indeed_timeout_debug.html", "w", encoding="utf-8") as f:
+                        f.write(sb.get_page_source())
+                    print("[Indeed UC] Timeout waiting for cards. Saved diagnostic screenshot and html.")
+                except Exception:
+                    pass
                 return []
 
             # Extract job cards
@@ -131,6 +149,36 @@ def scrape_indeed(req: ScrapeIndeedRequest):
             return scraped_jobs
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/screenshot")
+def take_screenshot(req: ScreenshotRequest):
+    try:
+        with SB(uc=True, headless=True) as sb:
+            sb.driver.set_window_size(1400, 900)
+            sb.uc_open_with_reconnect(req.url, 5)
+            sb.sleep(4)
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
+                sb.save_screenshot(tmp.name)
+                tmp_path = tmp.name
+            try:
+                with open(tmp_path, "rb") as f:
+                    content = f.read()
+                return Response(content=content, media_type="image/png")
+            finally:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/get_html")
+def get_html(req: GetHtmlRequest):
+    try:
+        with SB(uc=True, headless=True) as sb:
+            sb.uc_open_with_reconnect(req.url, 5)
+            sb.sleep(4)
+            return {"html": sb.get_page_source()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
