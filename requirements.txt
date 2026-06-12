@@ -2,10 +2,3 @@ seleniumbase
 fastapi
 uvicorn
 pydantic
-rembg
-onnxruntime
-python-multipart
-openai-whisper
-easyocr
-trafilatura
-html2text
