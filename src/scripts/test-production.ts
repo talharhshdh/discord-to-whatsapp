@@ -105,6 +105,8 @@ async function runDiagnostics() {
           if (scrapeResp.status === 403) {
             console.log(`⚠️ Worker returned 403: Captcha blocked detected!`);
           }
+          console.log(`⏳ Pulling diagnostic assets...`);
+          await pullDiagnostics(worker, 'https://pk.indeed.com/jobs?q=software+engineer&l=Rawalpindi');
         } else {
           const jobs = await scrapeResp.json() as any[];
           console.log(`✅ Scraper execution finished. Jobs found: ${jobs.length}`);

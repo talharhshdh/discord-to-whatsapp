@@ -58,7 +58,14 @@ def scrape_indeed(req: ScrapeIndeedRequest):
             print(f"[Indeed UC] Navigating to: {search_url}")
             
             sb.uc_open_with_reconnect(search_url, 6)
-            sb.sleep(3)
+            sb.sleep(2)
+            
+            # Try to auto-click Cloudflare Turnstile if present
+            try:
+                sb.uc_gui_click_captcha()
+                sb.sleep(4)
+            except Exception:
+                pass
             
             # Check for captcha
             if is_captcha_present(sb):
