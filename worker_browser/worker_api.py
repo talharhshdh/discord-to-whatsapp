@@ -60,12 +60,27 @@ def scrape_indeed(req: ScrapeIndeedRequest):
             sb.uc_open_with_reconnect(search_url, 6)
             sb.sleep(2)
             
-            # Try to auto-click Cloudflare Turnstile if present
-            try:
-                sb.uc_gui_click_captcha()
-                sb.sleep(4)
-            except Exception:
-                pass
+            # Try to bypass Cloudflare Turnstile if present
+            for attempt in range(3):
+                if not is_captcha_present(sb):
+                    break
+                print(f"[Indeed UC] Bypassing captcha (attempt {attempt + 1})...")
+                try:
+                    if sb.is_element_present("iframe[src*='challenges']"):
+                        sb.sleep(2)
+                    sb.uc_gui_click_captcha()
+                    sb.sleep(5)
+                except Exception as e:
+                    print(f"[Indeed UC] Click captcha error: {e}")
+                
+                if not is_captcha_present(sb):
+                    break
+                
+                try:
+                    sb.uc_gui_handle_captcha()
+                    sb.sleep(5)
+                except Exception as e:
+                    print(f"[Indeed UC] Handle captcha error: {e}")
             
             # Check for captcha
             if is_captcha_present(sb):
