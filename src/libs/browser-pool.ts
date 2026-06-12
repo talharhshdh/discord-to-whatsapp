@@ -287,7 +287,7 @@ class BrowserPool {
   }
 
   /** Trigger a restart of all browser workers via GitHub Actions. */
-  async restartWorkers(): Promise<void> {
+  async restartWorkers(forceRestart = false): Promise<void> {
     const now = Date.now();
     if (now - this.lastRestartTime < this.RESTART_COOLDOWN_MS) {
       return;
@@ -318,34 +318,45 @@ class BrowserPool {
           (run: any) => run.status !== 'completed'
         );
 
-        if (activeRuns.length > 0) {
-          // Sort active runs by created_at in ascending order (oldest first)
-          const sortedRuns = [...activeRuns].sort((a: any, b: any) =>
-            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-          );
-          const oldestRun = sortedRuns[0];
-
-          console.log(`[BrowserPool] Stopping the oldest active browser worker run (ID: ${oldestRun.id})...`);
-          const cancelUrl = `https://api.github.com/repos/${repo}/actions/runs/${oldestRun.id}/cancel`;
-          try {
-            await fetch(cancelUrl, {
-              method: 'POST',
-              headers: {
-                Accept: 'application/vnd.github+json',
-                Authorization: `Bearer ${pat}`,
-                'X-GitHub-Api-Version': '2022-11-28',
-              },
-            });
-            console.log(`[BrowserPool] Successfully cancelled oldest run ${oldestRun.id}.`);
-          } catch (err) {
-            console.error(`[BrowserPool] Failed to cancel run ${oldestRun.id}:`, err);
+        if (forceRestart) {
+          console.log(`[BrowserPool] Force restart requested. Cancelling all ${activeRuns.length} active runs...`);
+          for (const run of activeRuns) {
+            const cancelUrl = `https://api.github.com/repos/${repo}/actions/runs/${run.id}/cancel`;
+            try {
+              await fetch(cancelUrl, {
+                method: 'POST',
+                headers: {
+                  Accept: 'application/vnd.github+json',
+                  Authorization: `Bearer ${pat}`,
+                  'X-GitHub-Api-Version': '2022-11-28',
+                },
+              });
+              console.log(`[BrowserPool] Cancelled run ${run.id}.`);
+            } catch (err) {
+              console.error(`[BrowserPool] Failed to cancel run ${run.id}:`, err);
+            }
           }
-          // Small wait for GitHub Actions API to process cancellation
-          await new Promise((resolve) => setTimeout(resolve, 2000));
+          if (activeRuns.length > 0) {
+            // Wait for GitHub Actions API to process cancellation
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+          }
+        } else {
+          // Check if there is any active run created in the last 4 minutes
+          const RECENT_RUN_THRESHOLD_MS = 4 * 60 * 1000;
+          const recentRun = activeRuns.find((run: any) => {
+            const createdTime = new Date(run.created_at).getTime();
+            return now - createdTime < RECENT_RUN_THRESHOLD_MS;
+          });
+
+          if (recentRun) {
+            const elapsedSec = Math.round((now - new Date(recentRun.created_at).getTime()) / 1000);
+            console.log(`[BrowserPool] A browser worker run (ID: ${recentRun.id}) was triggered recently (${elapsedSec}s ago). Skipping duplicate spawn.`);
+            return;
+          }
         }
       }
     } catch (e) {
-      console.error(`[BrowserPool] Error cancelling old runs:`, e);
+      console.error(`[BrowserPool] Error checking/cancelling runs:`, e);
     }
 
     try {

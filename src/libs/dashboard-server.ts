@@ -1558,7 +1558,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   // ── POST /api/browsers/restart ─────────────────────────────────────────
   if (method === 'POST' && url === '/api/browsers/restart') {
     try {
-      await browserPool.restartWorkers();
+      await browserPool.restartWorkers(true);
       json(res, { ok: true, message: 'Restart command sent to GitHub Actions' });
     } catch (e) { err(res, (e as Error).message); }
     return;
