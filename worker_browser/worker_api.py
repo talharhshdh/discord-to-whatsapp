@@ -59,11 +59,20 @@ def sync_scrape_indeed(req: ScrapeIndeedRequest):
             import urllib.parse
             safe_query = urllib.parse.quote_plus(req.query)
             safe_location = urllib.parse.quote_plus(req.location)
-            search_url = f"https://{domain}/jobs?q={safe_query}&l={safe_location}&start={start_offset}"
-            print(f"[Indeed UC] Navigating to: {search_url}")
             
-            sb.uc_open_with_reconnect(search_url, 6)
+            # Navigate to page 1 first to establish cookies / session
+            base_url = f"https://{domain}/jobs?q={safe_query}&l={safe_location}"
+            print(f"[Indeed UC] Loading page 1 first to establish session: {base_url}")
+            sb.uc_open_with_reconnect(base_url, 6)
             sb.sleep(2)
+            
+            # If we want a later page, open it now that cookies/session are set
+            if req.page > 1:
+                search_url = f"https://{domain}/jobs?q={safe_query}&l={safe_location}&start={start_offset}"
+                print(f"[Indeed UC] Navigating to target page {req.page}: {search_url}")
+                sb.uc_open_with_reconnect(search_url, 6)
+                sb.sleep(2)
+            
             print(f"[Indeed UC] Loaded URL: {sb.get_current_url()}")
             
             # Try to bypass Cloudflare Turnstile if present
@@ -160,13 +169,13 @@ def sync_scrape_indeed(req: ScrapeIndeedRequest):
                 try:
                     card_selector = f'a.jcs-JobTitle[data-jk="{jk}"], [id^="jobTitle-"][data-jk="{jk}"]'
                     sb.click(card_selector)
-                    sb.sleep(2)
+                    sb.sleep(0.8)
                     
                     if is_captcha_present(sb):
                         print("[Indeed UC] Captcha detected after click! Aborting.")
                         raise HTTPException(status_code=403, detail="Captcha detected after job click")
 
-                    sb.wait_for_element("#jobDescriptionText", timeout=6)
+                    sb.wait_for_element("#jobDescriptionText", timeout=4)
                     description = sb.get_text("#jobDescriptionText").strip()
                     job['description'] = description
                 except Exception as e:
@@ -175,7 +184,7 @@ def sync_scrape_indeed(req: ScrapeIndeedRequest):
                     job['description'] = job['snippet'] # Fallback
                 
                 scraped_jobs.append(job)
-                sb.sleep(random.uniform(0.5, 1.2))
+                sb.sleep(random.uniform(0.2, 0.5))
 
             return scraped_jobs
     except HTTPException:

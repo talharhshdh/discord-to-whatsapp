@@ -161,6 +161,32 @@ jobs:
             exit 1
           fi
 
+      - name: Build and Start Go Contact Scraper
+        run: |
+          echo "🔨 Building Go contact-scraper..."
+          cd src-go/contact-scraper
+          go build -o ../../contact-scraper .
+          cd ../..
+          echo "🚀 Starting Go contact-scraper on port 8081..."
+          chmod +x contact-scraper
+          PORT=8081 ./contact-scraper > contact-scraper.log 2>&1 &
+
+          echo "⏳ Waiting for Go contact-scraper to start..."
+          SUCCESS=0
+          for i in {1..10}; do
+            if curl -s http://127.0.0.1:8081/health > /dev/null; then
+              echo "✅ Go contact-scraper is up!"
+              SUCCESS=1
+              break
+            fi
+            sleep 1
+          done
+          if [ $SUCCESS -ne 1 ]; then
+            echo "❌ Go contact-scraper failed to start"
+            cat contact-scraper.log
+            exit 1
+          fi
+
       # [DISABLED] LLM Server — uncomment to re-enable
       # - name: Start LLM Server
       #   run: |

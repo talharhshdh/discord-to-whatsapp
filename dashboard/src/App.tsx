@@ -23,6 +23,7 @@ const WebProxyPanel = React.lazy(() => import('./components/WebProxyPanel'));
 const PoolPanel = React.lazy(() => import('./components/PoolPanel'));
 const BetaGoContainerPanel = React.lazy(() => import('./components/BetaGoContainerPanel'));
 const IndeedPanel = React.lazy(() => import('./components/IndeedPanel'));
+const ContactsScraperPanel = React.lazy(() => import('./components/ContactsScraperPanel'));
 
 interface NavItem {
   id: NavSection;
@@ -53,6 +54,7 @@ const NAV_CATEGORIES: NavCategory[] = [
       { id: 'places',    label: 'Maps Places',    icon: '🗺️' },
       { id: 'pool',      label: 'Browser Pool',   icon: '🕸️' },
       { id: 'indeed',    label: 'Indeed Jobs',    icon: '💼' },
+      { id: 'contacts',  label: 'Contacts & Jobs', icon: '📇' },
     ]
   },
   {
@@ -526,6 +528,7 @@ export default function App() {
                   {section === 'web-proxy' && <WebProxyPanel />}
                   {section === 'go-containers' && <BetaGoContainerPanel />}
                   {section === 'indeed' && <IndeedPanel />}
+                  {section === 'contacts' && <ContactsScraperPanel />}
                 </React.Suspense>
               </div>
             </div>

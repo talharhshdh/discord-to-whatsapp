@@ -256,6 +256,38 @@ export interface LLMChatResponse {
   usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
 }
 
+export interface ScrapedJobItem {
+  jk: string;
+  title: string;
+  company: string;
+  location: string;
+  salary: string;
+  snippet: string;
+  description: string;
+  url: string;
+  source: 'indeed' | 'google';
+  scrapedAt: string;
+  companyWebsite?: string;
+  contacts?: {
+    emails: string[];
+    phones: string[];
+    socials: Record<string, string>;
+    pagesCrawled: number;
+  };
+}
+
+export interface AutomatedJobsResponse {
+  lastRun: string | null;
+  status: 'idle' | 'scraping' | 'completed' | 'failed';
+  error?: string;
+  stats: {
+    totalJobs: number;
+    companiesScraped: number;
+    lastRunCount: number;
+  };
+  jobs: ScrapedJobItem[];
+}
+
 // ── API ─────────────────────────────────────────────────────────────────────
 
 export const api = {
@@ -492,4 +524,13 @@ export const api = {
     post<{ success: boolean; message: string }>('/api/config/sync', {}),
   indeedSearch: (query: string, location: string, pages: number) =>
     post<{ success: boolean; jobsCount: number; jobs: any[] }>('/api/scrape/indeed', { query, location, pages }),
+  scrapeContacts: (url: string, maxPages = 50, workers = 10, timeout = '30s') =>
+    post<any>('/api/scrape/contacts', { url, maxPages, workers, timeout }),
+  getAutomatedJobs: () =>
+    authFetch(`${BASE}/api/jobs/automated`).then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json() as Promise<AutomatedJobsResponse>;
+    }),
+  triggerJobsScraper: (keywords: string[], location: string) =>
+    post<{ success: boolean; message: string }>('/api/jobs/trigger-scrape', { keywords, location }),
 };

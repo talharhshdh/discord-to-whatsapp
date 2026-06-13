@@ -47,6 +47,8 @@ import { acquirePage, releasePage } from './page-pool';
 import { cookieSearchPool } from './cookie-search-pool';
 import { saveStateToR2 } from './r2-sync';
 import { startCustomContainer, restoreDockerContainers, stopCustomContainer } from './custom-container';
+import { runJobsScraper } from './jobs-scraper-service';
+import { getJobsFromR2, getJobsStatusFromR2 } from './r2-jobs-store';
 
 const Corrosion = require('corrosion');
 const webProxy = new Corrosion({
@@ -1654,6 +1656,69 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     return;
   }
 
+  // ── POST /api/scrape/contacts ────────────────────────────────────────────
+  if (method === 'POST' && url === '/api/scrape/contacts') {
+    try {
+      const body = await parseJsonBody(req);
+      const targetUrl = body['url'] as string;
+      if (!targetUrl) return err(res, 'url is required', 400);
+
+      const maxPages = Number(body['maxPages']) || 50;
+      const workers = Number(body['workers']) || 10;
+      const timeout = (body['timeout'] as string) || '30s';
+
+      console.log(`[Dashboard Contacts Scrape] URL: "${targetUrl}", maxPages: ${maxPages}, workers: ${workers}, timeout: ${timeout}`);
+
+      const response = await fetch(
+        `http://127.0.0.1:8081/api/scrape?url=${encodeURIComponent(targetUrl)}&max-pages=${maxPages}&workers=${workers}&timeout=${timeout}`,
+        { method: 'GET' }
+      );
+
+      if (!response.ok) {
+        const text = await response.text();
+        return err(res, `Go contacts scraper returned status ${response.status}: ${text}`, response.status);
+      }
+
+      const data = await response.json();
+      json(res, data);
+    } catch (e) {
+      err(res, (e as Error).message);
+    }
+    return;
+  }
+
+  // ── GET /api/jobs/automated ──────────────────────────────────────────────
+  if (method === 'GET' && url === '/api/jobs/automated') {
+    try {
+      const jobs = await getJobsFromR2();
+      const status = await getJobsStatusFromR2();
+      json(res, {
+        lastRun: status.lastRun,
+        status: status.status,
+        stats: status.stats,
+        jobs: jobs
+      });
+    } catch (e) {
+      err(res, (e as Error).message);
+    }
+    return;
+  }
+
+  // ── POST /api/jobs/trigger-scrape ────────────────────────────────────────
+  if (method === 'POST' && url === '/api/jobs/trigger-scrape') {
+    try {
+      const body = await parseJsonBody(req);
+      const keywords = body['keywords'] as string[] | undefined;
+      const location = body['location'] as string | undefined;
+
+      const result = await runJobsScraper(keywords, location);
+      json(res, result);
+    } catch (e) {
+      err(res, (e as Error).message);
+    }
+    return;
+  }
+
 
   // ── POST /api/browser/search ───────────────────────────────────────────
   // Supports ?engine=cdp|selenium. Default: tries CDP first, falls back to selenium.
@@ -2064,9 +2129,51 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 
 // ── Server bootstrap ──────────────────────────────────────────────────────────
 
+function startAutomatedJobsScheduler() {
+  console.log('[Jobs Scheduler] Initializing background check (hourly)...');
+  
+  // Check immediately on boot
+  checkAndTriggerScraper();
+  
+  const interval = setInterval(() => {
+    checkAndTriggerScraper();
+  }, 60 * 60 * 1000); // 1 hour
+  
+  if (interval && typeof interval === 'object' && 'unref' in interval) {
+    (interval as NodeJS.Timeout).unref();
+  }
+}
+
+async function checkAndTriggerScraper() {
+  try {
+    const status = await getJobsStatusFromR2();
+    if (!status.lastRun) {
+      console.log('[Jobs Scheduler] No last run found. Triggering initial jobs scraper run...');
+      await runJobsScraper();
+      return;
+    }
+    
+    const lastRunTime = new Date(status.lastRun).getTime();
+    const now = Date.now();
+    const twelveHours = 12 * 60 * 60 * 1000;
+    
+    if (now - lastRunTime >= twelveHours && status.status !== 'scraping') {
+      console.log(`[Jobs Scheduler] Last run was at ${status.lastRun}. Triggering scheduled jobs scraper...`);
+      await runJobsScraper();
+    } else {
+      console.log(`[Jobs Scheduler] Scraper is not due yet. Last run: ${status.lastRun}`);
+    }
+  } catch (err) {
+    console.error('[Jobs Scheduler] Error checking scheduled run:', err);
+  }
+}
+
 export function startLocalServer(port = 4000): Promise<string> {
   // Start the browser pool cleanup loop so stale/dead workers are pruned
   browserPool.startCleanupLoop();
+
+  // Start automated jobs scheduler
+  startAutomatedJobsScheduler();
 
   return new Promise((resolve, reject) => {
     const distDir = join(__dirname, '..', '..', 'dashboard', 'dist');
