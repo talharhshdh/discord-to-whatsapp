@@ -231,16 +231,23 @@ func (s *Scraper) discoverSitemaps() []string {
 
 	for _, p := range sitemapPaths {
 		sUrl := s.BaseURL.ResolveReference(&url.URL{Path: p}).String()
-		resp, err := s.Client.Get(sUrl)
+		req, err := http.NewRequest("GET", sUrl, nil)
 		if err != nil {
 			continue
 		}
-		defer resp.Body.Close()
+		req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+		req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+
+		resp, err := s.Client.Do(req)
+		if err != nil {
+			continue
+		}
 
 		if resp.StatusCode == http.StatusOK {
 			found := s.parseSitemap(resp.Body)
 			urls = append(urls, found...)
 		}
+		resp.Body.Close()
 	}
 	return urls
 }
@@ -259,9 +266,14 @@ func (s *Scraper) parseSitemap(r io.Reader) []string {
 	if err := xml.Unmarshal(data, &idx); err == nil && len(idx.Sitemaps) > 0 {
 		for _, sm := range idx.Sitemaps {
 			// Fetch nested sitemap (up to 3 nested to avoid infinite loops)
-			resp, err := s.Client.Get(sm.Loc)
+			req, err := http.NewRequest("GET", sm.Loc, nil)
+			if err != nil {
+				continue
+			}
+			req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+			
+			resp, err := s.Client.Do(req)
 			if err == nil {
-				defer resp.Body.Close()
 				if resp.StatusCode == http.StatusOK {
 					var subSet Urlset
 					subData, _ := io.ReadAll(resp.Body)
@@ -271,6 +283,7 @@ func (s *Scraper) parseSitemap(r io.Reader) []string {
 						}
 					}
 				}
+				resp.Body.Close()
 			}
 		}
 		return urls
@@ -288,7 +301,15 @@ func (s *Scraper) parseSitemap(r io.Reader) []string {
 
 // scrapePage fetches page, parses html, collects contact details and extracts internal links.
 func (s *Scraper) scrapePage(targetURL string) []string {
-	resp, err := s.Client.Get(targetURL)
+	req, err := http.NewRequest("GET", targetURL, nil)
+	if err != nil {
+		return nil
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.5")
+
+	resp, err := s.Client.Do(req)
 	if err != nil {
 		return nil
 	}

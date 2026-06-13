@@ -7,6 +7,14 @@ const execAsync = util.promisify(exec);
 
 let nextPort = 9080;
 
+interface VSCodeInstance {
+  vscodeProcess: any;
+  tunnelProcess: any;
+  port: number;
+}
+
+const vscodeInstances = new Map<string, VSCodeInstance>();
+
 export async function startVSCode(): Promise<{ url?: string; password?: string; error?: string }> {
   try {
     const sessionId = `vscode-${crypto.randomBytes(4).toString('hex')}`;
@@ -31,6 +39,9 @@ export async function startVSCode(): Promise<{ url?: string; password?: string; 
     });
 
     const tunnelProcess = spawn('cloudflared', ['tunnel', '--url', `http://localhost:${port}`]);
+
+    // Track instance processes
+    vscodeInstances.set(sessionId, { vscodeProcess, tunnelProcess, port });
 
     return new Promise((resolve) => {
       let cloudflareUrl = '';
@@ -62,6 +73,18 @@ export async function startVSCode(): Promise<{ url?: string; password?: string; 
 
       tunnelProcess.on('close', (code) => {
         sessionManager.removeSession(sessionId);
+        vscodeInstances.delete(sessionId);
+        try {
+          vscodeProcess.kill('SIGTERM');
+        } catch {}
+      });
+
+      vscodeProcess.on('close', (code) => {
+        sessionManager.removeSession(sessionId);
+        vscodeInstances.delete(sessionId);
+        try {
+          tunnelProcess.kill('SIGTERM');
+        } catch {}
       });
 
       setTimeout(() => {
@@ -74,5 +97,42 @@ export async function startVSCode(): Promise<{ url?: string; password?: string; 
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
     return { error: `Failed to set up VSCode: ${errMsg}` };
+  }
+}
+
+export async function stopVSCode(sessionId: string): Promise<{ success: boolean; message: string }> {
+  try {
+    const instance = vscodeInstances.get(sessionId);
+    if (!instance) {
+      sessionManager.removeSession(sessionId);
+      return { success: true, message: 'VSCode session removed from session manager' };
+    }
+
+    try {
+      instance.vscodeProcess.kill('SIGTERM');
+    } catch (e) {
+      console.error(`Failed to kill vscodeProcess:`, e);
+    }
+    try {
+      instance.tunnelProcess.kill('SIGTERM');
+    } catch (e) {
+      console.error(`Failed to kill tunnelProcess:`, e);
+    }
+
+    vscodeInstances.delete(sessionId);
+    sessionManager.removeSession(sessionId);
+
+    // Unregister URL if registered
+    try {
+      const { unregisterUrl } = require('./dashboard-server');
+      unregisterUrl('vscode');
+    } catch (e) {
+      console.error('Failed to unregister URL:', e);
+    }
+
+    return { success: true, message: 'VSCode session stopped successfully' };
+  } catch (error) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    return { success: false, message: `Failed to stop VSCode: ${errMsg}` };
   }
 }

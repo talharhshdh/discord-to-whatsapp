@@ -79,6 +79,10 @@ export function registerUrl(
   urlRegistry[key] = { label, url, username: meta.username, password: meta.password, registeredAt: new Date().toISOString() };
 }
 
+export function unregisterUrl(key: string): void {
+  delete urlRegistry[key];
+}
+
 export function getAllUrls(): Record<string, ToolUrlEntry> {
   return { ...urlRegistry };
 }
@@ -1155,6 +1159,20 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       } else if (session.type === 'docker-container') {
         const result = await stopCustomContainer(sessionId);
         json(res, result);
+      } else if (session.type === 'vscode') {
+        const { stopVSCode } = require('./vscode');
+        const result = await stopVSCode(sessionId);
+        json(res, result);
+      } else if (session.type === 'terminal') {
+        if (sessionId.startsWith('ssh-')) {
+          const { stopSSHTerminal } = require('./ssh-terminal');
+          const result = await stopSSHTerminal(sessionId);
+          json(res, result);
+        } else {
+          const { stopTerminal } = require('./terminal');
+          const result = await stopTerminal(sessionId);
+          json(res, result);
+        }
       } else {
         json(res, { success: false, message: 'Cannot stop this session type yet' });
       }
@@ -1608,43 +1626,36 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 
       console.log(`[Indeed Scrape] Query: "${query}", Location: "${location}", Pages: ${pagesCount}. Active workers: ${activeWorkers.length}`);
 
-      // Distribute pages to workers in parallel
-      const promises = [];
-      for (let i = 0; i < pagesCount; i++) {
-        const worker = activeWorkers[i % activeWorkers.length];
-        const pageIdx = i; // 0-based
-        promises.push((async () => {
-          try {
-            console.log(`[Indeed Scrape] Dispatching Page ${pageIdx + 1} to worker ${worker.workerId} at ${worker.apiUrl}`);
-            const response = await fetch(`${worker.apiUrl}/scrape/indeed`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ query, location, page: pageIdx + 1 }),
-            });
-            if (!response.ok) {
-              const text = await response.text();
-              throw new Error(`Worker returned HTTP ${response.status}: ${text}`);
-            }
-            const data = await response.json() as any[];
-            console.log(`[Indeed Scrape] Worker ${worker.workerId} returned ${data.length} jobs for Page ${pageIdx + 1}`);
-            return data;
-          } catch (e) {
-            console.error(`[Indeed Scrape] Error on Page ${pageIdx + 1} using worker ${worker.workerId}:`, e);
-            return [];
-          }
-        })());
-      }
-
-      const results = await Promise.all(promises);
+      // Scrape pages sequentially — Indeed requires page 1 to be loaded first each
+      // time to establish session cookies, so parallel requests on the same worker
+      // cause pages 2+ to return empty results or hit captcha.
       const allJobs: any[] = [];
       const seen = new Set<string>();
-      for (const list of results) {
-        if (!Array.isArray(list)) continue;
-        for (const job of list) {
-          if (job && job.jk && !seen.has(job.jk)) {
-            seen.add(job.jk);
-            allJobs.push(job);
+      for (let i = 0; i < pagesCount; i++) {
+        const worker = activeWorkers[i % activeWorkers.length];
+        const pageNum = i + 1;
+        try {
+          console.log(`[Indeed Scrape] Fetching Page ${pageNum} via worker ${worker.workerId} at ${worker.apiUrl}`);
+          const response = await fetch(`${worker.apiUrl}/scrape/indeed`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query, location, page: pageNum }),
+          });
+          if (!response.ok) {
+            const text = await response.text();
+            console.error(`[Indeed Scrape] Worker returned HTTP ${response.status} for Page ${pageNum}: ${text}`);
+            continue;
           }
+          const data = await response.json() as any[];
+          console.log(`[Indeed Scrape] Worker ${worker.workerId} returned ${data.length} jobs for Page ${pageNum}`);
+          for (const job of data) {
+            if (job && job.jk && !seen.has(job.jk)) {
+              seen.add(job.jk);
+              allJobs.push(job);
+            }
+          }
+        } catch (e) {
+          console.error(`[Indeed Scrape] Error on Page ${pageNum} using worker ${worker.workerId}:`, e);
         }
       }
 

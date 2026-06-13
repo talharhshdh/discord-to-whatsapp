@@ -175,24 +175,136 @@ async function findCompanyWebsite(company: string): Promise<string | null> {
   return null;
 }
 
-async function scrapeCompanyContacts(websiteUrl: string): Promise<any | null> {
-  try {
-    console.log(`[Jobs Scraper] Scraping contacts for website: ${websiteUrl}`);
-    const scraperApi = `http://127.0.0.1:8081/api/scrape?url=${encodeURIComponent(websiteUrl)}&max-pages=8&workers=4&timeout=25s`;
-    const response = await fetch(scraperApi, { signal: AbortSignal.timeout(30000) });
-    if (response.ok) {
-      const result = await response.json() as any;
-      return {
-        emails: result.emails || [],
-        phones: result.phones || [],
-        socials: result.socials || {},
-        pagesCrawled: result.pagesCrawled || 0
-      };
+const EMAIL_REGEX = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g;
+const PHONE_REGEX = /(?:\+92|0092|0)[\s\-]?[0-9]{2,3}[\s\-]?[0-9]{7}/g;
+const LINKEDIN_REGEX = /https?:\/\/(?:www\.)?linkedin\.com\/in\/[a-zA-Z0-9\-_%]+/gi;
+
+function extractEmailsFromText(text: string): string[] {
+  const matches = text.match(EMAIL_REGEX) || [];
+  // Filter out common false-positives (image extensions, example domains)
+  return [...new Set(matches.filter(e =>
+    !e.match(/\.(png|jpg|jpeg|gif|svg|webp|css|js)$/i) &&
+    !e.includes('example.') &&
+    !e.includes('sentry.') &&
+    !e.includes('@2x') &&
+    !e.endsWith('.min')
+  ))];
+}
+
+function extractPhonesFromText(text: string): string[] {
+  const matches = text.match(PHONE_REGEX) || [];
+  return [...new Set(matches.map(p => p.replace(/[\s\-]/g, '')))];
+}
+
+async function findContactsViaGoogle(company: string): Promise<{ emails: string[]; phones: string[]; socials: { linkedin?: string[] } }> {
+  const result = { emails: [] as string[], phones: [] as string[], socials: { linkedin: [] as string[] } };
+
+  const queries = [
+    `"${company}" contact email Pakistan`,
+    `"${company}" Pakistan HR recruiter site:linkedin.com`,
+  ];
+
+  for (const query of queries) {
+    try {
+      console.log(`[Jobs Scraper] Google contact search: "${query}"`);
+      const res = await searchViaPool(query, 1, false, 'all');
+      if (!res) continue;
+
+      // Extract from organic snippets and titles
+      for (const item of res.organic || []) {
+        const text = `${item.title} ${item.snippet} ${item.link}`;
+        result.emails.push(...extractEmailsFromText(text));
+        result.phones.push(...extractPhonesFromText(text));
+        // Collect LinkedIn profile URLs for HR/recruiter results
+        const linkedins = text.match(LINKEDIN_REGEX) || [];
+        result.socials.linkedin!.push(...linkedins);
+      }
+
+      // Extract from featured snippet
+      if (res.featuredSnippet) {
+        const text = `${res.featuredSnippet.title} ${res.featuredSnippet.snippet}`;
+        result.emails.push(...extractEmailsFromText(text));
+        result.phones.push(...extractPhonesFromText(text));
+      }
+
+      // Local results often have phone numbers
+      for (const local of res.localResults || []) {
+        if (local.phone) result.phones.push(...extractPhonesFromText(local.phone));
+      }
+
+      // Knowledge panel may have phone/website
+      if (res.knowledgePanel?.attributes) {
+        for (const attr of res.knowledgePanel.attributes) {
+          const text = `${attr.label} ${attr.value}`;
+          result.emails.push(...extractEmailsFromText(text));
+          result.phones.push(...extractPhonesFromText(text));
+        }
+      }
+
+      await new Promise(r => setTimeout(r, 1000));
+    } catch (err) {
+      console.error(`[Jobs Scraper] Google contact search error for "${company}":`, err);
     }
-  } catch (err) {
-    console.error(`[Jobs Scraper] Error scraping contacts for ${websiteUrl}:`, err);
   }
-  return null;
+
+  // Deduplicate
+  result.emails = [...new Set(result.emails)];
+  result.phones = [...new Set(result.phones)];
+  result.socials.linkedin = [...new Set(result.socials.linkedin)];
+
+  return result;
+}
+
+async function scrapeCompanyContacts(websiteUrl: string, company?: string): Promise<any | null> {
+  // Run direct website scraper and Google search in parallel
+  const [directResult, googleResult] = await Promise.allSettled([
+    (async () => {
+      try {
+        console.log(`[Jobs Scraper] Direct scraping contacts for: ${websiteUrl}`);
+        const scraperApi = `http://127.0.0.1:8081/api/scrape?url=${encodeURIComponent(websiteUrl)}&max-pages=8&workers=4&timeout=25s`;
+        const response = await fetch(scraperApi, { signal: AbortSignal.timeout(30000) });
+        if (response.ok) {
+          return await response.json() as any;
+        }
+      } catch (err) {
+        console.error(`[Jobs Scraper] Error direct scraping contacts for ${websiteUrl}:`, err);
+      }
+      return null;
+    })(),
+    company ? findContactsViaGoogle(company) : Promise.resolve(null),
+  ]);
+
+  const direct = directResult.status === 'fulfilled' ? directResult.value : null;
+  const google = googleResult.status === 'fulfilled' ? googleResult.value : null;
+
+  const emails = new Set<string>([
+    ...(direct?.emails || []),
+    ...(google?.emails || []),
+  ]);
+  const phones = new Set<string>([
+    ...(direct?.phones || []),
+    ...(google?.phones || []),
+  ]);
+
+  // Merge socials: direct scraper returns an object, google gives linkedin array
+  const socials: Record<string, any> = { ...(direct?.socials || {}) };
+  if (google?.socials?.linkedin?.length) {
+    socials.linkedin = [...new Set([
+      ...(Array.isArray(socials.linkedin) ? socials.linkedin : (socials.linkedin ? [socials.linkedin] : [])),
+      ...google.socials.linkedin,
+    ])];
+  }
+
+  if (emails.size === 0 && phones.size === 0 && Object.keys(socials).length === 0) {
+    return null;
+  }
+
+  return {
+    emails: [...emails],
+    phones: [...phones],
+    socials,
+    pagesCrawled: direct?.pagesCrawled || 0,
+  };
 }
 
 // Main execution function
@@ -298,7 +410,7 @@ export async function runJobsScraper(customKeywords?: string[], customLocation?:
           // Check cache for contacts
           let contacts = companyContactsCache.get(compLower) || null;
           if (!contacts) {
-            contacts = await scrapeCompanyContacts(website);
+            contacts = await scrapeCompanyContacts(website, job.company);
             if (contacts) {
               companyContactsCache.set(compLower, contacts);
             }

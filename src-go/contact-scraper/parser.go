@@ -141,8 +141,8 @@ func ExtractEmails(text string, targetDomain string) []string {
 			continue
 		}
 
-		// 4. Filter out role-based prefixes (like info@) unless it is on the company's own domain
-		if roleBasedPrefixes[prefix] && cleanEmailDom != cleanTarget {
+		// 4. Filter out role-based prefixes (like info@) on public email providers, platform domains, and placeholder domains unless it is our target domain
+		if roleBasedPrefixes[prefix] && (publicEmailProviders[cleanEmailDom] || platformDomains[cleanEmailDom] || placeholderDomains[cleanEmailDom]) && cleanEmailDom != cleanTarget {
 			continue
 		}
 

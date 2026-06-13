@@ -7,6 +7,15 @@ const execAsync = util.promisify(exec);
 
 let nextPort = 8080;
 
+interface TerminalInstance {
+  terminalProcess: any;
+  tunnelProcess: any;
+  port: number;
+  username: string;
+}
+
+const terminalInstances = new Map<string, TerminalInstance>();
+
 export async function startTerminal(): Promise<{ url?: string; username?: string; password?: string; error?: string }> {
   try {
     const sessionId = `terminal-${crypto.randomBytes(4).toString('hex')}`;
@@ -34,6 +43,9 @@ export async function startTerminal(): Promise<{ url?: string; username?: string
     });
 
     const tunnelProcess = spawn('cloudflared', ['tunnel', '--url', `http://localhost:${port}`]);
+
+    // Track the instance processes
+    terminalInstances.set(sessionId, { terminalProcess, tunnelProcess, port, username });
 
     return new Promise((resolve) => {
       let cloudflareUrl = '';
@@ -66,6 +78,18 @@ export async function startTerminal(): Promise<{ url?: string; username?: string
 
       tunnelProcess.on('close', (code) => {
         sessionManager.removeSession(sessionId);
+        terminalInstances.delete(sessionId);
+        try {
+          terminalProcess.kill('SIGTERM');
+        } catch {}
+      });
+
+      terminalProcess.on('close', (code) => {
+        sessionManager.removeSession(sessionId);
+        terminalInstances.delete(sessionId);
+        try {
+          tunnelProcess.kill('SIGTERM');
+        } catch {}
       });
 
       setTimeout(() => {
@@ -78,5 +102,53 @@ export async function startTerminal(): Promise<{ url?: string; username?: string
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
     return { error: `Failed to set up terminal: ${errMsg}` };
+  }
+}
+
+export async function stopTerminal(sessionId: string): Promise<{ success: boolean; message: string }> {
+  try {
+    const instance = terminalInstances.get(sessionId);
+    if (!instance) {
+      sessionManager.removeSession(sessionId);
+      return { success: true, message: 'Terminal session removed from session manager' };
+    }
+
+    try {
+      instance.terminalProcess.kill('SIGTERM');
+    } catch (e) {
+      console.error(`Failed to kill terminalProcess:`, e);
+    }
+    try {
+      instance.tunnelProcess.kill('SIGTERM');
+    } catch (e) {
+      console.error(`Failed to kill tunnelProcess:`, e);
+    }
+
+    // Clean up created user in background
+    try {
+      const { exec } = require('child_process');
+      const util = require('util');
+      const execAsync = util.promisify(exec);
+      await execAsync(`sudo pkill -u ${instance.username}`);
+      await execAsync(`sudo userdel -r ${instance.username}`);
+    } catch (e) {
+      console.error(`Failed to delete user ${instance.username}:`, e);
+    }
+
+    terminalInstances.delete(sessionId);
+    sessionManager.removeSession(sessionId);
+
+    // Unregister URL if registered
+    try {
+      const { unregisterUrl } = require('./dashboard-server');
+      unregisterUrl('terminal');
+    } catch (e) {
+      console.error('Failed to unregister URL:', e);
+    }
+
+    return { success: true, message: 'Terminal session stopped successfully' };
+  } catch (error) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    return { success: false, message: `Failed to stop terminal: ${errMsg}` };
   }
 }

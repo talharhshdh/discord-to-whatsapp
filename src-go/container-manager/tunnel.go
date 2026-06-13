@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -91,6 +92,14 @@ func callCloudflareAPI(method, urlStr string, body []byte, apiToken string) (map
 func provisionTunnel(opts TunnelOptions) (TunnelResult, error) {
 	var res TunnelResult
 
+	// Wait for the container/service port to start listening
+	log.Printf("[Cloudflare Tunnel] Waiting for port %d to start listening...", opts.HostPort)
+	if !waitForPort(opts.HostPort, 15*time.Second) {
+		log.Printf("[Cloudflare Tunnel] Warning: Port %d did not start listening within timeout. Connecting tunnel anyway...", opts.HostPort)
+	} else {
+		log.Printf("[Cloudflare Tunnel] Port %d is active. Setting up tunnel...", opts.HostPort)
+	}
+
 	if opts.DomainMode == "custom" {
 		res.CloudflaredURL = opts.CustomDomain
 		if !strings.HasPrefix(res.CloudflaredURL, "http") {
@@ -139,7 +148,7 @@ func provisionTunnel(opts TunnelOptions) (TunnelResult, error) {
 			ingressBody, _ := json.Marshal(map[string]interface{}{
 				"config": map[string]interface{}{
 					"ingress": []map[string]interface{}{
-						{"hostname": hostnameOnly, "service": fmt.Sprintf("http://localhost:%d", opts.HostPort)},
+						{"hostname": hostnameOnly, "service": fmt.Sprintf("http://127.0.0.1:%d", opts.HostPort)},
 						{"service": "http_status:404"},
 					},
 				},
@@ -209,7 +218,7 @@ func provisionTunnel(opts TunnelOptions) (TunnelResult, error) {
 				ingressBody, _ := json.Marshal(map[string]interface{}{
 					"config": map[string]interface{}{
 						"ingress": []map[string]interface{}{
-							{"hostname": hostnameOnly, "service": fmt.Sprintf("http://localhost:%d", opts.HostPort)},
+							{"hostname": hostnameOnly, "service": fmt.Sprintf("http://127.0.0.1:%d", opts.HostPort)},
 							{"service": "http_status:404"},
 						},
 					},
@@ -235,7 +244,7 @@ func provisionTunnel(opts TunnelOptions) (TunnelResult, error) {
 	}
 
 	if opts.DomainMode == "quick" {
-		tCmd := exec.Command("cloudflared", "tunnel", "--url", fmt.Sprintf("http://localhost:%d", opts.HostPort))
+		tCmd := exec.Command("cloudflared", "tunnel", "--url", fmt.Sprintf("http://127.0.0.1:%d", opts.HostPort))
 		stderr, err := tCmd.StderrPipe()
 		if err != nil {
 			return res, fmt.Errorf("failed to open stderr pipe for cloudflared: %w", err)
@@ -253,18 +262,23 @@ func provisionTunnel(opts TunnelOptions) (TunnelResult, error) {
 			buf := make([]byte, 1024)
 			var accumulated string
 			re := regexp.MustCompile(`https://[-0-9a-z]*\.trycloudflare\.com`)
+			urlSent := false
 			
 			for {
 				n, err := stderr.Read(buf)
 				if n > 0 {
-					accumulated += string(buf[:n])
-					if match := re.FindString(accumulated); match != "" {
-						urlChan <- match
-						return
+					if !urlSent {
+						accumulated += string(buf[:n])
+						if match := re.FindString(accumulated); match != "" {
+							urlChan <- match
+							urlSent = true
+						}
 					}
 				}
 				if err != nil {
-					errChan <- err
+					if !urlSent {
+						errChan <- err
+					}
 					return
 				}
 			}
@@ -351,4 +365,17 @@ func cleanupCloudflareResources(meta SessionMetadata) {
 			}
 		}
 	}
+}
+
+func waitForPort(port int, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 200*time.Millisecond)
+		if err == nil {
+			conn.Close()
+			return true
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return false
 }
