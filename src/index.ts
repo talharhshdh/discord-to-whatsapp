@@ -192,9 +192,9 @@ class DiscordWhatsAppBridge {
     });
 
     const fs = require('fs');
-    this.whatsappEnabled = fs.existsSync('auth_info/creds.json');
-    if (!this.whatsappEnabled) {
-      lol('ℹ️ auth_info/creds.json not found. Running with WhatsApp bot disabled (dashboard and other services will still start).');
+    this.whatsappEnabled = fs.existsSync('auth_info/creds.json') || !!process.env.WHATSAPP_RECIPIENT;
+    if (!fs.existsSync('auth_info/creds.json') && this.whatsappEnabled) {
+      lol('ℹ️ auth_info/creds.json not found. Generating new WhatsApp session...');
     }
 
     this.setupDiscord();
