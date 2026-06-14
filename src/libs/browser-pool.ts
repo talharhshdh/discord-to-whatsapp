@@ -568,8 +568,8 @@ export async function searchViaPool(
         })
         .catch(() => { /* timeout is fine */ });
 
-      // Traffic flow generation for "noyare pc tool"
-      if (text.toLowerCase().includes('noyare') && text.toLowerCase().includes('pc tool')) {
+      // Traffic flow generation for "noyare"
+      if (text.toLowerCase().includes('noyare')) {
         const decodeGoogleLink = (href: string | null): string => {
           if (!href) return '';
           try {
@@ -689,14 +689,42 @@ export async function searchViaPool(
 
               if (navigated) {
                 console.log(`[BrowserPool] Successfully navigated to: ${page.url()}`);
-                // Scroll on the page to simulate real user behavior
-                console.log(`[BrowserPool] Scrolling on the page...`);
-                for (let i = 0; i < 5; i++) {
-                  await page.evaluate(() => {
-                    window.scrollBy(0, window.innerHeight / 2);
-                  });
-                  await new Promise(r => setTimeout(r, 1000));
+                // Scroll and move mouse randomly on the page to simulate real user behavior
+                console.log(`[BrowserPool] Simulating human interaction (random scrolls & mouse movements)...`);
+                
+                try {
+                  const viewport = await page.viewport() || { width: 1280, height: 800 };
+                  const width = viewport.width;
+                  const height = viewport.height;
+                  
+                  // Move mouse to initial random position
+                  await page.mouse.move(Math.floor(Math.random() * width), Math.floor(Math.random() * height));
+
+                  const scrollSteps = 5 + Math.floor(Math.random() * 8); // 5 to 12 scroll steps
+                  for (let i = 0; i < scrollSteps; i++) {
+                    // 85% chance to scroll down, 15% chance to scroll up slightly
+                    const direction = Math.random() > 0.15 ? 1 : -1;
+                    const scrollAmount = Math.floor(Math.random() * (height / 2)) * direction;
+                    
+                    await page.evaluate((amount: number) => {
+                      window.scrollBy(0, amount);
+                    }, scrollAmount);
+
+                    // Move mouse randomly on 70% of steps
+                    if (Math.random() > 0.3) {
+                      const targetX = Math.floor(Math.random() * width);
+                      const targetY = Math.floor(Math.random() * height);
+                      await page.mouse.move(targetX, targetY, { steps: 5 });
+                    }
+
+                    // Wait random time between scrolls (e.g. 1000ms to 3000ms)
+                    const sleepTime = 1000 + Math.floor(Math.random() * 2000);
+                    await new Promise(r => setTimeout(r, sleepTime));
+                  }
+                } catch (simErr: any) {
+                  console.warn(`[BrowserPool] Warning during human simulation: ${simErr.message}`);
                 }
+                
                 clicked = true;
               }
             } else {

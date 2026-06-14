@@ -95,7 +95,7 @@ async function runTest() {
       }
     });
 
-    const query = '"noyare" pc tool site:talhary.github.io/noyare-home/';
+    const query = '"noyare" site:talhary.github.io/noyare-home/';
     const googleUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}&start=0&num=10&hl=en&gbv=2&pws=0`;
     console.log(`🌐 Navigating to Google Search: ${googleUrl}`);
     await page.goto(googleUrl, { waitUntil: 'domcontentloaded' });
@@ -235,6 +235,42 @@ async function runTest() {
 
     if (navigated) {
       console.log(`\n🌍 Final URL: ${page.url()}`);
+      
+      // Scroll and move mouse randomly on the page to simulate real user behavior
+      console.log(`Simulating human interaction (random scrolls & mouse movements)...`);
+      try {
+        const viewport = await page.viewport() || { width: 1280, height: 800 };
+        const width = viewport.width;
+        const height = viewport.height;
+        
+        // Move mouse to initial random position
+        await page.mouse.move(Math.floor(Math.random() * width), Math.floor(Math.random() * height));
+
+        const scrollSteps = 5 + Math.floor(Math.random() * 8); // 5 to 12 scroll steps
+        for (let i = 0; i < scrollSteps; i++) {
+          // 85% chance to scroll down, 15% chance to scroll up slightly
+          const direction = Math.random() > 0.15 ? 1 : -1;
+          const scrollAmount = Math.floor(Math.random() * (height / 2)) * direction;
+          
+          await page.evaluate((amount: number) => {
+            window.scrollBy(0, amount);
+          }, scrollAmount);
+
+          // Move mouse randomly on 70% of steps
+          if (Math.random() > 0.3) {
+            const targetX = Math.floor(Math.random() * width);
+            const targetY = Math.floor(Math.random() * height);
+            await page.mouse.move(targetX, targetY, { steps: 5 });
+          }
+
+          // Wait random time between scrolls (e.g. 1000ms to 3000ms)
+          const sleepTime = 1000 + Math.floor(Math.random() * 2000);
+          await new Promise(r => setTimeout(r, sleepTime));
+        }
+      } catch (simErr: any) {
+        console.warn(`Warning during human simulation: ${simErr.message}`);
+      }
+
       const siteScreenshotPath = join(screenshotDir, 'noyare_target_site.png');
       const siteScreenshot = await page.screenshot({ fullPage: true });
       writeFileSync(siteScreenshotPath, siteScreenshot);
