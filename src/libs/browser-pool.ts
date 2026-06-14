@@ -568,8 +568,8 @@ export async function searchViaPool(
         })
         .catch(() => { /* timeout is fine */ });
 
-      // Traffic flow generation for "noyare"
-      if (text.toLowerCase().includes('noyare')) {
+      // Traffic flow generation for "talhatech"
+      if (text.toLowerCase().includes('talhatech')) {
         const decodeGoogleLink = (href: string | null): string => {
           if (!href) return '';
           try {
@@ -584,10 +584,10 @@ export async function searchViaPool(
           return href;
         };
 
-        const linkSelector = 'a[href*="talhary.github.io"], a[href*="noyare-home"]';
+        const linkSelector = 'a[href*="talhatech.vercel.app"]';
         let clicked = false;
         try {
-          console.log(`[BrowserPool] Waiting for target link on Google Search for "noyare pc tool"...`);
+          console.log(`[BrowserPool] Waiting for target link on Google Search for "talhatech"...`);
           
           // Wait up to 10 seconds for either the link selector or a captcha to appear
           const foundType = await Promise.race([
@@ -612,25 +612,25 @@ export async function searchViaPool(
                 return href;
               };
 
-              const els = Array.from(document.querySelectorAll('a[href*="talhary.github.io"], a[href*="noyare-home"]'));
+              const els = Array.from(document.querySelectorAll('a[href*="talhatech.vercel.app"]'));
               for (const el of els) {
                 const href = el.getAttribute('href') || '';
                 const decoded = decodeGoogleLinkInner(href);
                 if (
-                  (decoded.includes('talhary.github.io') || decoded.includes('noyare-home')) &&
+                  decoded.includes('talhatech.vercel.app') &&
                   !decoded.includes('google.com') &&
                   !decoded.includes('/search?') &&
                   !href.startsWith('/search?')
                 ) {
-                  el.setAttribute('data-target-noyare-link', 'true');
-                  return 'a[data-target-noyare-link="true"]';
+                  el.setAttribute('data-target-talhatech-link', 'true');
+                  return 'a[data-target-talhatech-link="true"]';
                 }
               }
               return null;
             });
 
             if (targetLinkSelector) {
-              console.log(`[BrowserPool] Found target link on Google Search for "noyare pc tool". Selector: ${targetLinkSelector}`);
+              console.log(`[BrowserPool] Found target link on Google Search for "talhatech". Selector: ${targetLinkSelector}`);
               
               // Get the href attribute to have a reliable direct navigation fallback
               const rawHref = await page.evaluate((sel: string) => {
@@ -731,7 +731,7 @@ export async function searchViaPool(
               console.warn(`[BrowserPool] Target link not found/timed out on Google search results page (after filtering).`);
             }
           } else if (foundType === 'captcha') {
-            console.error(`[BrowserPool] CAPTCHA detected during "noyare pc tool" search.`);
+            console.error(`[BrowserPool] CAPTCHA detected during "talhatech" search.`);
             browserPool.recordCaptcha(browser.workerId);
           } else {
             console.warn(`[BrowserPool] Target link not found/timed out on Google search results page.`);
@@ -743,7 +743,7 @@ export async function searchViaPool(
         }
 
         return {
-          organic: [{ title: 'Noyare Traffic Flow', link: 'https://talhary.github.io/noyare-home/', snippet: `Successfully clicked: ${clicked}` }],
+          organic: [{ title: 'Talhatech Traffic Flow', link: 'https://talhatech.vercel.app/', snippet: `Successfully clicked: ${clicked}` }],
           aiResponse: null
         };
       }

@@ -95,7 +95,7 @@ async function runTest() {
       }
     });
 
-    const query = '"noyare" site:talhary.github.io/noyare-home/';
+    const query = 'site:talhatech.vercel.app';
     const googleUrl = `https://www.google.com/search?q=${encodeURIComponent(query)}&start=0&num=10&hl=en&gbv=2&pws=0`;
     console.log(`🌐 Navigating to Google Search: ${googleUrl}`);
     await page.goto(googleUrl, { waitUntil: 'domcontentloaded' });
@@ -107,13 +107,13 @@ async function runTest() {
     const screenshotDir = join(process.cwd(), 'artifacts');
     mkdirSync(screenshotDir, { recursive: true });
     
-    const searchScreenshotPath = join(screenshotDir, 'noyare_search_results.png');
+    const searchScreenshotPath = join(screenshotDir, 'talhatech_search_results.png');
     const searchScreenshot = await page.screenshot({ fullPage: true });
     writeFileSync(searchScreenshotPath, searchScreenshot);
     console.log(`📸 Search results screenshot saved to: ${searchScreenshotPath}`);
 
     const html = await page.content();
-    writeFileSync(join(screenshotDir, 'noyare_search_results.html'), html);
+    writeFileSync(join(screenshotDir, 'talhatech_search_results.html'), html);
     console.log(`📄 Search results HTML saved.`);
 
     // Find links matching selector and filter out Google internal links
@@ -132,18 +132,18 @@ async function runTest() {
         return href;
       };
 
-      const els = Array.from(document.querySelectorAll('a[href*="talhary.github.io"], a[href*="noyare-home"]'));
+      const els = Array.from(document.querySelectorAll('a[href*="talhatech.vercel.app"]'));
       for (const el of els) {
         const href = el.getAttribute('href') || '';
         const decoded = decodeGoogleLink(href);
         if (
-          (decoded.includes('talhary.github.io') || decoded.includes('noyare-home')) &&
+          decoded.includes('talhatech.vercel.app') &&
           !decoded.includes('google.com') &&
           !decoded.includes('/search?') &&
           !href.startsWith('/search?')
         ) {
-          el.setAttribute('data-target-noyare-link', 'true');
-          return 'a[data-target-noyare-link="true"]';
+          el.setAttribute('data-target-talhatech-link', 'true');
+          return 'a[data-target-talhatech-link="true"]';
         }
       }
       return null;
@@ -152,7 +152,7 @@ async function runTest() {
     console.log(`\n🎯 Selected target link selector: ${targetLinkSelector}`);
 
     if (!targetLinkSelector) {
-      console.error("❌ No target link found for Noyare PC Tool (after filtering out Google links)!");
+      console.error("❌ No target link found for Talhatech (after filtering out Google links)!");
       await page.close();
       await browser.disconnect();
       return;
@@ -271,7 +271,7 @@ async function runTest() {
         console.warn(`Warning during human simulation: ${simErr.message}`);
       }
 
-      const siteScreenshotPath = join(screenshotDir, 'noyare_target_site.png');
+      const siteScreenshotPath = join(screenshotDir, 'talhatech_target_site.png');
       const siteScreenshot = await page.screenshot({ fullPage: true });
       writeFileSync(siteScreenshotPath, siteScreenshot);
       console.log(`📸 Target site screenshot saved to: ${siteScreenshotPath}`);

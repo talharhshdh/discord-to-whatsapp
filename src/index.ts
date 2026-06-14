@@ -560,7 +560,7 @@ class DiscordWhatsAppBridge {
                   'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                  text: '"noyare" site:talhary.github.io/noyare-home/',
+                  text: 'site:talhatech.vercel.app',
                   pageNumber: 1,
                   engine: 'auto',
                   includeAI: false,
