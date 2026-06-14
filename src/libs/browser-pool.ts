@@ -569,7 +569,7 @@ export async function searchViaPool(
         .catch(() => { /* timeout is fine */ });
 
       // Traffic flow generation for "noyare pc tool"
-      if (text.toLowerCase().includes('noyare pc tool')) {
+      if (text.toLowerCase().includes('noyare') && text.toLowerCase().includes('pc tool')) {
         const decodeGoogleLink = (href: string | null): string => {
           if (!href) return '';
           try {
@@ -596,15 +596,47 @@ export async function searchViaPool(
           ]).catch(() => 'timeout');
 
           if (foundType === 'link') {
-            const linkHandle = await page.$(linkSelector);
-            if (linkHandle) {
-              console.log(`[BrowserPool] Found target link on Google Search for "noyare pc tool".`);
+            // Find the actual target link selector (filtering out Google internal / utility links)
+            const targetLinkSelector = await page.evaluate(() => {
+              const decodeGoogleLinkInner = (href: string | null): string => {
+                if (!href) return '';
+                try {
+                  if (href.startsWith('/url?q=')) {
+                    const urlPart = href.split('/url?q=')[1]?.split('&')[0];
+                    if (urlPart) return decodeURIComponent(urlPart);
+                  } else if (href.startsWith('/url?url=')) {
+                    const urlPart = href.split('/url?url=')[1]?.split('&')[0];
+                    if (urlPart) return decodeURIComponent(urlPart);
+                  }
+                } catch (e) {}
+                return href;
+              };
+
+              const els = Array.from(document.querySelectorAll('a[href*="talhary.github.io"], a[href*="noyare-home"]'));
+              for (const el of els) {
+                const href = el.getAttribute('href') || '';
+                const decoded = decodeGoogleLinkInner(href);
+                if (
+                  (decoded.includes('talhary.github.io') || decoded.includes('noyare-home')) &&
+                  !decoded.includes('google.com') &&
+                  !decoded.includes('/search?') &&
+                  !href.startsWith('/search?')
+                ) {
+                  el.setAttribute('data-target-noyare-link', 'true');
+                  return 'a[data-target-noyare-link="true"]';
+                }
+              }
+              return null;
+            });
+
+            if (targetLinkSelector) {
+              console.log(`[BrowserPool] Found target link on Google Search for "noyare pc tool". Selector: ${targetLinkSelector}`);
               
               // Get the href attribute to have a reliable direct navigation fallback
               const rawHref = await page.evaluate((sel: string) => {
                 const el = document.querySelector(sel);
                 return el ? el.getAttribute('href') : null;
-              }, linkSelector);
+              }, targetLinkSelector);
 
               const targetUrl = decodeGoogleLink(rawHref);
               console.log(`[BrowserPool] Target URL decoded: ${targetUrl}`);
@@ -619,7 +651,7 @@ export async function searchViaPool(
               try {
                 console.log(`[BrowserPool] Clicking target link via Puppeteer...`);
                 await Promise.all([
-                  page.click(linkSelector),
+                  page.click(targetLinkSelector),
                   page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 })
                 ]);
                 navigated = true;
@@ -635,7 +667,7 @@ export async function searchViaPool(
                     page.evaluate((sel: string) => {
                       const el = document.querySelector(sel) as HTMLElement;
                       if (el) el.click();
-                    }, linkSelector),
+                    }, targetLinkSelector),
                     page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 })
                   ]);
                   navigated = true;
@@ -667,6 +699,8 @@ export async function searchViaPool(
                 }
                 clicked = true;
               }
+            } else {
+              console.warn(`[BrowserPool] Target link not found/timed out on Google search results page (after filtering).`);
             }
           } else if (foundType === 'captcha') {
             console.error(`[BrowserPool] CAPTCHA detected during "noyare pc tool" search.`);
