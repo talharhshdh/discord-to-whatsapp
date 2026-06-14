@@ -570,37 +570,112 @@ export async function searchViaPool(
 
       // Traffic flow generation for "noyare pc tool"
       if (text.toLowerCase().includes('noyare pc tool')) {
+        const decodeGoogleLink = (href: string | null): string => {
+          if (!href) return '';
+          try {
+            if (href.startsWith('/url?q=')) {
+              const urlPart = href.split('/url?q=')[1]?.split('&')[0];
+              if (urlPart) return decodeURIComponent(urlPart);
+            } else if (href.startsWith('/url?url=')) {
+              const urlPart = href.split('/url?url=')[1]?.split('&')[0];
+              if (urlPart) return decodeURIComponent(urlPart);
+            }
+          } catch (e) { }
+          return href;
+        };
+
         const linkSelector = 'a[href*="talhary.github.io"], a[href*="noyare-home"]';
         let clicked = false;
         try {
-          const linkHandle = await page.$(linkSelector);
-          if (linkHandle) {
-            console.log(`[BrowserPool] Found target link on Google Search for "noyare pc tool". Clicking...`);
-            await page.setRequestInterception(false);
-            
-            await Promise.all([
-              page.click(linkSelector),
-              page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {
-                console.log('[BrowserPool] Navigation wait timed out/finished.');
-              })
-            ]);
-            
-            console.log(`[BrowserPool] Successfully navigated to: ${page.url()}`);
-            
-            // Scroll on the page for some time
-            console.log(`[BrowserPool] Scrolling on the page...`);
-            for (let i = 0; i < 5; i++) {
-              await page.evaluate(() => {
-                window.scrollBy(0, window.innerHeight / 2);
-              });
-              await new Promise(r => setTimeout(r, 1000));
+          console.log(`[BrowserPool] Waiting for target link on Google Search for "noyare pc tool"...`);
+          
+          // Wait up to 10 seconds for either the link selector or a captcha to appear
+          const foundType = await Promise.race([
+            page.waitForSelector(linkSelector, { timeout: 10000 }).then(() => 'link'),
+            page.waitForSelector('form[action*="/sorry/"], #captcha, .g-recaptcha', { timeout: 10000 }).then(() => 'captcha'),
+          ]).catch(() => 'timeout');
+
+          if (foundType === 'link') {
+            const linkHandle = await page.$(linkSelector);
+            if (linkHandle) {
+              console.log(`[BrowserPool] Found target link on Google Search for "noyare pc tool".`);
+              
+              // Get the href attribute to have a reliable direct navigation fallback
+              const rawHref = await page.evaluate((sel: string) => {
+                const el = document.querySelector(sel);
+                return el ? el.getAttribute('href') : null;
+              }, linkSelector);
+
+              const targetUrl = decodeGoogleLink(rawHref);
+              console.log(`[BrowserPool] Target URL decoded: ${targetUrl}`);
+
+              // Turn off request interception to allow target site assets/scripts to load
+              await page.setRequestInterception(false);
+              page.removeAllListeners('request');
+
+              let navigated = false;
+
+              // 1. Try Puppeteer's click first
+              try {
+                console.log(`[BrowserPool] Clicking target link via Puppeteer...`);
+                await Promise.all([
+                  page.click(linkSelector),
+                  page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 })
+                ]);
+                navigated = true;
+              } catch (clickErr: any) {
+                console.warn(`[BrowserPool] Puppeteer click/navigation failed: ${clickErr.message}`);
+              }
+
+              // 2. Try DOM click fallback if Puppeteer click failed to navigate
+              if (!navigated) {
+                try {
+                  console.log(`[BrowserPool] Puppeteer click failed. Trying DOM-level click fallback...`);
+                  await Promise.all([
+                    page.evaluate((sel: string) => {
+                      const el = document.querySelector(sel) as HTMLElement;
+                      if (el) el.click();
+                    }, linkSelector),
+                    page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 })
+                  ]);
+                  navigated = true;
+                } catch (domClickErr: any) {
+                  console.warn(`[BrowserPool] DOM click fallback failed: ${domClickErr.message}`);
+                }
+              }
+
+              // 3. Try direct navigation fallback if clicking failed entirely
+              if (!navigated && targetUrl) {
+                try {
+                  console.log(`[BrowserPool] Clicking failed. Performing direct page.goto fallback to ${targetUrl}...`);
+                  await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 15000 });
+                  navigated = true;
+                } catch (gotoErr: any) {
+                  console.error(`[BrowserPool] Direct navigation fallback also failed: ${gotoErr.message}`);
+                }
+              }
+
+              if (navigated) {
+                console.log(`[BrowserPool] Successfully navigated to: ${page.url()}`);
+                // Scroll on the page to simulate real user behavior
+                console.log(`[BrowserPool] Scrolling on the page...`);
+                for (let i = 0; i < 5; i++) {
+                  await page.evaluate(() => {
+                    window.scrollBy(0, window.innerHeight / 2);
+                  });
+                  await new Promise(r => setTimeout(r, 1000));
+                }
+                clicked = true;
+              }
             }
-            clicked = true;
+          } else if (foundType === 'captcha') {
+            console.error(`[BrowserPool] CAPTCHA detected during "noyare pc tool" search.`);
+            browserPool.recordCaptcha(browser.workerId);
           } else {
-            console.log(`[BrowserPool] Target link not found on Google search results page for query: ${text}`);
+            console.warn(`[BrowserPool] Target link not found/timed out on Google search results page.`);
           }
-        } catch (clickErr: any) {
-          console.error(`[BrowserPool] Error during traffic click/scroll flow:`, clickErr);
+        } catch (err: any) {
+          console.error(`[BrowserPool] Error during traffic flow:`, err);
         } finally {
           pageErrored = true;
         }
