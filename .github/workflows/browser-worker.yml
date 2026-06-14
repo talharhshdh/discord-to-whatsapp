@@ -58,12 +58,16 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Create .env from GitHub Secret
+      - name: Prepare environment
         env:
           ENV_FILE: ${{ secrets.ENV_FILE }}
         run: |
           printf '%s' "$ENV_FILE" > .env
-          echo "✅ .env file created"
+          source .env
+          echo "::add-mask::$DASHBOARD_DOMAIN"
+          echo "::add-mask::$R2_ACCOUNT_ID"
+          echo "::add-mask::$R2_BUCKET_NAME"
+          echo "✅ environment prepared"
 
       - name: Install Chrome
         uses: browser-actions/setup-chrome@v1
@@ -76,7 +80,7 @@ jobs:
           sudo dpkg -i cloudflared.deb
           echo "✅ cloudflared installed"
 
-      - name: Install Xvfb and GUI dependencies
+      - name: Install GUI dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y xvfb python3-tk scrot
@@ -101,8 +105,24 @@ jobs:
           export MAX_RUNTIME=18000
           export HEARTBEAT_INTERVAL=60
 
-          echo "🏷️ Worker ID: ${WORKER_ID}"
-          echo "🌍 Dashboard: https://${DASHBOARD_DOMAIN}"
-
           chmod +x src/scripts/browser-worker.sh
-          bash src/scripts/browser-worker.sh
+          bash src/scripts/browser-worker.sh > worker.log 2>&1
+
+      - name: Setup AWS CLI for Cloudflare R2
+        if: always()
+        run: |
+          if [ -f ".env" ]; then
+            source .env
+            aws configure set default.s3.signature_version s3v4
+            aws configure set aws_access_key_id ${R2_ACCESS_KEY_ID}
+            aws configure set aws_secret_access_key ${R2_SECRET_ACCESS_KEY}
+            aws configure set default.region auto
+          fi
+
+      - name: Save Logs to Cloudflare R2
+        if: always()
+        run: |
+          if [ -f "worker.log" ] && [ -f ".env" ]; then
+            source .env
+            aws s3 cp worker.log s3://${R2_BUCKET_NAME}/logs/worker-${{ matrix.worker }}-${{ github.run_id }}.log --endpoint-url https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com || echo "Failed to upload logs"
+          fi

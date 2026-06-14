@@ -10,6 +10,9 @@ dist/
 # WhatsApp authentication (keep only creds.json)
 auth_info/*
 
+# YouTube cookies
+browser_data/youtube-cookies.txt
+
 # Logs
 *.log
 src/libs/test-google-scripts.js
@@ -24,3 +27,6 @@ npm-debug.log*
 .idea/
 *.swp
 *.swo
+
+# Backups
+backup.zip

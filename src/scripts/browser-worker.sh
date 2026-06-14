@@ -167,7 +167,6 @@ for i in $(seq 1 30); do
   fi
   sleep 1
 done
-echo "FastAPI Tunnel URL: $TUNNEL_API_URL"
 
 # Pre-warm: open google.com so DNS + TCP are warm for the first real request
 echo "🔥 Pre-warming browser on google.com..."

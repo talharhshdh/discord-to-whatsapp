@@ -1176,6 +1176,17 @@ export async function searchViaPool(
       
       workerCdpFailures.delete(browser.workerId);
 
+      // Offload clearing cookies in the background so it doesn't block returning the search results
+      if (page) {
+        (async () => {
+          try {
+            const client = await page.target().createCDPSession();
+            await client.send('Network.clearBrowserCookies');
+            await client.detach();
+          } catch { /* ignore */ }
+        })();
+      }
+
       let cleanAiResponse: string | null = null;
       if (results.aiResponse) {
         const $ = cheerio.load(results.aiResponse);

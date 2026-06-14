@@ -32,6 +32,7 @@ import {
 } from './libs/movie-search';
 import { downloadMovie, getMovieStreamUrls } from './libs/movie-downloader';
 import { startDashboard, registerUrl, getAllUrls } from './libs/dashboard-server';
+import { browserPool } from './libs/browser-pool';
 
 dotenv.config();
 
@@ -59,7 +60,7 @@ console.error = (...args: unknown[]) => {
 // ---------------------------------------------------------------------------
 // YouTube interactive session state
 // ---------------------------------------------------------------------------
-const lol = (...db: any) => { }
+const lol = (...db: any) => { console.log(...db); }
 /** Stages of the YouTube interactive flow */
 type YtSessionStage =
   | 'search_results'   // user was shown search results; waiting for them to pick one
@@ -134,6 +135,7 @@ class DiscordWhatsAppBridge {
   private discordClient: DiscordClient;
   private whatsappReady = false;
   private discordReady = false;
+  private discordEnabled = false;
   private isConnecting = false;
   private testMessageSent = false;
   private botSentMessageIds = new Set<string>();
@@ -188,11 +190,11 @@ class DiscordWhatsAppBridge {
       ]
     });
 
-    // this.setupDiscord();
-    // this.setupWhatsApp();
+    this.setupDiscord();
+    this.setupWhatsApp();
 
     // Start dashboard + browser directly without WhatsApp/Discord
-    this.startDashboardAndNotify();
+    // this.startDashboardAndNotify();
   }
 
   private async setupWhatsApp(): Promise<void> {
@@ -378,6 +380,15 @@ class DiscordWhatsAppBridge {
   }
 
   private setupDiscord(): void {
+    const token = process.env.DISCORD_BOT_TOKEN;
+    if (!token) {
+      lol('ℹ️ DISCORD_BOT_TOKEN not found in .env file. Running in WhatsApp-only mode.');
+      this.discordEnabled = false;
+      return;
+    }
+
+    this.discordEnabled = true;
+
     this.discordClient.on('ready', () => {
       lol(`✅ Discord bot logged in as ${this.discordClient.user?.tag}`);
       lol(`📊 Bot is in ${this.discordClient.guilds.cache.size} server(s)`);
@@ -413,18 +424,13 @@ class DiscordWhatsAppBridge {
       await this.handleDiscordMessage(message);
     });
 
-    const token = process.env.DISCORD_BOT_TOKEN;
-    if (!token) {
-      console.error('❌ DISCORD_BOT_TOKEN not found in .env file');
-      process.exit(1);
-    }
-
     this.discordClient.login(token);
   }
 
   private async checkBothReady(): Promise<void> {
-    if (this.whatsappReady && this.discordReady && !this.testMessageSent) {
-      lol('🚀 Bridge is fully operational!');
+    const isDiscordReady = !this.discordEnabled || this.discordReady;
+    if (this.whatsappReady && isDiscordReady && !this.testMessageSent) {
+      lol('🚀 WhatsApp bot is fully operational!');
       this.testMessageSent = true;
       await this.startDashboardAndNotify();
     }
@@ -526,26 +532,40 @@ class DiscordWhatsAppBridge {
 
     const performSearch = async () => {
       try {
-        // lol(`🔍 Keeping Google Search API warm: hitting https://${domain}/api/browser/search`);
-        const response = await fetch(`https://${domain}/api/browser/search`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            text: 'noyare pc tool',
-            pageNumber: 1,
-            engine: 'auto',
-            includeAI: false,
-            category: 'all'
-          })
-        });
-        
-        if (response.ok) {
-          lol(`🔍 Google Search API keep-alive response: ${response.status} OK`);
-        } else {
-          console.warn(`⚠️ Google Search API keep-alive failed with status: ${response.status}`);
+        const activeCount = Math.max(1, browserPool.getActive().length);
+        const totalSearches = activeCount;
+
+        lol(`🔍 Keeper: performing ${totalSearches} keep-alive searches (${activeCount} active browsers)`);
+
+        const promises = [];
+        for (let i = 0; i < totalSearches; i++) {
+          promises.push((async () => {
+            try {
+              const response = await fetch(`https://${domain}/api/browser/search`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                  text: 'noyare pc tool',
+                  pageNumber: 1,
+                  engine: 'auto',
+                  includeAI: false,
+                  category: 'all'
+                })
+              });
+              
+              if (response.ok) {
+                lol(`🔍 Google Search API keep-alive response: ${response.status} OK`);
+              } else {
+                console.warn(`⚠️ Google Search API keep-alive failed with status: ${response.status}`);
+              }
+            } catch (e) {
+              console.error('❌ Error in keeper search:', e);
+            }
+          })());
         }
+        await Promise.all(promises);
       } catch (e) {
         console.error('❌ Error keeping Google Search API warm:', e);
       }
@@ -1801,7 +1821,9 @@ class DiscordWhatsAppBridge {
     if (this.whatsappSocket) {
       this.whatsappSocket.end(undefined);
     }
-    await this.discordClient.destroy();
+    if (this.discordEnabled) {
+      await this.discordClient.destroy();
+    }
   }
 }
 

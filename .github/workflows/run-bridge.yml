@@ -20,31 +20,35 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Prepare Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: "npm"
 
-      - name: Create auth_info directory
+      - name: Prepare runtime folders
         run: mkdir -p auth_info browser_data
 
-      - name: Restore creds.json from GitHub Secret
+      - name: Prepare credentials
         env:
           CREDS_JSON: ${{ secrets.CREDS_JSON }}
         run: |
           printf '%s' "$CREDS_JSON" > auth_info/creds.json
-          echo "✅ creds.json restored"
+          echo "✅ credentials prepared"
 
-      - name: Create .env from GitHub Secret
+      - name: Prepare environment
         env:
           ENV_FILE: ${{ secrets.ENV_FILE }}
         run: |
           printf '%s' "$ENV_FILE" > .env.secret
           cp .env.secret .env
-          echo "✅ .env file created"
+          source .env.secret
+          echo "::add-mask::$DASHBOARD_DOMAIN"
+          echo "::add-mask::$R2_ACCOUNT_ID"
+          echo "::add-mask::$R2_BUCKET_NAME"
+          echo "✅ environment prepared"
 
-      - name: Setup AWS CLI for Cloudflare R2
+      - name: Prepare storage connection
         run: |
           source .env.secret
           aws configure set default.s3.signature_version s3v4
@@ -52,7 +56,7 @@ jobs:
           aws configure set aws_secret_access_key ${R2_SECRET_ACCESS_KEY}
           aws configure set default.region auto
 
-      - name: Load State from Cloudflare R2
+      - name: Sync storage state
         run: |
           source .env.secret
           echo "📥 Downloading latest state..."
@@ -62,7 +66,7 @@ jobs:
             tar -xzf state.tar.gz -C $(pwd) --overwrite || echo "Failed to extract state"
           fi
 
-      - name: Merge secrets into .env
+      - name: Consolidate configuration
         run: |
           if [ -f ".env.secret" ]; then
             echo "🔄 Merging GitHub secrets into .env..."
@@ -109,138 +113,80 @@ jobs:
         run: |
           npm run dashboard:install
           npm run dashboard:build
-          echo "✅ Dashboard built (served at same origin as API)"
+          echo "✅ Dashboard built"
+
       - name: Install System Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg libsox-dev
-          # [DISABLED] VNC/noVNC stack — uncomment to re-enable
-          # sudo apt-get install -y x11vnc xvfb novnc websockify fluxbox
 
       - name: Start VNC and Tunnel
         run: |
-          # [DISABLED] VNC/noVNC stack — uncomment to re-enable
-          # Xvfb :99 -screen 0 1280x800x24 &
-          # sleep 2
-          # fluxbox -display :99 &
-          # x11vnc -display :99 -nopw -bg -xkb -forever
-          # websockify --web=/usr/share/novnc/ 6080 localhost:5900 &
-
           curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
           sudo dpkg -i cloudflared.deb
-          # Tunnel is spawned by the application code instead of bash
-      - name: Setup Go
+
+      - name: Prepare Go environment
         uses: actions/setup-go@v5
         with:
           go-version-file: 'src-go/container-manager/go.mod'
           cache-dependency-path: src-go/container-manager/go.sum
 
-      - name: Build and Start Go Container Manager
+      - name: Start session manager
         run: |
-          echo "🔨 Building Go container-manager..."
           cd src-go/container-manager
           go build -o ../../container-manager .
           cd ../..
-          echo "🚀 Starting Go container-manager..."
           chmod +x container-manager
           ./container-manager > container-manager.log 2>&1 &
 
-          echo "⏳ Waiting for Go container-manager to start..."
           SUCCESS=0
           for i in {1..10}; do
             if curl -s http://127.0.0.1:18080/api/go/containers/sessions > /dev/null; then
-              echo "✅ Go container-manager is up!"
               SUCCESS=1
               break
             fi
             sleep 1
           done
           if [ $SUCCESS -ne 1 ]; then
-            echo "❌ Go container-manager failed to start"
-            cat container-manager.log
             exit 1
           fi
 
-      - name: Build and Start Go Contact Scraper
+      - name: Start contact scraper
         run: |
-          echo "🔨 Building Go contact-scraper..."
           cd src-go/contact-scraper
           go build -o ../../contact-scraper .
           cd ../..
-          echo "🚀 Starting Go contact-scraper on port 8081..."
           chmod +x contact-scraper
           PORT=8081 ./contact-scraper > contact-scraper.log 2>&1 &
 
-          echo "⏳ Waiting for Go contact-scraper to start..."
           SUCCESS=0
           for i in {1..10}; do
             if curl -s http://127.0.0.1:8081/health > /dev/null; then
-              echo "✅ Go contact-scraper is up!"
               SUCCESS=1
               break
             fi
             sleep 1
           done
           if [ $SUCCESS -ne 1 ]; then
-            echo "❌ Go contact-scraper failed to start"
-            cat contact-scraper.log
             exit 1
           fi
 
-      # [DISABLED] LLM Server — uncomment to re-enable
-      # - name: Start LLM Server
-      #   run: |
-      #     source venv/bin/activate && python src/scripts/llm_server.py > llm_server.log 2>&1 &
-      #     echo "Waiting for LLM server to start..."
-      #     for i in {1..15}; do
-      #       if curl -s http://127.0.0.1:8001/health > /dev/null; then
-      #         echo "✅ LLM server is up!"
-      #         break
-      #       fi
-      #       sleep 2
-      #     done
-      # [DISABLED] TTS Server — uncomment to re-enable
-      # - name: Start TTS Server
-      #   run: |
-      #     source venv/bin/activate && python src/scripts/tts_server.py > tts_server.log 2>&1 &
-      #     echo "Waiting for TTS server to start..."
-      #     for i in {1..15}; do
-      #       if curl -s http://127.0.0.1:8002/health > /dev/null; then
-      #         echo "✅ TTS server is up!"
-      #         break
-      #       fi
-      #       sleep 2
-      #     done
-
-      # - name: Run Auto-Download (Spider-Man)
-      #   run: node dist/scripts/auto-download.js
-
-      - name: Run bridge for 5 hours
+      - name: Execute bridge process
         run: |
-          echo "🚀 Starting Discord WhatsApp Bridge..."
-
-          # Trigger next workflow 15 minutes BEFORE timeout (runner takes ~12 min to start)
-          # IMPORTANT: Backup state FIRST, then trigger — so the new runner always gets fresh data
           (sleep 17100 && \
-            echo "📦 Pre-trigger backup: archiving state before handoff..." && \
             sudo tar -czf /tmp/state_pretrigger.tar.gz -C $(pwd) auth_info && \
             sudo chmod 666 /tmp/state_pretrigger.tar.gz && \
             source .env && \
-            echo "📤 Uploading pre-trigger backup to R2..." && \
             aws s3 cp /tmp/state_pretrigger.tar.gz s3://${R2_BUCKET_NAME}/state.tar.gz \
               --endpoint-url https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com && \
-            echo "✅ Pre-trigger backup uploaded! New runner will get fresh state." && \
-            echo "⏰ Triggering next workflow run (15 min early for graceful handoff)..." && \
             curl -X POST \
               -H "Accept: application/vnd.github+json" \
               -H "Authorization: Bearer ${{ secrets.PAT_TOKEN }}" \
               -H "X-GitHub-Api-Version: 2022-11-28" \
               https://api.github.com/repos/${{ github.repository }}/actions/workflows/run-bridge.yml/dispatches \
-              -d '{"ref":"${{ github.ref_name }}"}' && \
-            echo "✅ Next workflow triggered!") &
+              -d '{"ref":"${{ github.ref_name }}"}') &
 
-          # Run the bot for 5 hours (18000 seconds) then stop gracefully
-          timeout 18000 npm start; code=$?
+          timeout 18000 npm start > bridge.log 2>&1; code=$?
 
           if [ "$code" -eq 124 ]; then
             echo "⏱️ Process cleanly stopped after 5 hours."
@@ -249,31 +195,23 @@ jobs:
           else
             echo "❌ Process failed with exit code $code"
           fi
-          exit 0 # Ensures the step passes so the trigger step can run
+          exit 0
 
-      # - name: Trigger next workflow run
-      #   if: always()
-      #   run: |
-      #     echo "⏰ Triggering next workflow run..."
-      #     curl -X POST \
-      #       -H "Accept: application/vnd.github+json" \
-      #       -H "Authorization: Bearer ${{ secrets.PAT_TOKEN }}" \
-      #       -H "X-GitHub-Api-Version: 2022-11-28" \
-      #       https://api.github.com/repos/${{ github.repository }}/actions/workflows/run-bridge.yml/dispatches \
-      #       -d '{"ref":"${{ github.ref_name }}"}'
-      #     echo "✅ Next workflow triggered!"
-
-      - name: Save State to Cloudflare R2
+      - name: Sync storage teardown
         if: always()
         run: |
-          # Safety net: captures the final ~15 minutes of state that ran after the pre-trigger backup.
-          # The pre-trigger backup (inside "Run bridge") already uploaded a fresh snapshot before
-          # triggering the next runner, so this step ensures nothing is lost at teardown.
-          echo "📦 Archiving final state (safety net backup)..."
           sudo tar -czf state.tar.gz -C $(pwd) auth_info || echo "Tar completed with warnings"
           sudo chmod 666 state.tar.gz
 
-          source .env
-          echo "📤 Uploading final state to R2 (overwrites pre-trigger snapshot)..."
-          aws s3 cp state.tar.gz s3://${R2_BUCKET_NAME}/state.tar.gz --endpoint-url https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com
-          echo "✅ Final state successfully synced to R2."
+          if [ -f ".env" ]; then
+            source .env
+            echo "📤 Uploading final state to R2..."
+            aws s3 cp state.tar.gz s3://${R2_BUCKET_NAME}/state.tar.gz --endpoint-url https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com
+
+            echo "📤 Uploading logs to R2..."
+            for logfile in bridge.log container-manager.log contact-scraper.log; do
+              if [ -f "$logfile" ]; then
+                aws s3 cp "$logfile" "s3://${R2_BUCKET_NAME}/logs/bridge-${{ github.run_id }}-$logfile" --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" || echo "Failed to upload $logfile"
+              fi
+            done
+          fi
