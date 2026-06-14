@@ -136,6 +136,7 @@ class DiscordWhatsAppBridge {
   private whatsappReady = false;
   private discordReady = false;
   private discordEnabled = false;
+  private whatsappEnabled = true;
   private isConnecting = false;
   private testMessageSent = false;
   private botSentMessageIds = new Set<string>();
@@ -190,11 +191,18 @@ class DiscordWhatsAppBridge {
       ]
     });
 
-    this.setupDiscord();
-    this.setupWhatsApp();
+    const fs = require('fs');
+    this.whatsappEnabled = fs.existsSync('auth_info/creds.json');
+    if (!this.whatsappEnabled) {
+      lol('ℹ️ auth_info/creds.json not found. Running with WhatsApp bot disabled (dashboard and other services will still start).');
+    }
 
-    // Start dashboard + browser directly without WhatsApp/Discord
-    // this.startDashboardAndNotify();
+    this.setupDiscord();
+    if (this.whatsappEnabled) {
+      this.setupWhatsApp();
+    }
+
+    this.checkBothReady();
   }
 
   private async setupWhatsApp(): Promise<void> {
@@ -429,8 +437,11 @@ class DiscordWhatsAppBridge {
 
   private async checkBothReady(): Promise<void> {
     const isDiscordReady = !this.discordEnabled || this.discordReady;
-    if (this.whatsappReady && isDiscordReady && !this.testMessageSent) {
-      lol('🚀 WhatsApp bot is fully operational!');
+    const isWhatsAppReady = !this.whatsappEnabled || this.whatsappReady;
+    if (isWhatsAppReady && isDiscordReady && !this.testMessageSent) {
+      if (this.whatsappEnabled) {
+        lol('🚀 WhatsApp bot is fully operational!');
+      }
       this.testMessageSent = true;
       await this.startDashboardAndNotify();
     }
