@@ -8,6 +8,7 @@
     "postbuild": "node -e \"const{mkdirSync,copyFileSync}=require('fs');mkdirSync('dist/libs',{recursive:true});\" ",
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
+    "sync-r2": "ts-node src/scripts/sync-r2.ts",
     "dashboard:install": "cd dashboard && npm install",
     "dashboard:build": "cd dashboard && npm run build"
   },
