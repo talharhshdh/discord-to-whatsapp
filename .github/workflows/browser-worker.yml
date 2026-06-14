@@ -67,6 +67,12 @@ jobs:
           echo "::add-mask::$DASHBOARD_DOMAIN"
           echo "::add-mask::$R2_ACCOUNT_ID"
           echo "::add-mask::$R2_BUCKET_NAME"
+          echo "::add-mask::$R2_ACCESS_KEY_ID"
+          echo "::add-mask::$R2_SECRET_ACCESS_KEY"
+          echo "::add-mask::$PAT_TOKEN"
+          echo "::add-mask::$WHATSAPP_PHONE"
+          echo "::add-mask::$BROWSER_PASSWORD"
+          echo "::add-mask::$DASHBOARD_PASSWORD"
           echo "✅ environment prepared"
 
       - name: Install Chrome
