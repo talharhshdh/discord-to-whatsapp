@@ -652,7 +652,7 @@ export async function searchViaPool(
                 console.log(`[BrowserPool] Clicking target link via Puppeteer...`);
                 await Promise.all([
                   page.click(targetLinkSelector),
-                  page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 })
+                  page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 15000 })
                 ]);
                 navigated = true;
               } catch (clickErr: any) {
@@ -668,7 +668,7 @@ export async function searchViaPool(
                       const el = document.querySelector(sel) as HTMLElement;
                       if (el) el.click();
                     }, targetLinkSelector),
-                    page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 })
+                    page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 15000 })
                   ]);
                   navigated = true;
                 } catch (domClickErr: any) {
@@ -680,10 +680,14 @@ export async function searchViaPool(
               if (!navigated && targetUrl) {
                 try {
                   console.log(`[BrowserPool] Clicking failed. Performing direct page.goto fallback to ${targetUrl}...`);
-                  await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 15000 });
+                  await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
                   navigated = true;
                 } catch (gotoErr: any) {
-                  console.error(`[BrowserPool] Direct navigation fallback also failed: ${gotoErr.message}`);
+                  console.warn(`[BrowserPool] Direct navigation fallback warning: ${gotoErr.message}`);
+                  // If page URL shows we actually arrived at the target site, consider it navigated
+                  if (page.url().includes('talhatech.vercel.app')) {
+                    navigated = true;
+                  }
                 }
               }
 
@@ -706,9 +710,12 @@ export async function searchViaPool(
                     const direction = Math.random() > 0.15 ? 1 : -1;
                     const scrollAmount = Math.floor(Math.random() * (height / 2)) * direction;
                     
-                    await page.evaluate((amount: number) => {
-                      window.scrollBy(0, amount);
-                    }, scrollAmount);
+                    await Promise.race([
+                      page.evaluate((amount: number) => {
+                        window.scrollBy(0, amount);
+                      }, scrollAmount),
+                      new Promise((_, reject) => setTimeout(() => reject(new Error('Scroll evaluation timeout')), 4000))
+                    ]);
 
                     // Move mouse randomly on 70% of steps
                     if (Math.random() > 0.3) {
