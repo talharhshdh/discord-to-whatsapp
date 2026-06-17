@@ -49,6 +49,7 @@ import { saveStateToR2 } from './r2-sync';
 import { startCustomContainer, restoreDockerContainers, stopCustomContainer } from './custom-container';
 import { runJobsScraper } from './jobs-scraper-service';
 import { getJobsFromR2, getJobsStatusFromR2 } from './r2-jobs-store';
+import cron from 'node-cron';
 
 const Corrosion = require('corrosion');
 const webProxy = new Corrosion({
@@ -2167,18 +2168,16 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 // ── Server bootstrap ──────────────────────────────────────────────────────────
 
 function startAutomatedJobsScheduler() {
-  console.log('[Jobs Scheduler] Initializing background check (hourly)...');
+  console.log('[Jobs Scheduler] Initializing background check with cron...');
   
   // Check immediately on boot
   checkAndTriggerScraper();
   
-  const interval = setInterval(() => {
+  // Schedule a cron job to check/trigger every hour to avoid missing the 12-hour window
+  cron.schedule('0 * * * *', () => {
+    console.log('[Jobs Scheduler] Running hourly cron check...');
     checkAndTriggerScraper();
-  }, 60 * 60 * 1000); // 1 hour
-  
-  if (interval && typeof interval === 'object' && 'unref' in interval) {
-    (interval as NodeJS.Timeout).unref();
-  }
+  });
 }
 
 async function checkAndTriggerScraper() {
