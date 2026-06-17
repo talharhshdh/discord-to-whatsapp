@@ -87,6 +87,13 @@ export function getAllUrls(): Record<string, ToolUrlEntry> {
   return { ...urlRegistry };
 }
 
+// ── WhatsApp Message Callback ────────────────────────────────────────────────
+let whatsappSendCallback: ((message: string) => Promise<void>) | null = null;
+
+export function setWhatsAppSendCallback(cb: (message: string) => Promise<void>): void {
+  whatsappSendCallback = cb;
+}
+
 // ── YouTube Download Jobs ───────────────────────────────────────────────────
 
 export interface DownloadJob {
@@ -600,6 +607,25 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       } else {
         err(res, 'Invalid credentials', 400);
       }
+    } catch (e) {
+      err(res, (e as Error).message);
+    }
+    return;
+  }
+
+  // ── POST /api/whatsapp/send ────────────────────────────────────────────────
+  if (method === 'POST' && url === '/api/whatsapp/send') {
+    try {
+      const body = await parseJsonBody(req);
+      const text = body['text'] as string;
+      if (!text) {
+        return err(res, 'text is required', 400);
+      }
+      if (!whatsappSendCallback) {
+        return err(res, 'WhatsApp sender callback is not registered', 503);
+      }
+      await whatsappSendCallback(text);
+      json(res, { success: true });
     } catch (e) {
       err(res, (e as Error).message);
     }

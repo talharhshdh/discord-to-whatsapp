@@ -31,7 +31,7 @@ import {
   type MovieSearchResult,
 } from './libs/movie-search';
 import { downloadMovie, getMovieStreamUrls } from './libs/movie-downloader';
-import { startDashboard, registerUrl, getAllUrls } from './libs/dashboard-server';
+import { startDashboard, registerUrl, getAllUrls, setWhatsAppSendCallback } from './libs/dashboard-server';
 import { browserPool } from './libs/browser-pool';
 
 dotenv.config();
@@ -140,6 +140,8 @@ class DiscordWhatsAppBridge {
   private isConnecting = false;
   private testMessageSent = false;
   private botSentMessageIds = new Set<string>();
+  private mode: 'whatsapp' | 'discord' | 'all' = 'all';
+  private cachedWhatsAppServerUrl: string | null = null;
   /**
    * Tracks message IDs that have already been processed to prevent duplicate
    * sticker sends when Baileys replays messages on reconnect. Capped at 500
@@ -182,6 +184,16 @@ class DiscordWhatsAppBridge {
   private googleSearchKeeperInterval: NodeJS.Timeout | null = null;
 
   constructor() {
+    const rawMode = (process.env.MODE ?? 'all').toLowerCase();
+    if (rawMode === 'whatsapp') {
+      this.mode = 'whatsapp';
+    } else if (rawMode === 'discord') {
+      this.mode = 'discord';
+    } else {
+      this.mode = 'all';
+    }
+    lol(`🚀 Discord-WhatsApp Bridge starting in MODE: ${this.mode}`);
+
     // Initialize Discord client (not started — WhatsApp/Discord disabled)
     this.discordClient = new DiscordClient({
       intents: [
@@ -192,14 +204,22 @@ class DiscordWhatsAppBridge {
     });
 
     const fs = require('fs');
-    this.whatsappEnabled = fs.existsSync('auth_info/creds.json') || !!process.env.WHATSAPP_RECIPIENT;
-    if (!fs.existsSync('auth_info/creds.json') && this.whatsappEnabled) {
-      lol('ℹ️ auth_info/creds.json not found. Generating new WhatsApp session...');
+    if (this.mode === 'discord') {
+      this.whatsappEnabled = false;
+    } else {
+      this.whatsappEnabled = fs.existsSync('auth_info/creds.json') || !!process.env.WHATSAPP_RECIPIENT;
+      if (!fs.existsSync('auth_info/creds.json') && this.whatsappEnabled) {
+        lol('ℹ️ auth_info/creds.json not found. Generating new WhatsApp session...');
+      }
     }
 
-    this.setupDiscord();
-    if (this.whatsappEnabled) {
-      this.setupWhatsApp();
+    if (this.mode === 'discord' || this.mode === 'all') {
+      this.setupDiscord();
+    }
+    if (this.mode === 'whatsapp' || this.mode === 'all') {
+      if (this.whatsappEnabled) {
+        this.setupWhatsApp();
+      }
     }
 
     this.loadProcessedMessageIds();
@@ -345,6 +365,16 @@ class DiscordWhatsAppBridge {
           lol('✅ WhatsApp connected successfully!');
           this.whatsappReady = true;
           this.isConnecting = false;
+
+          // Set the WhatsApp send callback for the dashboard server
+          setWhatsAppSendCallback(async (text: string) => {
+            if (this.whatsappSocket && this.authorizedJids.size > 0) {
+              for (const jid of this.authorizedJids) {
+                await this.whatsappSocket.sendMessage(jid, { text });
+              }
+            }
+          });
+
           this.checkBothReady();
         } else if (connection === 'connecting') {
           lol('🔄 Connecting to WhatsApp...');
@@ -392,8 +422,11 @@ class DiscordWhatsAppBridge {
   private setupDiscord(): void {
     const token = process.env.DISCORD_BOT_TOKEN;
     if (!token) {
-      lol('ℹ️ DISCORD_BOT_TOKEN not found in .env file. Running in WhatsApp-only mode.');
+      lol('ℹ️ DISCORD_BOT_TOKEN not found in env. Running in WhatsApp-only mode / Standing by...');
       this.discordEnabled = false;
+      if (this.mode === 'discord') {
+        setInterval(() => {}, 60000);
+      }
       return;
     }
 
@@ -455,6 +488,10 @@ class DiscordWhatsAppBridge {
    * Called once when both WhatsApp and Discord are ready.
    */
   private async startDashboardAndNotify(): Promise<void> {
+    if (!this.whatsappEnabled) {
+      lol('ℹ️ WhatsApp is disabled (Discord mode). Skipping dashboard and admin notification.');
+      return;
+    }
     try {
       lol('📊 Starting dashboard server...');
 
@@ -479,6 +516,14 @@ class DiscordWhatsAppBridge {
       if (!dashboardPublicUrl) {
         console.warn('⚠️ Dashboard tunnel failed — skipping admin notification.');
         return;
+      }
+
+      // Save live URL to R2 for dynamic discovery by the Discord bot
+      try {
+        const { saveLiveUrlToR2 } = require('./libs/r2-sync');
+        await saveLiveUrlToR2(dashboardPublicUrl);
+      } catch (e) {
+        console.warn('⚠️ Failed to save live URL to R2:', e);
       }
 
       // Start the browser automatically if credentials are configured
@@ -1791,6 +1836,26 @@ class DiscordWhatsAppBridge {
 
     lol(`   ✅ Message matches server ID, processing...`);
 
+    const channelName = message.channel instanceof Object && 'name' in message.channel
+      ? message.channel.name
+      : 'unknown';
+
+    // Format the message
+    const formattedMessage = `*Discord Message*\n` +
+      `Server: ${message.guild?.name || 'Unknown'}\n` +
+      `Channel: #${channelName}\n` +
+      `From: ${message.author.username}\n` +
+      `---\n${message.content}`;
+
+    if (this.mode === 'discord') {
+      try {
+        await this.forwardToWhatsAppServer(formattedMessage);
+      } catch (error) {
+        console.error('❌ Failed to forward Discord message to WhatsApp server via API:', error);
+      }
+      return;
+    }
+
     if (!this.whatsappReady || !this.whatsappSocket) {
       lol('   ⚠️ WhatsApp not ready, skipping message');
       return;
@@ -1802,18 +1867,6 @@ class DiscordWhatsAppBridge {
         return;
       }
 
-      // Get channel name
-      const channelName = message.channel instanceof Object && 'name' in message.channel
-        ? message.channel.name
-        : 'unknown';
-
-      // Format the message
-      const formattedMessage = `*Discord Message*\n` +
-        `Server: ${message.guild?.name || 'Unknown'}\n` +
-        `Channel: #${channelName}\n` +
-        `From: ${message.author.username}\n` +
-        `---\n${message.content}`;
-
       // Broadcast to all authorized recipients
       for (const jid of this.authorizedJids) {
         await this.whatsappSocket.sendMessage(jid, { text: formattedMessage });
@@ -1822,6 +1875,87 @@ class DiscordWhatsAppBridge {
       lol(`   ✉️ Forwarded message from ${message.author.username} (#${channelName}) to ${this.authorizedJids.size} recipient(s)`);
     } catch (error) {
       console.error('❌ Error sending message to WhatsApp:', error);
+    }
+  }
+
+  private async getWhatsAppServerUrl(forceRefresh = false): Promise<string> {
+    if (process.env.WHATSAPP_SERVER_URL) {
+      return process.env.WHATSAPP_SERVER_URL;
+    }
+    if (process.env.DASHBOARD_DOMAIN) {
+      return `https://${process.env.DASHBOARD_DOMAIN}`;
+    }
+
+    if (!forceRefresh && this.cachedWhatsAppServerUrl) {
+      return this.cachedWhatsAppServerUrl;
+    }
+
+    try {
+      const { fetchLiveUrlFromR2 } = require('./libs/r2-sync');
+      const liveUrl = await fetchLiveUrlFromR2();
+      if (liveUrl) {
+        const trimmed = liveUrl.trim();
+        this.cachedWhatsAppServerUrl = trimmed;
+        return trimmed;
+      }
+    } catch (e) {
+      console.warn('⚠️ Failed to fetch live URL from R2:', e);
+    }
+
+    return 'http://localhost:4000';
+  }
+
+  private async forwardToWhatsAppServer(text: string): Promise<void> {
+    const username = process.env.DASHBOARD_USERNAME;
+    const password = process.env.DASHBOARD_PASSWORD;
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    if (username && password) {
+      const token = Buffer.from(`${username}:${password}`).toString('base64');
+      headers['Authorization'] = `Basic ${token}`;
+    }
+
+    let success = false;
+    let attempts = 0;
+    const maxAttempts = 5;
+    const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+
+    while (!success && attempts < maxAttempts) {
+      attempts++;
+      try {
+        const serverUrl = await this.getWhatsAppServerUrl(attempts > 1);
+        const url = `${serverUrl}/api/whatsapp/send`;
+        
+        lol(`🌐 Forwarding Discord message to WhatsApp server at ${url} (attempt ${attempts})...`);
+        const response = await fetch(url, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ text }),
+        });
+
+        if (response.ok) {
+          success = true;
+          lol(`   ✉️ Forwarded message to WhatsApp server via HTTP API (attempt ${attempts})`);
+        } else {
+          const errText = await response.text();
+          console.warn(`⚠️ Failed to forward message to WhatsApp server (HTTP ${response.status}): ${errText}`);
+          if (response.status === 401 || response.status === 400) {
+            break;
+          }
+        }
+      } catch (err) {
+        console.warn(`⚠️ Error forwarding message to WhatsApp server (attempt ${attempts}):`, err);
+      }
+
+      if (!success && attempts < maxAttempts) {
+        await delay(Math.pow(2, attempts) * 1000);
+      }
+    }
+
+    if (!success) {
+      throw new Error(`Failed to forward message after ${maxAttempts} attempts.`);
     }
   }
 
