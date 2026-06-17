@@ -264,6 +264,36 @@ function pickBestUrl(raw: unknown): string | null {
  *  SnackVideo:{status,result:{videoUrl}}                             → result.videoUrl
  *  AIO      : {status,data:{links:{video:[{url}]}}}                  → data.links.video[0].url
  */
+/**
+ * Recursively searches an object/array for the first string starting with 'http'.
+ */
+function findHttpUrl(obj: unknown): string | null {
+  if (!obj) return null;
+  if (typeof obj === 'string') {
+    if (obj.startsWith('http')) return obj;
+    return null;
+  }
+  if (Array.isArray(obj)) {
+    for (const item of obj) {
+      const found = findHttpUrl(item);
+      if (found) return found;
+    }
+  } else if (typeof obj === 'object') {
+    const record = obj as Record<string, unknown>;
+    const priorityKeys = ['url', 'downloadUrl', 'videoUrl', 'originalVideoUrl', 'download', 'mp4', 'link', 'hd', 'sd'];
+    for (const key of priorityKeys) {
+      if (typeof record[key] === 'string' && (record[key] as string).startsWith('http')) {
+        return record[key] as string;
+      }
+    }
+    for (const val of Object.values(record)) {
+      const found = findHttpUrl(val);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
 function pickBtchUrl(raw: unknown): string | null {
   if (!raw || typeof raw !== 'object') return null;
   const obj = raw as Record<string, unknown>;
@@ -343,7 +373,7 @@ function pickBtchUrl(raw: unknown): string | null {
     }
   }
 
-  return null;
+  return findHttpUrl(obj);
 }
 
 /**
@@ -787,12 +817,21 @@ const DOWNLOADERS: Record<Platform, (url: string, onProgress?: ProgressCallback)
  *
  * @param text       Raw WhatsApp message text.
  * @param onProgress Optional callback called at each download stage.
+ * @param allowFallbackToAio Fallback to AIO downloader if no specific platform matches.
  */
 export async function detectAndDownload(
   text: string,
   onProgress?: ProgressCallback,
+  allowFallbackToAio = false,
 ): Promise<DownloadResult | null> {
-  const detection = detectPlatform(text);
+  let detection = detectPlatform(text);
+  if (!detection && allowFallbackToAio) {
+    const urlMatch = text.match(/https?:\/\/[^\s]+/i);
+    if (urlMatch) {
+      const url = urlMatch[0].replace(/[.,!?;:'")\]>]+$/, '');
+      detection = { platform: 'aio', url };
+    }
+  }
   if (!detection) return null;
 
   const { platform, url } = detection;

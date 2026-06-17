@@ -863,7 +863,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       const body = await parseJsonBody(req);
       const mediaUrl = body['url'] as string;
       if (!mediaUrl) return err(res, 'url is required', 400);
-      const result = await detectAndDownload(mediaUrl);
+      const result = await detectAndDownload(mediaUrl, undefined, true);
       if (!result) return err(res, 'URL not supported or no media found', 400);
       binary(res, result.buffer, result.mimetype, result.filename);
     } catch (e) { err(res, (e as Error).message); }
