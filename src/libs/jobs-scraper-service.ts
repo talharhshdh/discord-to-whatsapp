@@ -390,6 +390,54 @@ export async function runJobsScraper(customKeywords?: string[], customLocation?:
 
       // 4. For each job, find company website and scrape contacts
       let processedCount = 0;
+      let lastSaveTime = Date.now();
+      const SAVE_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+
+      const saveProgress = async (currentProcessedCount: number) => {
+        const processedNewJobs = finalJobsToProcess.slice(0, currentProcessedCount);
+        const mergedJobs = [...processedNewJobs, ...historicalJobs];
+        
+        // Deduplicate the entire merged array (safety check)
+        const finalMergedMap = new Map<string, ScrapedJob>();
+        for (const job of mergedJobs) {
+          const key = getNormalizedKey(job.title, job.company);
+          if (finalMergedMap.has(key)) {
+            const existing = finalMergedMap.get(key)!;
+            // Prefer the one that has companyWebsite or contacts
+            if (!existing.contacts && job.contacts) {
+              finalMergedMap.set(key, job);
+            }
+          } else {
+            finalMergedMap.set(key, job);
+          }
+        }
+
+        const finalJobsList = Array.from(finalMergedMap.values());
+        
+        // Sort jobs by scrapedAt descending
+        finalJobsList.sort((a, b) => new Date(b.scrapedAt).getTime() - new Date(a.scrapedAt).getTime());
+
+        // Save merged jobs to R2
+        await saveJobsToR2(finalJobsList);
+
+        // Compute statistics
+        const totalCompanies = new Set(finalJobsList.map(j => j.company.toLowerCase())).size;
+
+        // Update Status
+        const currentStatus: JobsStatus = {
+          lastRun: status.lastRun,
+          status: 'scraping',
+          stats: {
+            totalJobs: finalJobsList.length,
+            companiesScraped: totalCompanies,
+            lastRunCount: finalJobsToProcess.length
+          }
+        };
+
+        await saveJobsStatusToR2(currentStatus);
+        console.log(`[Jobs Scraper] Saved intermediate progress: ${currentProcessedCount}/${finalJobsToProcess.length} jobs processed.`);
+      };
+
       for (const job of finalJobsToProcess) {
         const compLower = job.company.toLowerCase();
         
@@ -424,6 +472,16 @@ export async function runJobsScraper(customKeywords?: string[], customLocation?:
         processedCount++;
         if (processedCount % 5 === 0) {
           console.log(`[Jobs Scraper] Processed ${processedCount}/${finalJobsToProcess.length} jobs.`);
+        }
+
+        // Save progress every 10 minutes
+        if (Date.now() - lastSaveTime >= SAVE_INTERVAL_MS) {
+          try {
+            await saveProgress(processedCount);
+            lastSaveTime = Date.now();
+          } catch (saveErr) {
+            console.error('[Jobs Scraper] Failed to save intermediate progress:', saveErr);
+          }
         }
       }
 
