@@ -479,19 +479,8 @@ export async function searchViaPool(
       page = acquired.page;
 
       // ── Request interception: block heavy assets ───────────────────────
-      // [COMMENTED OUT OLD BLOCK TO PREVENT RACES/HANGS AND COMPLY WITH USER RULES]
-      // page.removeAllListeners('request');
-      // await page.setRequestInterception(true);
-      // page.on('request', async (req: any) => {
-
-      // Safely set request interception by transitioning with a wildcard continue handler
       page.removeAllListeners('request');
-      page.on('request', (req: any) => {
-        req.continue().catch(() => {});
-      });
       await page.setRequestInterception(true);
-      page.removeAllListeners('request');
-
       page.on('request', async (req: any) => {
         try {
           if (req.isInterceptResolutionHandled()) return;
@@ -653,55 +642,8 @@ export async function searchViaPool(
               console.log(`[BrowserPool] Target URL decoded: ${targetUrl}`);
 
               // Turn off request interception to allow target site assets/scripts to load
-              // [COMMENTED OUT OLD BLOCK TO PREVENT RACES/HANGS AND COMPLY WITH USER RULES]
-              // await page.setRequestInterception(false);
-              // page.removeAllListeners('request');
-
-              // Safely turn off request interception using a transition wildcard continue handler
-              page.removeAllListeners('request');
-              page.on('request', (req: any) => {
-                req.continue().catch(() => {});
-              });
               await page.setRequestInterception(false);
               page.removeAllListeners('request');
-
-              // Diagnostics listeners for traffic flow monitoring
-              page.on('request', (req: any) => {
-                const url = req.url();
-                if (
-                  url.includes('pagead') || 
-                  url.includes('doubleclick') || 
-                  url.includes('googlesyndication') || 
-                  url.includes('adservice') ||
-                  url.includes('auqot.com') ||
-                  url.includes('ekhay.com') ||
-                  url.includes('b3mny.com')
-                ) {
-                  console.log(`[BrowserPool Traffic Request] ${req.resourceType()} | ${url.substring(0, 120)}`);
-                }
-              });
-
-              page.on('requestfailed', (req: any) => {
-                const url = req.url();
-                if (
-                  url.includes('pagead') || 
-                  url.includes('doubleclick') || 
-                  url.includes('googlesyndication') || 
-                  url.includes('adservice') ||
-                  url.includes('auqot.com') ||
-                  url.includes('ekhay.com') ||
-                  url.includes('b3mny.com')
-                ) {
-                  console.warn(`⚠️ [BrowserPool Traffic Request Failed] ${url.substring(0, 120)}: ${req.failure()?.errorText || 'unknown'}`);
-                }
-              });
-
-              page.on('console', (msg: any) => {
-                const text = msg.text();
-                if (text.includes('ad') || text.includes('Ad') || text.includes('blocked') || msg.type() === 'error') {
-                  console.log(`[BrowserPool Traffic Console] [${msg.type()}] ${text}`);
-                }
-              });
 
               let navigated = false;
 
@@ -751,14 +693,6 @@ export async function searchViaPool(
 
               if (navigated) {
                 console.log(`[BrowserPool] Successfully navigated to: ${page.url()}`);
-                // [COMMENTED OUT OLD BLOCK TO ADD A WAIT DELAY TO ALLOW ADS SCRIPTS TO EXECUTE]
-                // // Scroll and move mouse randomly on the page to simulate real user behavior
-                // console.log(`[BrowserPool] Simulating human interaction (random scrolls & mouse movements)...`);
-
-                // Wait 8 seconds to allow async scripts and ads to run (matching test-ads.ts pattern)
-                console.log(`[BrowserPool] Waiting 8 seconds for ad scripts to execute...`);
-                await new Promise(r => setTimeout(r, 8000));
-
                 // Scroll and move mouse randomly on the page to simulate real user behavior
                 console.log(`[BrowserPool] Simulating human interaction (random scrolls & mouse movements)...`);
                 
