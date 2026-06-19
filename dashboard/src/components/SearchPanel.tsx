@@ -41,12 +41,12 @@ export default function SearchPanel() {
   };
 
   return (
-    <div className="space-y-6 text-sm">
-      <Card className="glass p-6 rounded-2xl border border-white/[0.07] shadow-xl">
-        <div className="flex justify-between items-start mb-2">
+    <div className="space-y-6 text-sm max-w-5xl mx-auto">
+      <Card className="rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] shadow-xl">
+        <CardHeader className="flex flex-row justify-between items-start">
           <div>
-            <CardTitle className="text-lg font-bold text-white">Automated Browser Search</CardTitle>
-            <CardDescription className="text-xs text-white/50 mt-1">
+            <CardTitle>Automated Browser Search</CardTitle>
+            <CardDescription>
               Search Google via the running Chromium container (CDP) or Python SeleniumBase engine.
             </CardDescription>
           </div>
@@ -62,72 +62,73 @@ export default function SearchPanel() {
               }
             }}
             variant="outline"
-            className="px-3 py-1.5 h-auto rounded-lg bg-white/[0.04] border border-white/10 text-white/40 hover:text-white/70 text-xs transition-colors"
+            className="px-3 py-1.5 h-auto rounded-lg bg-[var(--btn-secondary-bg)] border border-[var(--card-border)] text-[var(--text-muted)] hover:text-[var(--text-main)] text-xs transition-colors"
           >
             🔄 Restart Workers
           </Button>
-        </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Engine selector */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-[var(--text-subtle)]">Engine:</span>
+            {(['auto', 'cdp', 'selenium', 'cookie'] as SearchEngine[]).map(eng => (
+              <Button
+                key={eng}
+                onClick={() => setEngine(eng)}
+                variant="outline"
+                className={`flex-shrink-0 px-3 py-1 h-auto rounded-lg text-xs font-semibold transition-all border ${
+                  engine === eng
+                    ? 'bg-[var(--accent-active-bg)] border-[var(--accent-active-border)] text-[var(--accent-active-text)]'
+                    : 'bg-[var(--btn-secondary-bg)] border-[var(--btn-secondary-border)] text-[var(--text-muted)] hover:text-[var(--text-main)]'
+                }`}
+              >
+                {eng === 'auto' ? '⚡ Auto' : eng === 'cdp' ? '🔌 CDP' : eng === 'selenium' ? '🐍 Selenium' : '🍪 Cookie'}
+              </Button>
+            ))}
+          </div>
 
-        {/* Engine selector */}
-        <div className="flex flex-wrap items-center gap-2 mb-3 mt-4">
-          <span className="text-xs text-white/40">Engine:</span>
-          {(['auto', 'cdp', 'selenium', 'cookie'] as SearchEngine[]).map(eng => (
+          {/* AI response toggle */}
+          <div className="flex items-center gap-3">
             <Button
-              key={eng}
-              onClick={() => setEngine(eng)}
+              onClick={() => setIncludeAI(v => !v)}
               variant="outline"
-              className={`flex-shrink-0 px-3 py-1 h-auto rounded-lg text-xs font-medium transition-all border ${
-                engine === eng
-                  ? 'bg-[#0061FF]/20 border-[#0061FF]/40 text-[#0061FF]'
-                  : 'bg-white/[0.03] border-white/10 text-white/40 hover:text-white/60 hover:bg-white/[0.06]'
+              className={`flex items-center gap-2 px-3 py-1 h-auto rounded-lg text-xs font-semibold transition-all border ${
+                includeAI
+                  ? 'bg-[var(--accent-active-bg)] border-[var(--accent-active-border)] text-[var(--accent-active-text)]'
+                  : 'bg-[var(--btn-secondary-bg)] border-[var(--btn-secondary-border)] text-[var(--text-muted)] hover:text-[var(--text-main)]'
               }`}
             >
-              {eng === 'auto' ? '⚡ Auto' : eng === 'cdp' ? '🔌 CDP' : eng === 'selenium' ? '🐍 Selenium' : '🍪 Cookie'}
+              <span>{includeAI ? '✨' : '○'}</span>
+              <span>AI Overview</span>
             </Button>
-          ))}
-        </div>
+            <span className="text-[10px] text-[var(--text-subtle)]">
+              {includeAI ? 'Slower — fetches AI summary' : 'Faster — organic results only'}
+            </span>
+          </div>
 
-        {/* AI response toggle */}
-        <div className="flex items-center gap-3 mb-4">
-          <Button
-            onClick={() => setIncludeAI(v => !v)}
-            variant="outline"
-            className={`flex items-center gap-2 px-3 py-1 h-auto rounded-lg text-xs font-medium transition-all border ${
-              includeAI
-                ? 'bg-[#00E5FF]/20 border-[#00E5FF]/40 text-[#00E5FF]'
-                : 'bg-white/[0.03] border-white/10 text-white/40 hover:text-white/60 hover:bg-white/[0.06]'
-            }`}
-          >
-            <span>{includeAI ? '✨' : '○'}</span>
-            <span>AI Overview</span>
-          </Button>
-          <span className="text-[10px] text-white/30">
-            {includeAI ? 'Slower — fetches AI summary' : 'Faster — organic results only'}
-          </span>
-        </div>
-
-        <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-3">
-          <Input
-            type="text"
-            className="flex-1 bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-[#0061FF]/50 transition-colors"
-            placeholder="Enter search query..."
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          <Button
-            type="submit"
-            disabled={loading || !query.trim()}
-            className="px-6 py-2.5 h-auto bg-gradient-to-r from-[#0061FF] to-[#00E5FF] rounded-xl text-white font-medium hover:opacity-90 disabled:opacity-50 transition-all shadow-lg shadow-[#0061FF]/20"
-          >
-            {loading ? 'Searching...' : 'Search'}
-          </Button>
-        </form>
-        {error && <div className="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{error}</div>}
+          <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-3 pt-2">
+            <Input
+              type="text"
+              className="flex-1 bg-[var(--input-bg)] border border-[var(--input-border)] rounded-xl px-4 py-3 text-sm text-[var(--input-text)] placeholder-[var(--input-placeholder)]"
+              placeholder="Enter search query..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            <Button
+              type="submit"
+              disabled={loading || !query.trim()}
+              className="px-6 py-5 rounded-xl font-bold uppercase tracking-wider text-xs flex items-center justify-center gap-2 h-auto"
+            >
+              {loading ? 'Searching...' : 'Search'}
+            </Button>
+          </form>
+          {error && <div className="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{error}</div>}
+        </CardContent>
       </Card>
 
       {loading && (
         <div className="flex justify-center p-12">
-          <div className="w-8 h-8 rounded-full border-2 border-[#0061FF] border-t-transparent animate-spin" />
+          <div className="w-8 h-8 rounded-full border-2 border-[var(--primary)] border-t-transparent animate-spin" />
         </div>
       )}
 
@@ -136,37 +137,37 @@ export default function SearchPanel() {
           {/* Engine badge */}
           {usedEngine && (
             <div className="flex items-center gap-2">
-              <Badge variant="outline" className="text-[10px] uppercase tracking-wider text-white/30 bg-white/[0.04] px-2 py-0.5 rounded-full border border-white/[0.06]">
+              <Badge variant="outline" className="text-[10px] uppercase tracking-wider text-[var(--text-subtle)] bg-[var(--btn-secondary-bg)] border border-[var(--btn-secondary-border)] px-2 py-0.5 rounded-full">
                 via {usedEngine === 'auto' ? 'auto (CDP → Selenium)' : usedEngine}
               </Badge>
             </div>
           )}
 
           {result.aiResponse && (
-            <Card className="glass p-6 rounded-2xl border border-[#00E5FF]/30 bg-[#00E5FF]/5 shadow-xl overflow-hidden">
+            <Card className="rounded-2xl border border-[var(--accent-active-border)] bg-[var(--accent-active-bg)] shadow-xl overflow-hidden p-6">
               <div className="flex items-center gap-2 mb-4">
                 <span className="text-xl">✨</span>
-                <CardTitle className="text-[#00E5FF] font-bold text-base">AI Overview</CardTitle>
+                <h3 className="text-[var(--accent-active-text)] font-bold text-base">AI Overview</h3>
               </div>
               <div
                 ref={aiRef}
-                className="ai-response-content text-white/80 leading-relaxed text-sm prose prose-invert prose-sm max-w-none"
+                className="ai-response-content text-[var(--text-main)] leading-relaxed text-sm prose prose-invert prose-sm max-w-none"
                 dangerouslySetInnerHTML={{ __html: result.aiResponse }}
               />
             </Card>
           )}
 
           <div className="space-y-4">
-            <h4 className="font-bold text-white/90 px-2">Organic Results</h4>
+            <h4 className="font-bold text-[var(--text-main)] px-2">Organic Results</h4>
             {result.organic.length === 0 ? (
-              <p className="text-white/50 text-sm px-2">No results found.</p>
+              <p className="text-[var(--text-muted)] text-sm px-2">No results found.</p>
             ) : (
               result.organic.map((item, idx) => (
-                <Card key={idx} className="glass p-5 rounded-xl border border-white/[0.05] hover:border-white/10 transition-colors">
-                  <a href={item.link} target="_blank" rel="noreferrer" className="block group">
-                    <h5 className="text-[#0061FF] group-hover:underline font-medium text-lg mb-1">{item.title}</h5>
-                    <div className="text-xs text-white/40 mb-2 truncate">{item.link}</div>
-                    <p className="text-sm text-white/70 leading-relaxed">{item.snippet}</p>
+                <Card key={idx} className="rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] shadow-md p-5 group hover:shadow-lg transition-all">
+                  <a href={item.link} target="_blank" rel="noreferrer" className="block space-y-2">
+                    <h4 className="text-[var(--primary)] group-hover:underline font-bold text-lg">{item.title}</h4>
+                    <div className="text-xs text-[var(--text-subtle)] truncate">{item.link}</div>
+                    <p className="text-sm text-[var(--text-muted)] leading-relaxed">{item.snippet}</p>
                   </a>
                 </Card>
               ))
@@ -178,17 +179,17 @@ export default function SearchPanel() {
               disabled={page <= 1}
               onClick={() => handleSearch(undefined, Math.max(1, page - 1))}
               variant="outline"
-              className="px-4 py-2 h-auto rounded-lg bg-white/[0.05] border border-white/10 text-white hover:bg-white/10 disabled:opacity-30 text-sm"
+              className="px-4 py-2 h-auto rounded-lg text-sm bg-[var(--btn-secondary-bg)] border border-[var(--btn-secondary-border)] text-[var(--text-main)]"
             >
               Previous Page
             </Button>
-            <div className="px-4 py-2 flex items-center justify-center text-white/50 text-sm font-medium">
+            <div className="px-4 py-2 flex items-center justify-center text-[var(--text-muted)] text-sm font-medium">
               Page {page}
             </div>
             <Button
               onClick={() => handleSearch(undefined, page + 1)}
               variant="outline"
-              className="px-4 py-2 h-auto rounded-lg bg-white/[0.05] border border-white/10 text-white hover:bg-white/10 text-sm"
+              className="px-4 py-2 h-auto rounded-lg text-sm bg-[var(--btn-secondary-bg)] border border-[var(--btn-secondary-border)] text-[var(--text-main)]"
             >
               Next Page
             </Button>
@@ -200,9 +201,9 @@ export default function SearchPanel() {
       <style>{`
         .ai-response-content h1, .ai-response-content h2, .ai-response-content h3,
         .ai-response-content h4, .ai-response-content h5 {
-          color: rgba(255,255,255,0.9);
+          color: var(--text-main);
           font-weight: 600;
-          margin-top: 1em;
+          margin-top: 1.25em;
           margin-bottom: 0.5em;
         }
         .ai-response-content h2 { font-size: 1.1em; }
@@ -212,15 +213,15 @@ export default function SearchPanel() {
           padding-left: 1.5em;
           margin-bottom: 0.75em;
         }
-        .ai-response-content li { margin-bottom: 0.3em; }
+        .ai-response-content li { margin-bottom: 0.3em; list-style-type: disc; }
         .ai-response-content a {
-          color: #0061FF;
+          color: var(--primary);
           text-decoration: underline;
           text-underline-offset: 2px;
         }
-        .ai-response-content a:hover { color: #00E5FF; }
+        .ai-response-content a:hover { color: var(--accent); }
         .ai-response-content img { max-width: 100%; border-radius: 8px; margin: 0.5em 0; }
-        .ai-response-content strong, .ai-response-content b { color: rgba(255,255,255,0.95); }
+        .ai-response-content strong, .ai-response-content b { color: var(--text-main); }
         .ai-response-content br + br { display: none; }
       `}</style>
     </div>

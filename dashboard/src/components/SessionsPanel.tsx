@@ -24,42 +24,44 @@ function SessionCard({ icon, title, description, color, action }: SessionCardPro
   };
 
   return (
-    <Card className="glass glass-hover rounded-2xl p-6 flex flex-col gap-4 border border-white/10">
-      <div className="flex items-center gap-3">
-        <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl ${color}`}>
-          {icon}
+    <Card className="rounded-2xl flex flex-col justify-between border border-[var(--card-border)] bg-[var(--card-bg)] shadow-md transition-all group hover:shadow-lg p-5">
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl border ${color}`}>
+            {icon}
+          </div>
+          <div>
+            <h3 className="font-bold text-[var(--text-main)] text-sm">{title}</h3>
+            <p className="text-xs text-[var(--text-muted)]">{description}</p>
+          </div>
         </div>
-        <div>
-          <CardTitle className="text-sm font-semibold text-white">{title}</CardTitle>
-          <CardDescription className="text-xs text-white/40">{description}</CardDescription>
-        </div>
+
+        {error && (
+          <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">
+            ❌ {error}
+          </div>
+        )}
+
+        {result && !result.error && (
+          <div className="bg-[var(--code-bg)] border border-[var(--input-border)] rounded-xl p-4 space-y-2 text-sm">
+            <a href={result.url} target="_blank" rel="noopener noreferrer"
+              className="text-teal-500 hover:underline font-mono text-xs break-all block">
+              🔗 {result.url}
+            </a>
+            {result.username && <p className="text-[var(--text-muted)]">👤 <span className="text-[var(--text-main)] font-mono">{result.username}</span></p>}
+            {result.password && <p className="text-[var(--text-muted)]">🔑 <span className="text-[var(--text-main)] font-mono">{result.password}</span></p>}
+          </div>
+        )}
       </div>
 
       <Button
         onClick={launch}
         disabled={loading}
         variant="outline"
-        className="w-full py-2.5 rounded-xl bg-white/[0.07] hover:bg-white/[0.12] border border-white/10 hover:border-white/20 text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+        className="w-full mt-4 py-2.5 rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] text-[var(--text-main)] text-xs font-semibold uppercase tracking-wider transition-all disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {loading ? '⏳ Launching…' : `Launch ${title}`}
       </Button>
-
-      {error && (
-        <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
-          ❌ {error}
-        </div>
-      )}
-
-      {result && !result.error && (
-        <div className="bg-black/30 border border-white/10 rounded-xl p-4 space-y-2 text-sm">
-          <a href={result.url} target="_blank" rel="noopener noreferrer"
-            className="text-teal-400 hover:underline font-mono text-xs break-all block">
-            🔗 {result.url}
-          </a>
-          {result.username && <p className="text-white/60">👤 <span className="text-white font-mono">{result.username}</span></p>}
-          {result.password && <p className="text-white/60">🔑 <span className="text-white font-mono">{result.password}</span></p>}
-        </div>
-      )}
     </Card>
   );
 }
@@ -90,68 +92,70 @@ export default function SessionsPanel() {
 
   return (
     <div className="space-y-4">
-      <p className="text-white/40 text-sm">Launch new isolated sessions. Each call creates a fresh Cloudflare tunnel.</p>
+      <p className="text-[var(--text-muted)] text-sm">Launch new isolated sessions. Each call creates a fresh Cloudflare tunnel.</p>
       
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
         <SessionCard
-          icon="💻" title="Web Terminal" color="bg-green-500/15 border border-green-500/20"
+          icon="💻" title="Web Terminal" color="bg-emerald-500/10 border-emerald-500/20 text-emerald-500"
           description="ttyd web terminal with sudo access"
           action={api.startTerminal}
         />
         <SessionCard
-          icon="🔵" title="VSCode" color="bg-blue-500/15 border border-blue-500/20"
+          icon="🔵" title="VSCode" color="bg-indigo-500/10 border-indigo-500/20 text-indigo-500"
           description="code-server with password auth"
           action={api.startVSCode}
         />
         <SessionCard
-          icon="🌐" title="Browser" color="bg-amber-500/15 border border-amber-500/20"
+          icon="🌐" title="Browser" color="bg-amber-500/10 border-amber-500/20 text-amber-500"
           description="Chromium in a Docker container"
           action={api.startBrowser}
         />
 
         {/* SSH Terminal Card */}
-        <Card className="glass glass-hover rounded-2xl p-6 flex flex-col gap-4 border border-white/10">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl bg-purple-500/15 border border-purple-500/20">
-              🔐
+        <Card className="rounded-2xl flex flex-col justify-between border border-[var(--card-border)] bg-[var(--card-bg)] shadow-md transition-all group hover:shadow-lg p-5">
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl bg-purple-500/10 border border-purple-500/20 text-purple-500">
+                🔐
+              </div>
+              <div>
+                <h3 className="font-bold text-[var(--text-main)] text-sm">SSH Terminal</h3>
+                <p className="text-xs text-[var(--text-muted)]">Isolated container with SSH access</p>
+              </div>
             </div>
-            <div>
-              <CardTitle className="text-sm font-semibold text-white">SSH Terminal</CardTitle>
-              <CardDescription className="text-xs text-white/40">Isolated container with SSH access</CardDescription>
-            </div>
+
+            {sshError && (
+              <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">
+                ❌ {sshError}
+              </div>
+            )}
+
+            {sshResult && !sshResult.error && (
+              <div className="bg-[var(--code-bg)] border border-[var(--input-border)] rounded-xl p-4 space-y-2 text-sm">
+                <p className="text-[var(--text-muted)]">🔌 <span className="text-[var(--text-main)] font-mono">Port: {sshResult.port}</span></p>
+                <p className="text-[var(--text-muted)]">👤 <span className="text-[var(--text-main)] font-mono">{sshResult.username}</span></p>
+                <p className="text-[var(--text-muted)]">🔑 <span className="text-[var(--text-main)] font-mono">{sshResult.password}</span></p>
+                <div className="pt-2 border-t border-[var(--input-border)]">
+                  <p className="text-[var(--text-subtle)] text-xs mb-1">SSH Command:</p>
+                  <code className="text-teal-500 text-xs bg-[var(--input-bg)] border border-[var(--input-border)] px-2 py-1 rounded block break-all">
+                    {sshResult.sshCommand}
+                  </code>
+                </div>
+                <p className="text-[var(--text-subtle)] text-xs pt-2">
+                  💡 Use this command from your local terminal or any SSH client
+                </p>
+              </div>
+            )}
           </div>
 
           <Button
             onClick={launchSSH}
             disabled={sshLoading}
             variant="outline"
-            className="w-full py-2.5 rounded-xl bg-white/[0.07] hover:bg-white/[0.12] border border-white/10 hover:border-white/20 text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full mt-4 py-2.5 rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] text-[var(--text-main)] text-xs font-semibold uppercase tracking-wider transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {sshLoading ? '⏳ Launching…' : 'Launch SSH Terminal'}
           </Button>
-
-          {sshError && (
-            <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
-              ❌ {sshError}
-            </div>
-          )}
-
-          {sshResult && !sshResult.error && (
-            <div className="bg-black/30 border border-white/10 rounded-xl p-4 space-y-2 text-sm">
-              <p className="text-white/60">🔌 <span className="text-white font-mono">Port: {sshResult.port}</span></p>
-              <p className="text-white/60">👤 <span className="text-white font-mono">{sshResult.username}</span></p>
-              <p className="text-white/60">🔑 <span className="text-white font-mono">{sshResult.password}</span></p>
-              <div className="pt-2 border-t border-white/10">
-                <p className="text-white/40 text-xs mb-1">SSH Command:</p>
-                <code className="text-teal-400 text-xs bg-black/40 px-2 py-1 rounded block break-all">
-                  {sshResult.sshCommand}
-                </code>
-              </div>
-              <p className="text-white/30 text-xs pt-2">
-                💡 Use this command from your local terminal or any SSH client
-              </p>
-            </div>
-          )}
         </Card>
       </div>
     </div>

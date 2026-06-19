@@ -28,44 +28,43 @@ export default function MoviesPanel() {
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto text-sm">
-      <Card className="glass rounded-3xl p-6 md:p-8 space-y-4 border border-white/[0.08] shadow-2xl relative overflow-hidden">
-        <div className="absolute -top-24 -right-24 w-48 h-48 rounded-full bg-[#0061FF]/5 blur-[80px] pointer-events-none" />
-        
-        <div>
-          <CardTitle className="font-bold text-white text-base">🎬 Discover Movies & TV Shows</CardTitle>
-          <CardDescription className="text-white/40 text-xs mt-1">Search TMDB to fetch instant details and streaming links.</CardDescription>
-        </div>
-
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <span className="absolute inset-y-0 left-4 flex items-center text-white/30 text-sm">🔍</span>
-            <Input
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && search()}
-              placeholder="Search movies or TV shows..."
-              className="w-full bg-[#151922]/50 border border-white/10 rounded-2xl pl-10 pr-4 py-3 text-sm text-white placeholder-white/20 outline-none focus:border-[#0061FF]/40 transition-all focus:bg-[#151922]/80"
-            />
+      <Card className="rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] shadow-xl relative overflow-hidden">
+        <CardHeader>
+          <CardTitle>🎬 Discover Movies & TV Shows</CardTitle>
+          <CardDescription>Search TMDB to fetch instant details and streaming links.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1">
+              <span className="absolute inset-y-0 left-4 flex items-center text-[var(--text-subtle)] text-sm">🔍</span>
+              <Input
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && search()}
+                placeholder="Search movies or TV shows..."
+                className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-xl pl-10 pr-4 py-3 text-sm text-[var(--input-text)] placeholder-[var(--input-placeholder)]"
+              />
+            </div>
+            <Button
+              onClick={search}
+              disabled={searching || !query.trim()}
+              className="px-6 py-5 rounded-xl text-xs uppercase tracking-wider font-bold transition-all flex items-center justify-center gap-2 h-auto"
+            >
+              {searching ? (
+                <>
+                  <div className="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                  <span>Searching...</span>
+                </>
+              ) : (
+                <span>Search</span>
+              )}
+            </Button>
           </div>
-          <Button
-            onClick={search}
-            disabled={searching || !query.trim()}
-            className="px-6 py-6 rounded-2xl bg-gradient-to-r from-[#0061FF] to-[#00E5FF] text-white text-sm font-bold hover:opacity-95 transition-all disabled:opacity-30 flex items-center justify-center gap-2 shadow-lg shadow-[#0061FF]/10 h-auto"
-          >
-            {searching ? (
-              <>
-                <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
-                <span>Searching...</span>
-              </>
-            ) : (
-              <span>Search</span>
-            )}
-          </Button>
-        </div>
+        </CardContent>
       </Card>
 
       {error && (
-        <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-2xl px-4 py-3 flex items-center gap-2.5 animate-in fade-in duration-300">
+        <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 flex items-center gap-2.5 animate-in fade-in duration-300">
           <span>⚠️</span>
           <span>{error}</span>
         </div>
@@ -76,11 +75,11 @@ export default function MoviesPanel() {
           {results.map(m => (
             <Card
               key={m.tmdbId}
-              className="glass glass-hover rounded-3xl overflow-hidden flex flex-col border border-white/[0.08] shadow-lg transition-all duration-300 group"
+              className="rounded-2xl overflow-hidden flex flex-col border border-[var(--card-border)] bg-[var(--card-bg)] shadow-md transition-all duration-300 group hover:shadow-lg"
             >
               {/* Media Poster Wrapper */}
               <div className="relative aspect-[16/10] overflow-hidden bg-black/40 flex items-center justify-center flex-shrink-0">
-                <div className="absolute inset-0 bg-gradient-to-t from-[#0A0E17] via-transparent to-transparent opacity-80 z-10" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-85 z-10" />
                 {m.posterUrl ? (
                   <img
                     src={m.posterUrl}
@@ -92,7 +91,7 @@ export default function MoviesPanel() {
                 )}
                 
                 {/* Media Type Tag */}
-                <Badge variant="outline" className="absolute top-3 left-3 px-2 py-0.5 rounded-lg bg-black/60 border border-white/10 text-[9px] font-bold uppercase tracking-wider text-[#00E5FF] z-20">
+                <Badge variant="outline" className="absolute top-3 left-3 px-2 py-0.5 rounded-lg bg-black/60 border border-white/10 text-[9px] font-bold uppercase tracking-wider text-[var(--accent-active-text)] z-20">
                   {m.mediaType === 'tv' ? '📺 TV Show' : '🎬 Movie'}
                 </Badge>
                 
@@ -105,29 +104,28 @@ export default function MoviesPanel() {
               </div>
 
               {/* Media Info Content */}
-              <div className="p-5 flex-1 flex flex-col space-y-3">
+              <div className="p-5 flex-1 flex flex-col justify-between space-y-3">
                 <div className="space-y-1">
                   <div className="flex items-center justify-between gap-2">
-                    <CardTitle className="font-bold text-white text-sm line-clamp-1 leading-snug group-hover:text-[#0061FF] transition-colors">{m.title}</CardTitle>
+                    <h3 className="font-bold text-[var(--text-main)] text-sm line-clamp-1 leading-snug group-hover:text-[var(--primary)] transition-colors">{m.title}</h3>
                     {m.voteAverage > 0 && (
-                      <Badge variant="outline" className="text-[10px] font-bold text-yellow-400 flex items-center gap-0.5 bg-yellow-500/10 px-1.5 py-0.5 rounded border border-yellow-500/20">
+                      <Badge variant="outline" className="text-[10px] font-bold text-yellow-500 flex items-center gap-0.5 bg-yellow-500/10 px-1.5 py-0.5 rounded border border-yellow-500/20">
                         ⭐ {m.voteAverage.toFixed(1)}
                       </Badge>
                     )}
                   </div>
+                  {m.overview && (
+                    <p className="text-[11px] text-[var(--text-muted)] line-clamp-3 leading-relaxed">
+                      {m.overview}
+                    </p>
+                  )}
                 </div>
-
-                {m.overview && (
-                  <p className="text-[11px] text-white/40 line-clamp-3 leading-relaxed flex-1">
-                    {m.overview}
-                  </p>
-                )}
 
                 <a
                   href={m.watchUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-[#0061FF]/10 hover:bg-[#0061FF]/20 border border-[#0061FF]/20 hover:border-[#0061FF]/35 text-[#9d97ff] text-xs font-bold transition-all shadow-inner"
+                  className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-[var(--btn-secondary-bg)] hover:bg-[var(--btn-secondary-hover)] border border-[var(--btn-secondary-border)] text-[var(--text-main)] text-xs font-bold transition-all shadow-inner"
                 >
                   <span>▶</span>
                   <span>Watch Content</span>

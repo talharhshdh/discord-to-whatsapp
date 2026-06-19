@@ -34,30 +34,36 @@ function FileUploadCard({
   };
 
   return (
-    <Card className="glass glass-hover rounded-2xl p-5 flex flex-col gap-3 border border-white/10">
-      <div className="text-2xl">{icon}</div>
-      <CardTitle className="font-semibold text-white text-sm">{title}</CardTitle>
-      <input ref={inputRef} type="file" accept={accept} className="hidden"
-        onChange={e => e.target.files?.[0] && handle(e.target.files[0])} />
+    <Card className="rounded-2xl flex flex-col justify-between border border-[var(--card-border)] bg-[var(--card-bg)] shadow-md p-5 group hover:shadow-lg">
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <span className="text-2xl">{icon}</span>
+          <h3 className="font-bold text-[var(--text-main)] text-sm">{title}</h3>
+        </div>
+        <input ref={inputRef} type="file" accept={accept} className="hidden"
+          onChange={e => e.target.files?.[0] && handle(e.target.files[0])} />
+
+        {error && <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">❌ {error}</p>}
+        {result && resultType === 'image' && (
+          <div className="space-y-2">
+            <img src={result} alt="result" className="rounded-xl max-h-48 w-full object-contain bg-[var(--code-bg)] border border-[var(--input-border)]" />
+            <a href={result} download={`result_${Date.now()}.png`}
+              className="block text-center text-xs text-teal-500 hover:underline">⬇ Download</a>
+          </div>
+        )}
+        {result && resultType === 'text' && (
+          <Textarea readOnly value={result} rows={5}
+            className="w-full text-xs font-mono bg-[var(--input-bg)] border border-[var(--input-border)] rounded-xl p-3 text-[var(--input-text)] resize-none" />
+        )}
+      </div>
+
       <Button
         onClick={() => inputRef.current?.click()} disabled={loading}
         variant="outline"
-        className="w-full py-2 rounded-lg bg-white/[0.07] hover:bg-white/[0.12] border border-white/10 text-xs font-medium transition-all"
+        className="w-full mt-4 py-2.5 rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] text-[var(--text-main)] text-xs font-semibold uppercase tracking-wider transition-all"
       >
         {loading ? '⏳ Processing…' : 'Upload & Process'}
       </Button>
-      {error && <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">❌ {error}</p>}
-      {result && resultType === 'image' && (
-        <div className="space-y-2">
-          <img src={result} alt="result" className="rounded-lg max-h-48 w-full object-contain bg-black/30" />
-          <a href={result} download={`result_${Date.now()}.png`}
-            className="block text-center text-xs text-teal-400 hover:underline">⬇ Download</a>
-        </div>
-      )}
-      {result && resultType === 'text' && (
-        <Textarea readOnly value={result} rows={5}
-          className="w-full text-xs font-mono bg-black/30 border border-white/10 rounded-lg p-3 text-white/80 resize-none" />
-      )}
     </Card>
   );
 }
@@ -78,28 +84,33 @@ function ScreenshotCard() {
   };
 
   return (
-    <Card className="glass glass-hover rounded-2xl p-5 flex flex-col gap-3 border border-white/10">
-      <div className="text-2xl">📸</div>
-      <CardTitle className="font-semibold text-white text-sm">Screenshot URL</CardTitle>
-      <Input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://example.com"
-        className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 outline-none focus:border-white/30" />
-      <Label className="flex items-center gap-2 text-xs text-white/50 cursor-pointer">
-        <input type="checkbox" checked={fullPage} onChange={e => setFullPage(e.target.checked)} className="accent-teal-400" />
-        Full page screenshot
-      </Label>
+    <Card className="rounded-2xl flex flex-col justify-between border border-[var(--card-border)] bg-[var(--card-bg)] shadow-md p-5 group hover:shadow-lg">
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <span className="text-2xl">📸</span>
+          <h3 className="font-bold text-[var(--text-main)] text-sm">Screenshot URL</h3>
+        </div>
+        <Input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://example.com"
+          className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-xl px-4 py-3 text-sm text-[var(--input-text)] placeholder-[var(--input-placeholder)]" />
+        <Label className="flex items-center gap-2 text-xs text-[var(--text-muted)] cursor-pointer">
+          <input type="checkbox" checked={fullPage} onChange={e => setFullPage(e.target.checked)} className="accent-[var(--primary)]" />
+          Full page screenshot
+        </Label>
+        {error && <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">❌ {error}</p>}
+        {imgUrl && (
+          <div className="space-y-2">
+            <img src={imgUrl} alt="screenshot" className="rounded-xl max-h-64 w-full object-contain bg-[var(--code-bg)] border border-[var(--input-border)]" />
+            <a href={imgUrl} download={`screenshot_${Date.now()}.png`}
+              className="block text-center text-xs text-teal-500 hover:underline">⬇ Download</a>
+          </div>
+        )}
+      </div>
+
       <Button onClick={shoot} disabled={loading || !url}
         variant="outline"
-        className="w-full py-2 rounded-lg bg-white/[0.07] hover:bg-white/[0.12] border border-white/10 text-xs font-medium transition-all">
+        className="w-full mt-4 py-2.5 rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] text-[var(--text-main)] text-xs font-semibold uppercase tracking-wider transition-all">
         {loading ? '⏳ Capturing…' : 'Take Screenshot'}
       </Button>
-      {error && <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">❌ {error}</p>}
-      {imgUrl && (
-        <div className="space-y-2">
-          <img src={imgUrl} alt="screenshot" className="rounded-lg max-h-64 w-full object-contain bg-black/30" />
-          <a href={imgUrl} download={`screenshot_${Date.now()}.png`}
-            className="block text-center text-xs text-teal-400 hover:underline">⬇ Download</a>
-        </div>
-      )}
     </Card>
   );
 }
@@ -121,21 +132,26 @@ function HtmlCleanerCard() {
   };
 
   return (
-    <Card className="glass glass-hover rounded-2xl p-5 flex flex-col gap-3 border border-white/10">
-      <div className="text-2xl">🧹</div>
-      <CardTitle className="font-semibold text-white text-sm">MinerU HTML Cleaner</CardTitle>
-      <Textarea value={html} onChange={e => setHtml(e.target.value)} placeholder="Paste raw HTML here..." rows={4}
-        className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-white/30 outline-none focus:border-white/30 resize-none" />
+    <Card className="rounded-2xl flex flex-col justify-between border border-[var(--card-border)] bg-[var(--card-bg)] shadow-md p-5 group hover:shadow-lg">
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <span className="text-2xl">🧹</span>
+          <h3 className="font-bold text-[var(--text-main)] text-sm">HTML Cleaner</h3>
+        </div>
+        <Textarea value={html} onChange={e => setHtml(e.target.value)} placeholder="Paste raw HTML here..." rows={4}
+          className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-xl px-4 py-3 text-xs text-[var(--input-text)] placeholder-[var(--input-placeholder)] resize-none" />
+        {error && <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">❌ {error}</p>}
+        {result && (
+          <Textarea readOnly value={result} rows={5}
+            className="w-full text-xs font-mono bg-[var(--input-bg)] border border-[var(--input-border)] rounded-xl p-3 text-[var(--input-text)] resize-none mt-2" />
+        )}
+      </div>
+
       <Button onClick={clean} disabled={loading || !html.trim()}
         variant="outline"
-        className="w-full py-2 rounded-lg bg-white/[0.07] hover:bg-white/[0.12] border border-white/10 text-xs font-medium transition-all">
+        className="w-full mt-4 py-2.5 rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] text-[var(--text-main)] text-xs font-semibold uppercase tracking-wider transition-all">
         {loading ? '⏳ Cleaning…' : 'Clean HTML'}
       </Button>
-      {error && <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">❌ {error}</p>}
-      {result && (
-        <Textarea readOnly value={result} rows={5}
-          className="w-full text-xs font-mono bg-black/30 border border-white/10 rounded-lg p-3 text-white/80 resize-none mt-2" />
-      )}
     </Card>
   );
 }
@@ -143,7 +159,7 @@ function HtmlCleanerCard() {
 export default function AIToolsPanel() {
   return (
     <div className="space-y-4 text-sm">
-      <p className="text-white/40 text-sm">AI-powered tools — all processed by the Python API running in the same Actions session.</p>
+      <p className="text-[var(--text-muted)] text-sm">AI-powered tools — all processed by the Python API running in the same Actions session.</p>
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <FileUploadCard icon="🎨" title="Remove Background" accept="image/*" resultType="image"
           onProcess={api.removeBg} />

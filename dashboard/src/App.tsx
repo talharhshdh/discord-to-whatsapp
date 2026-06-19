@@ -86,10 +86,16 @@ const NAV: NavItem[] = NAV_CATEGORIES.flatMap(cat => cat.items);
 
 export default function App() {
   const getInitialSection = (): NavSection => {
-    const path = window.location.pathname;
-    const hash = window.location.hash;
-    if (path === '/google' || hash === '#/google') {
-      return 'google';
+    const hash = window.location.hash.replace(/^#\/?/, '');
+    const path = window.location.pathname.replace(/^\//, '');
+    const current = hash || path;
+    const validSections: NavSection[] = [
+      'google', 'web-proxy', 'search', 'places', 'pool', 'indeed', 'contacts', 
+      'sessions', 'manager', 'android', 'urls', 'go-containers', 
+      'ai-tools', 'media', 'youtube', 'movies', 'llm', 'tts'
+    ];
+    if (validSections.includes(current as NavSection)) {
+      return current as NavSection;
     }
     return 'sessions';
   };
@@ -165,10 +171,16 @@ export default function App() {
 
   React.useEffect(() => {
     const handleLocationChange = () => {
-      const path = window.location.pathname;
-      const hash = window.location.hash;
-      if (path === '/google' || hash === '#/google') {
-        setSection('google');
+      const hash = window.location.hash.replace(/^#\/?/, '');
+      const path = window.location.pathname.replace(/^\//, '');
+      const current = hash || path;
+      const validSections: NavSection[] = [
+        'google', 'web-proxy', 'search', 'places', 'pool', 'indeed', 'contacts', 
+        'sessions', 'manager', 'android', 'urls', 'go-containers', 
+        'ai-tools', 'media', 'youtube', 'movies', 'llm', 'tts'
+      ];
+      if (validSections.includes(current as NavSection)) {
+        setSection(current as NavSection);
       }
     };
     window.addEventListener('hashchange', handleLocationChange);
@@ -184,22 +196,18 @@ export default function App() {
     setIsMenuOpen(false);
     
     // Update hash for SPA linkability
-    if (id === 'google') {
-      window.history.pushState(null, '', '/google');
-    } else {
-      window.history.pushState(null, '', '/');
-    }
+    window.location.hash = `#/${id}`;
   };
 
   if (!isAuthenticated && section !== 'google') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#000000] relative p-4 font-sans text-white">
+      <div className="min-h-screen flex items-center justify-center bg-[var(--bg-main)] relative p-4 font-sans text-white">
         {/* Theme toggle on login screen */}
         <div className="absolute top-4 right-4 z-20">
           <Button
             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
             variant="outline"
-            className="p-2.5 h-auto rounded-lg bg-[#151922] border border-white/10 text-white/60 hover:text-white/90 hover:scale-[1.02] active:scale-[0.98] text-xs transition-all flex items-center gap-1.5 font-medium shadow-none"
+            className="p-2.5 h-auto rounded-lg bg-[var(--btn-secondary-bg)] border border-[var(--card-border)] text-[var(--text-muted)] hover:text-[var(--text-main)] hover:scale-[1.02] active:scale-[0.98] text-xs transition-all flex items-center gap-1.5 font-medium shadow-none"
             title={theme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
           >
             <span>{theme === 'dark' ? '☀️' : '🌙'}</span>
@@ -207,7 +215,7 @@ export default function App() {
           </Button>
         </div>
 
-        <Card className="relative z-10 w-full max-w-md bg-[#151922] border border-white/5 p-8 rounded-lg shadow-none space-y-6">
+        <Card className="relative z-10 w-full max-w-md bg-[var(--bg-sidebar)] border border-white/5 p-8 rounded-lg shadow-none space-y-6">
           <div className="text-center">
             <div className="w-16 h-16 mx-auto rounded-xl bg-[#0061FF] flex items-center justify-center text-3xl shadow-none mb-4">
               🔒
@@ -282,8 +290,8 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-[var(--bg-main)] text-sm font-sans">
-      <div className="relative z-10 flex flex-col min-h-screen">
+    <div className="h-screen max-h-screen flex flex-col bg-[var(--bg-main)] text-sm font-sans overflow-hidden">
+      <div className="relative z-10 flex flex-col h-full overflow-hidden">
         {/* Header */}
         <header className="bg-[var(--bg-sidebar)] border-b border-white/5 px-4 md:px-6 py-3 sticky top-0 z-30">
           <div className="flex items-center justify-between gap-3">
@@ -313,7 +321,7 @@ export default function App() {
               <Button 
                 onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} 
                 variant="outline"
-                className="p-1.5 md:px-3 md:py-1.5 h-auto rounded-full bg-white/[0.04] border border-white/10 text-white/60 hover:text-white/90 text-[10px] md:text-xs transition-colors flex items-center gap-1.5 font-medium"
+                className="p-1.5 md:px-3 md:py-1.5 h-auto rounded-full bg-[var(--btn-secondary-bg)] border border-[var(--card-border)] text-[var(--text-muted)] hover:text-[var(--text-main)] text-[10px] md:text-xs transition-colors flex items-center gap-1.5 font-medium"
                 title={theme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
               >
                 <span>{theme === 'dark' ? '☀️' : '🌙'}</span>
@@ -388,8 +396,8 @@ export default function App() {
                         variant="ghost"
                         className={`w-full flex items-center justify-start gap-2.5 px-3 py-2 h-auto rounded-none text-xs font-semibold transition-all duration-200 ${
                           section === n.id
-                            ? 'border-l-2 border-[#0061FF] bg-[#1a1f2c] text-[#00E5FF] hover:bg-[#1a1f2c] hover:text-[#00E5FF]'
-                            : 'text-white/50 hover:text-white hover:bg-white/[0.04]'
+                            ? 'border-l-2 border-[var(--primary)] bg-[var(--accent-active-bg)] text-[var(--accent-active-text)] hover:bg-[var(--accent-active-bg)] hover:text-[var(--accent-active-text)]'
+                            : 'text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--btn-secondary-hover)]'
                         }`}
                       >
                         <span className="text-sm">{n.icon}</span>
@@ -468,8 +476,8 @@ export default function App() {
                             variant="ghost"
                             className={`w-full flex items-center justify-start gap-3 px-3 py-2.5 h-auto rounded-xl text-sm font-medium transition-all ${
                               section === n.id
-                                ? 'bg-gradient-to-r from-[#0061FF]/20 to-[#00E5FF]/10 text-white border border-[#0061FF]/30 hover:bg-[#0061FF]/25 hover:text-white'
-                                : 'text-white/45 hover:text-white hover:bg-white/[0.05]'
+                                ? 'bg-[var(--accent-active-bg)] text-[var(--accent-active-text)] border border-[var(--accent-active-border)] hover:bg-[var(--accent-active-bg)]'
+                                : 'text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--btn-secondary-hover)]'
                             }`}
                           >
                             <span className="text-base">{n.icon}</span>
