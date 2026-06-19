@@ -1733,6 +1733,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       json(res, {
         lastRun: status.lastRun,
         status: status.status,
+        startedAt: status.startedAt,
         stats: status.stats,
         jobs: jobs
       });
@@ -2183,6 +2184,30 @@ function startAutomatedJobsScheduler() {
 async function checkAndTriggerScraper() {
   try {
     const status = await getJobsStatusFromR2();
+    const now = Date.now();
+    
+    let isStuck = false;
+    if (status.status === 'scraping') {
+      const fourHours = 4 * 60 * 60 * 1000; // 4 hours
+      if (status.startedAt) {
+        const startTime = new Date(status.startedAt).getTime();
+        if (now - startTime >= fourHours) {
+          console.warn(`[Jobs Scheduler] Scraper is stuck in 'scraping' state. Started at ${status.startedAt}. Resetting lock.`);
+          isStuck = true;
+        }
+      } else if (status.lastRun) {
+        const lastRunTime = new Date(status.lastRun).getTime();
+        const twelveHours = 12 * 60 * 60 * 1000;
+        if (now - lastRunTime >= twelveHours) {
+          console.warn(`[Jobs Scheduler] Scraper status is 'scraping' but last completed run was ${status.lastRun}. Resetting lock.`);
+          isStuck = true;
+        }
+      } else {
+        console.warn(`[Jobs Scheduler] Scraper status is 'scraping' but no timestamps. Resetting lock.`);
+        isStuck = true;
+      }
+    }
+
     if (!status.lastRun) {
       console.log('[Jobs Scheduler] No last run found. Triggering initial jobs scraper run...');
       await runJobsScraper();
@@ -2190,14 +2215,13 @@ async function checkAndTriggerScraper() {
     }
     
     const lastRunTime = new Date(status.lastRun).getTime();
-    const now = Date.now();
     const twelveHours = 12 * 60 * 60 * 1000;
     
-    if (now - lastRunTime >= twelveHours && status.status !== 'scraping') {
-      console.log(`[Jobs Scheduler] Last run was at ${status.lastRun}. Triggering scheduled jobs scraper...`);
+    if ((now - lastRunTime >= twelveHours && status.status !== 'scraping') || isStuck) {
+      console.log(`[Jobs Scheduler] Triggering scheduled jobs scraper...`);
       await runJobsScraper();
     } else {
-      console.log(`[Jobs Scheduler] Scraper is not due yet. Last run: ${status.lastRun}`);
+      console.log(`[Jobs Scheduler] Scraper is not due yet. Last run: ${status.lastRun}, Status: ${status.status}`);
     }
   } catch (err) {
     console.error('[Jobs Scheduler] Error checking scheduled run:', err);

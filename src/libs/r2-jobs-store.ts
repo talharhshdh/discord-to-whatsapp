@@ -24,6 +24,7 @@ export interface JobsStatus {
   lastRun: string | null;
   status: 'idle' | 'scraping' | 'completed' | 'failed';
   error?: string;
+  startedAt?: string;
   stats: {
     totalJobs: number;
     companiesScraped: number;

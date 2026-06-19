@@ -280,6 +280,7 @@ export interface AutomatedJobsResponse {
   lastRun: string | null;
   status: 'idle' | 'scraping' | 'completed' | 'failed';
   error?: string;
+  startedAt?: string;
   stats: {
     totalJobs: number;
     companiesScraped: number;

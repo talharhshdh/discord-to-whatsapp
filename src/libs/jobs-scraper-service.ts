@@ -322,6 +322,7 @@ export async function runJobsScraper(customKeywords?: string[], customLocation?:
   // 1. Update status to scraping
   const status = await getJobsStatusFromR2();
   status.status = 'scraping';
+  status.startedAt = new Date().toISOString();
   await saveJobsStatusToR2(status);
 
   // Run in background asynchronously so it doesn't block the HTTP request
@@ -427,6 +428,7 @@ export async function runJobsScraper(customKeywords?: string[], customLocation?:
         const currentStatus: JobsStatus = {
           lastRun: status.lastRun,
           status: 'scraping',
+          startedAt: status.startedAt,
           stats: {
             totalJobs: finalJobsList.length,
             companiesScraped: totalCompanies,
