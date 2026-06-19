@@ -7,21 +7,21 @@
 @tailwind utilities;
 
 :root {
-  --bg-main: #d9e2ec;
-  --bg-sidebar: #bcccdc;
-  --text-main: #102a43;
-  --text-muted: #334e68;
-  --text-subtle: #486581;
+  --bg-main: #351e34;
+  --bg-sidebar: #0d140e;
+  --text-main: #95f82c;
+  --text-muted: #d2ea4c;
+  --text-subtle: #c0ff9d;
 
-  --card-bg: rgba(240, 244, 248, 0.85);
+  --card-bg: rgba(9, 15, 12, 0.85);
   --card-border: rgba(16, 42, 67, 0.1);
 
-  --input-bg: #f0f4f8;
-  --input-border: rgba(16, 42, 67, 0.12);
-  --input-text: #102a43;
+  --input-bg: #1f6055;
+  --input-border: rgba(182, 195, 206, 0.12);
+  --input-text: #ffffff;
   --input-placeholder: rgba(16, 42, 67, 0.4);
 
-  --btn-secondary-bg: rgba(16, 42, 67, 0.05);
+  --btn-secondary-bg: rgba(19, 53, 76, 0.05);
   --btn-secondary-hover: rgba(16, 42, 67, 0.08);
   --btn-secondary-border: rgba(16, 42, 67, 0.1);
 
@@ -29,7 +29,7 @@
   --shadow-color: rgba(16, 42, 67, 0.08);
 
   --accent-active-bg: rgba(0, 97, 255, 0.08);
-  --accent-active-text: #0061ff;
+  --accent-active-text: #fefff8;
   --accent-active-border: rgba(0, 97, 255, 0.15);
 
   --code-bg: rgba(16, 42, 67, 0.05);
@@ -399,7 +399,12 @@
   }
 
   input::placeholder, textarea::placeholder {
-    color: var(--input-placeholder) !important;
+    color: var(--input-placeholder);
+  }
+
+  input[class*="bg-black/"]::placeholder,
+  textarea[class*="bg-black/"]::placeholder {
+    color: rgba(255, 255, 255, 0.4) !important;
   }
 
   /* Scrollbar overrides */

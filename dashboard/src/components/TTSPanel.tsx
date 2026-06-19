@@ -407,7 +407,7 @@ function DesignTab({ serverReady }: { serverReady: boolean }) {
               key={ex}
               onClick={() => setStyle(ex)}
               variant="outline"
-              className="text-[10px] px-2 py-1 h-auto rounded-lg bg-white/[0.04] border border-white/[0.08] text-white/45 hover:text-white/70 hover:border-white/20 transition-all font-normal"
+              className="text-[10px] px-2 py-1 h-auto rounded-lg bg-white/[0.04] border border-white/[0.08] text-[var(--text-muted)] hover:text-white/70 hover:border-white/20 transition-all font-normal"
             >
               {ex.length > 42 ? ex.slice(0, 42) + '…' : ex}
             </Button>

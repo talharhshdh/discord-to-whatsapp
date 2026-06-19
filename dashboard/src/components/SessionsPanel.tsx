@@ -58,7 +58,7 @@ function SessionCard({ icon, title, description, color, action }: SessionCardPro
         onClick={launch}
         disabled={loading}
         variant="outline"
-        className="w-full mt-4 py-2.5 rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] text-[var(--text-main)] text-xs font-semibold uppercase tracking-wider transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+        className="w-full mt-4 py-2.5 rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] text-[var(--input-text)] text-xs font-semibold uppercase tracking-wider transition-all disabled:opacity-50 disabled:cursor-not-allowed"
       >
         {loading ? '⏳ Launching…' : `Launch ${title}`}
       </Button>
@@ -152,7 +152,7 @@ export default function SessionsPanel() {
             onClick={launchSSH}
             disabled={sshLoading}
             variant="outline"
-            className="w-full mt-4 py-2.5 rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] text-[var(--text-main)] text-xs font-semibold uppercase tracking-wider transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full mt-4 py-2.5 rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] text-[var(--input-text)] text-xs font-semibold uppercase tracking-wider transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {sshLoading ? '⏳ Launching…' : 'Launch SSH Terminal'}
           </Button>

@@ -225,7 +225,7 @@ export default function WebProxyPanel() {
             <Search className="w-4 h-4 text-white/30 mr-2 flex-shrink-0" />
             <input 
               type="text" 
-              className="flex-1 bg-transparent border-none outline-none text-xs text-white placeholder-white/20 p-0 focus:ring-0"
+              className="flex-1 bg-transparent border-none outline-none text-xs text-[var(--input-text)] placeholder-white/20 p-0 focus:ring-0"
               placeholder="Enter URL (e.g. google.com) or search term..."
               value={urlInput}
               onChange={(e) => setUrlInput(e.target.value)}

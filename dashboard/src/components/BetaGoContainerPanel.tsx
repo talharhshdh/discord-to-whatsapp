@@ -843,7 +843,7 @@ volumes:
                     <select
                       value={domainMode}
                       onChange={(e) => setDomainMode(e.target.value as 'quick' | 'custom')}
-                      className="w-full h-9 px-3 rounded-lg bg-[#1E2330] border border-white/10 text-white text-xs outline-none focus:border-indigo-500"
+                      className="w-full h-9 px-3 rounded-lg bg-[#1E2330] border border-white/10 text-[var(--input-text)] text-xs outline-none focus:border-indigo-500"
                     >
                       <option value="quick">Quick Tunnel</option>
                       <option value="custom">Custom Subdomain</option>
@@ -918,7 +918,7 @@ volumes:
                         <select
                           value={restartPolicy}
                           onChange={(e) => setRestartPolicy(e.target.value)}
-                          className="w-full h-9 px-3 rounded-lg bg-[#1E2330] border border-white/10 text-white text-xs outline-none focus:border-indigo-500"
+                          className="w-full h-9 px-3 rounded-lg bg-[#1E2330] border border-white/10 text-[var(--input-text)] text-xs outline-none focus:border-indigo-500"
                         >
                           <option value="no">Do not restart</option>
                           <option value="always">Always restart</option>
@@ -1293,7 +1293,7 @@ volumes:
                           <select
                             value={serviceSettings[sName]?.domainMode || 'none'}
                             onChange={(e) => handleServiceSettingChange(sName, 'domainMode', e.target.value)}
-                            className="w-full h-9 px-2.5 rounded-lg bg-[#1E2330] border border-white/10 text-white text-xs outline-none"
+                            className="w-full h-9 px-2.5 rounded-lg bg-[#1E2330] border border-white/10 text-[var(--input-text)] text-xs outline-none"
                           >
                             <option value="none">No External Tunnel</option>
                             <option value="quick">Quick Tunnel</option>

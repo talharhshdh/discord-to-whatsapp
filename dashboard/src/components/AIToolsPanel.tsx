@@ -60,7 +60,7 @@ function FileUploadCard({
       <Button
         onClick={() => inputRef.current?.click()} disabled={loading}
         variant="outline"
-        className="w-full mt-4 py-2.5 rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] text-[var(--text-main)] text-xs font-semibold uppercase tracking-wider transition-all"
+        className="w-full mt-4 py-2.5 rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] text-[var(--input-text)] text-xs font-semibold uppercase tracking-wider transition-all"
       >
         {loading ? '⏳ Processing…' : 'Upload & Process'}
       </Button>
@@ -108,7 +108,7 @@ function ScreenshotCard() {
 
       <Button onClick={shoot} disabled={loading || !url}
         variant="outline"
-        className="w-full mt-4 py-2.5 rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] text-[var(--text-main)] text-xs font-semibold uppercase tracking-wider transition-all">
+        className="w-full mt-4 py-2.5 rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] text-[var(--input-text)] text-xs font-semibold uppercase tracking-wider transition-all">
         {loading ? '⏳ Capturing…' : 'Take Screenshot'}
       </Button>
     </Card>
@@ -149,7 +149,7 @@ function HtmlCleanerCard() {
 
       <Button onClick={clean} disabled={loading || !html.trim()}
         variant="outline"
-        className="w-full mt-4 py-2.5 rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] text-[var(--text-main)] text-xs font-semibold uppercase tracking-wider transition-all">
+        className="w-full mt-4 py-2.5 rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] text-[var(--input-text)] text-xs font-semibold uppercase tracking-wider transition-all">
         {loading ? '⏳ Cleaning…' : 'Clean HTML'}
       </Button>
     </Card>

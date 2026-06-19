@@ -83,7 +83,7 @@ export default function PoolPanel() {
 
   if (error && !data) {
     return (
-      <Card className="glass rounded-3xl p-10 text-center space-y-4 max-w-md mx-auto border border-white/[0.08]">
+      <Card className=" glass rounded-3xl p-10 text-center space-y-4 max-w-md mx-auto border border-white/[0.08]">
         <div className="w-12 h-12 mx-auto rounded-full bg-rose-500/10 border border-rose-500/25 flex items-center justify-center text-xl">
           ⚠️
         </div>

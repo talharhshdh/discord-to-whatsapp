@@ -91,7 +91,7 @@ function PlaceCard({ place, isNew }: { place: PlaceResult; isNew: boolean }) {
         <div className="flex flex-wrap items-center gap-2 mb-3">
           <StatusBadge openNow={place.openNow} />
           {place.todaysHours && (
-            <span className="text-xs text-white/45">{place.todaysHours}</span>
+            <span className="text-xs text-[var(--text-muted)]">{place.todaysHours}</span>
           )}
         </div>
 
@@ -286,7 +286,7 @@ function PaginatedPanel() {
         <div className="flex items-start justify-between mb-1">
           <div>
             <CardTitle className="text-lg font-bold text-white">Paginated Places Search</CardTitle>
-            <CardDescription className="text-xs text-white/45 mt-1">Fetches one page (20 results) at a time via the browser pool.</CardDescription>
+            <CardDescription className="text-xs text-[var(--text-muted)] mt-1">Fetches one page (20 results) at a time via the browser pool.</CardDescription>
           </div>
           <Badge variant="outline" className="text-xs text-white/30 bg-white/[0.04] border border-white/[0.07] px-2 py-0.5 rounded-full font-normal">pool · page {page}</Badge>
         </div>
@@ -480,11 +480,11 @@ function GoogleSearchPanel() {
       {/* ── Streaming / auto-paginate mode ─────────────────────────────── */}
       {subMode === 'stream' && (
         <>
-          <Card className="glass p-6 rounded-2xl border border-white/[0.07] shadow-xl">
+          <Card className="bg-[] glass p-6 rounded-2xl border border-white/[0.07] shadow-xl">
             <div className="flex items-start justify-between mb-1">
               <div>
                 <CardTitle className="text-lg font-bold text-white">Google Search Places — Auto-paginate</CardTitle>
-                <CardDescription className="text-sm text-white/45 mt-1">
+                <CardDescription className="text-sm text-[var(--text-muted)] mt-1">
                   Iterates Google Search pages (start=0, 20, 40…) and streams results live.
                 </CardDescription>
               </div>
@@ -586,7 +586,7 @@ function GoogleSearchPanel() {
             <div className="flex items-start justify-between mb-1">
               <div>
                 <CardTitle className="text-lg font-bold text-white">Google Search Places — Single Page</CardTitle>
-                <CardDescription className="text-sm text-white/45 mt-1">Fetches one page (20 results) at a time via Google Search URL.</CardDescription>
+                <CardDescription className="text-sm text-[var(--text-muted)] mt-1">Fetches one page (20 results) at a time via Google Search URL.</CardDescription>
               </div>
               <Badge variant="outline" className="text-xs text-white/30 bg-white/[0.04] border border-white/[0.07] px-2 py-0.5 rounded-full font-normal">udm=1 · page {pPage}</Badge>
             </div>
@@ -767,7 +767,7 @@ export default function PlacesPanel() {
         <div className="flex items-start justify-between mb-1">
           <div>
             <CardTitle className="text-lg font-bold text-white">Google Maps Places Search</CardTitle>
-            <CardDescription className="text-sm text-white/45 mt-1">
+            <CardDescription className="text-sm text-[var(--text-muted)] mt-1">
               Results appear in real-time as the browser scrolls through Google Maps.
             </CardDescription>
           </div>
