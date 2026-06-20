@@ -10,7 +10,7 @@
     "dev": "ts-node src/index.ts",
     "sync-r2": "ts-node src/scripts/sync-r2.ts",
     "clean-r2": "ts-node src/scripts/clean-r2.ts",
-    "dashboard:install": "cd dashboard && npm install",
+    "dashboard:install": "cd dashboard && npm install --legacy-peer-deps",
     "dashboard:build": "cd dashboard && npm run build"
   },
   "keywords": [
@@ -46,7 +46,6 @@
     "@types/node": "^20.11.19",
     "@types/node-cron": "^3.0.11",
     "@types/qrcode-terminal": "^0.12.2",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.3.3"
+    "typescript": "^7.0.1-rc"
   }
 }
