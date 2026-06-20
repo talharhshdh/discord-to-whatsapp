@@ -23,7 +23,7 @@
  */
 
 import { createServer, IncomingMessage, ServerResponse } from 'http';
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, promises as fsPromises } from 'fs';
 import { join } from 'path';
 import { spawn, ChildProcess } from 'child_process';
 import { startTerminal } from './terminal';
@@ -435,61 +435,76 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 
   // ── Static React build (dashboard/dist/) ──────────────────────────────────
   if (method === 'GET' && !pathname.startsWith('/api/')) {
-    // Resolve path: strip query string
     const cleanPath = pathname;
-    // Try exact file first, fall back to SPA index.html
     const distDir = join(__dirname, '..', '..', 'dashboard', 'dist');
-    const tryPaths = [
-      join(distDir, cleanPath === '/' ? 'index.html' : cleanPath),
-      join(distDir, 'index.html'), // SPA fallback
-    ];
     const MIME: Record<string, string> = {
       '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css',
       '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml',
       '.ico': 'image/x-icon', '.json': 'application/json', '.woff2': 'font/woff2',
     };
-    for (const filePath of tryPaths) {
-      if (existsSync(filePath)) {
-        const ext = filePath.substring(filePath.lastIndexOf('.'));
-        const ct = MIME[ext] ?? 'application/octet-stream';
 
-        try {
-          const stat = require('fs').statSync(filePath);
-          const mtime = stat.mtimeMs;
-          const fileContent = readFileSync(filePath);
+    let filePath = join(distDir, cleanPath === '/' ? 'index.html' : cleanPath);
+    let statObj;
 
-          const acceptEncoding = req.headers['accept-encoding'] || '';
-          if (acceptEncoding.includes('gzip') && ['.html', '.js', '.css', '.json', '.svg'].includes(ext)) {
-            let cached = gzipCache.get(filePath);
-            if (!cached || cached.mtime !== mtime) {
-              const { gzipSync } = require('zlib');
-              const compressed = gzipSync(fileContent);
-              cached = { mtime, content: compressed };
-              gzipCache.set(filePath, cached);
-            }
-            res.writeHead(200, {
-              'Content-Type': ct,
-              'Content-Encoding': 'gzip',
-              'Access-Control-Allow-Origin': '*',
-              'Cache-Control': 'public, max-age=31536000',
-            });
-            res.end(cached.content);
-          } else {
-            res.writeHead(200, {
-              'Content-Type': ct,
-              'Access-Control-Allow-Origin': '*',
-              'Cache-Control': 'public, max-age=31536000',
-            });
-            res.end(fileContent);
-          }
-        } catch (e) {
-          res.writeHead(500);
-          res.end('Server error');
-        }
+    try {
+      statObj = await fsPromises.stat(filePath);
+      if (!statObj.isFile()) {
+        filePath = join(distDir, 'index.html');
+        statObj = await fsPromises.stat(filePath);
+      }
+    } catch {
+      filePath = join(distDir, 'index.html');
+      try {
+        statObj = await fsPromises.stat(filePath);
+      } catch {
+        res.writeHead(404);
+        res.end('Not found');
         return;
       }
     }
-    res.writeHead(404); res.end('Not found');
+
+    const ext = filePath.substring(filePath.lastIndexOf('.'));
+    const ct = MIME[ext] ?? 'application/octet-stream';
+    const mtime = statObj.mtimeMs;
+
+    try {
+      const acceptEncoding = req.headers['accept-encoding'] || '';
+      const shouldCompress = acceptEncoding.includes('gzip') && ['.html', '.js', '.css', '.json', '.svg'].includes(ext);
+
+      if (shouldCompress) {
+        let cached = gzipCache.get(filePath);
+        if (!cached || cached.mtime !== mtime) {
+          const fileContent = await fsPromises.readFile(filePath);
+          const zlib = require('zlib');
+          const compressed = await new Promise<Buffer>((resolveProj, rejectProj) => {
+            zlib.gzip(fileContent, (gzipErr: Error | null, result: Buffer) => {
+              if (gzipErr) rejectProj(gzipErr);
+              else resolveProj(result);
+            });
+          });
+          cached = { mtime, content: compressed };
+          gzipCache.set(filePath, cached);
+        }
+        res.writeHead(200, {
+          'Content-Type': ct,
+          'Content-Encoding': 'gzip',
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'public, max-age=31536000',
+        });
+        res.end(cached.content);
+      } else {
+        const fileContent = await fsPromises.readFile(filePath);
+        res.writeHead(200, {
+          'Content-Type': ct,
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'public, max-age=31536000',
+        });
+        res.end(fileContent);
+      }
+    } catch (e) {
+      res.writeHead(500);
+      res.end('Server error');
+    }
     return;
   }
 
