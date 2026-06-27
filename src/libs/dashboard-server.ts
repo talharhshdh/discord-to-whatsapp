@@ -49,6 +49,7 @@ import { saveStateToR2 } from './r2-sync';
 import { startCustomContainer, restoreDockerContainers, stopCustomContainer } from './custom-container';
 import { runJobsScraper } from './jobs-scraper-service';
 import { getJobsFromR2, getJobsStatusFromR2 } from './r2-jobs-store';
+import { generateAndPostBlog } from './blog-generator-service';
 import cron from 'node-cron';
 
 const Corrosion = require('corrosion');
@@ -896,6 +897,18 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       const content = await callPythonExtractHtml(html);
       json(res, { content });
     } catch (e) { err(res, (e as Error).message); }
+    return;
+  }
+
+  // ── POST /api/blog/generate ────────────────────────────────────────────────
+  if (method === 'POST' && url === '/api/blog/generate') {
+    try {
+      console.log('[Dashboard API] Received manual blog generation request');
+      const result = await generateAndPostBlog();
+      json(res, result);
+    } catch (e) {
+      err(res, (e as Error).message);
+    }
     return;
   }
 
@@ -2193,6 +2206,14 @@ function startAutomatedJobsScheduler() {
   cron.schedule('0 * * * *', () => {
     console.log('[Jobs Scheduler] Running hourly cron check...');
     checkAndTriggerScraper();
+  });
+
+  // Schedule a cron job to auto-generate and post blog 4 times a day (every 6 hours)
+  cron.schedule('0 */6 * * *', () => {
+    console.log('[Blog Scheduler] Running scheduled auto blog generation...');
+    generateAndPostBlog().catch((e) => {
+      console.error('[Blog Scheduler] Error auto-generating blog:', e.message);
+    });
   });
 }
 
