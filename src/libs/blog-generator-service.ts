@@ -527,3 +527,151 @@ You MUST respond with a JSON object matching this schema:
     return { success: false, message: `Publishing network error: ${err.message}` };
   }
 }
+
+/**
+ * Fetch top stories from Hacker News.
+ */
+async function fetchHackerNewsTopics(): Promise<string[]> {
+  try {
+    const res = await fetch('https://hacker-news.firebaseio.com/v0/topstories.json');
+    if (!res.ok) return [];
+    const storyIds = await res.json() as number[];
+    const topIds = storyIds.slice(0, 15);
+    const topics: string[] = [];
+    for (const id of topIds) {
+      try {
+        const itemRes = await fetch(`https://hacker-news.firebaseio.com/v0/item/${id}.json`);
+        if (itemRes.ok) {
+          const item = await itemRes.json() as any;
+          if (item && item.title) {
+            topics.push(item.title);
+          }
+        }
+      } catch (err) {
+        // Ignore single item fetch errors
+      }
+    }
+    return topics;
+  } catch (err: any) {
+    console.error('[Blog Gen] Error fetching Hacker News topics:', err.message);
+    return [];
+  }
+}
+
+/**
+ * Fetch rising articles from DEV.to.
+ */
+async function fetchDevToTopics(): Promise<string[]> {
+  try {
+    const res = await fetch('https://dev.to/api/articles?per_page=20', {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+    });
+    if (!res.ok) return [];
+    const articles = await res.json() as any[];
+    return articles.map(a => a.title).filter(Boolean);
+  } catch (err: any) {
+    console.error('[Blog Gen] Error fetching DEV.to topics:', err.message);
+    return [];
+  }
+}
+
+/**
+ * Fetch trending repositories from GitHub in the last 48 hours.
+ */
+async function fetchGitHubTrendingTopics(): Promise<string[]> {
+  try {
+    const date = new Date();
+    date.setDate(date.getDate() - 2); // created in last 2 days
+    const dateString = date.toISOString().split('T')[0];
+    const url = `https://api.github.com/search/repositories?q=created:>${dateString}&sort=stars&order=desc&per_page=15`;
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+    });
+    if (!res.ok) return [];
+    const data = await res.json() as any;
+    if (data && Array.isArray(data.items)) {
+      return data.items.map((item: any) => `${item.name}: ${item.description || ''}`).filter(Boolean);
+    }
+  } catch (err: any) {
+    console.error('[Blog Gen] Error fetching GitHub trending repositories:', err.message);
+  }
+  return [];
+}
+
+/**
+ * Select a hot topic from Hacker News, DEV.to, or GitHub Trending, and generate/publish a blog post.
+ */
+export async function generateCommunityBlog(): Promise<{ success: boolean; message: string; data?: any; error?: string }> {
+  console.log('[Blog Gen] Starting community-driven blog generation...');
+  const sources = ['hacker-news', 'dev-to', 'github-trending'];
+  const chosenSource = sources[Math.floor(Math.random() * sources.length)];
+  console.log(`[Blog Gen] Selected community source: "${chosenSource}"`);
+
+  let rawTopics: string[] = [];
+  if (chosenSource === 'hacker-news') {
+    rawTopics = await fetchHackerNewsTopics();
+  } else if (chosenSource === 'dev-to') {
+    rawTopics = await fetchDevToTopics();
+  } else {
+    rawTopics = await fetchGitHubTrendingTopics();
+  }
+
+  if (rawTopics.length === 0) {
+    return { success: false, message: `No topics found from source "${chosenSource}". Aborting.` };
+  }
+
+  const topicsList = rawTopics.map((t, idx) => `[${idx + 1}] ${t}`).join('\n');
+
+  // Query Gemini to select the single most interesting, relevant developer topic
+  const apiKey = process.env.GEMINI_AI_API_KEY || process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return { success: false, message: 'Missing GEMINI_AI_API_KEY or GEMINI_API_KEY in environment.' };
+  }
+  const ai = new GoogleGenAI({ apiKey });
+
+  const selectPrompt = `
+Based on this list of trending topics/articles/repositories from the developer community (${chosenSource}):
+${topicsList}
+
+Select the single most compelling, novel, or trending topic/project that would make a great deep-dive programming/software engineering blog post.
+Provide a clean JSON response specifying:
+1. "topic": A concise name of the technology or concept (e.g. "Bun 1.2 runtime release").
+2. "rationale": A brief explanation of why this topic is hot or interesting.
+
+You MUST respond with a JSON object matching this schema:
+{
+  "topic": "Selected Topic",
+  "rationale": "Why it is interesting"
+}
+`;
+
+  console.log(`[Blog Gen] Requesting Gemini to select best community topic from "${chosenSource}"...`);
+  let selectedData: { topic: string; rationale: string };
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: selectPrompt,
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            topic: { type: Type.STRING },
+            rationale: { type: Type.STRING }
+          },
+          required: ['topic', 'rationale']
+        }
+      }
+    });
+
+    if (!response.text) throw new Error('Empty response from Gemini.');
+    selectedData = JSON.parse(response.text);
+    console.log(`[Blog Gen] Selected community topic: "${selectedData.topic}"`);
+    console.log(`[Blog Gen] Rationale: "${selectedData.rationale}"`);
+  } catch (err: any) {
+    return { success: false, message: `Failed to select community topic via Gemini: ${err.message}` };
+  }
+
+  // Generate and post the blog post using the chosen topic
+  return generateAndPostBlog(selectedData.topic);
+}

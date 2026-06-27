@@ -1,17 +1,23 @@
-import { generateAndPostBlog } from '../libs/blog-generator-service';
+import { generateAndPostBlog, generateCommunityBlog } from '../libs/blog-generator-service';
 
 async function main() {
   const args = process.argv.slice(2);
-  const topic = args.length > 0 ? args.join(' ') : undefined;
-
-  if (topic) {
-    console.log(`🚀 Starting Custom Blog Generation for Topic: "${topic}"...`);
-  } else {
-    console.log('🚀 Starting Automated Blog Generation and Posting...');
-  }
+  const isCommunity = args.includes('--community');
+  const topic = args.length > 0 && !isCommunity ? args.join(' ') : undefined;
 
   try {
-    const result = await generateAndPostBlog(topic);
+    let result;
+    if (isCommunity) {
+      console.log('🚀 Starting Community-Driven Blog Generation (Hacker News, DEV.to, GitHub)...');
+      result = await generateCommunityBlog();
+    } else if (topic) {
+      console.log(`🚀 Starting Custom Blog Generation for Topic: "${topic}"...`);
+      result = await generateAndPostBlog(topic);
+    } else {
+      console.log('🚀 Starting Automated Blog Generation and Posting...');
+      result = await generateAndPostBlog();
+    }
+
     if (result.success) {
       console.log('✅ Success:', result.message);
       console.log('Published Blog Details:', JSON.stringify(result.data, null, 2));

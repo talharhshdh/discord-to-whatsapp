@@ -49,7 +49,7 @@ import { saveStateToR2 } from './r2-sync';
 import { startCustomContainer, restoreDockerContainers, stopCustomContainer } from './custom-container';
 import { runJobsScraper } from './jobs-scraper-service';
 import { getJobsFromR2, getJobsStatusFromR2 } from './r2-jobs-store';
-import { generateAndPostBlog } from './blog-generator-service';
+import { generateAndPostBlog, generateCommunityBlog } from './blog-generator-service';
 import cron from 'node-cron';
 
 const Corrosion = require('corrosion');
@@ -905,15 +905,21 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     try {
       console.log('[Dashboard API] Received manual blog generation request');
       let topic: string | undefined = undefined;
+      let isCommunity = false;
       try {
         const body = await parseJsonBody(req);
-        if (body && typeof body['topic'] === 'string' && body['topic'].trim()) {
-          topic = body['topic'].trim();
+        if (body) {
+          if (body['community'] === true) {
+            isCommunity = true;
+          }
+          if (typeof body['topic'] === 'string' && body['topic'].trim()) {
+            topic = body['topic'].trim();
+          }
         }
       } catch (parseErr) {
-        // Empty body or non-JSON, default to undefined topic
+        // Empty body or non-JSON, default parameters
       }
-      const result = await generateAndPostBlog(topic);
+      const result = isCommunity ? await generateCommunityBlog() : await generateAndPostBlog(topic);
       json(res, result);
     } catch (e) {
       err(res, (e as Error).message);
@@ -2222,6 +2228,14 @@ function startAutomatedJobsScheduler() {
     console.log('[Blog Scheduler] Running scheduled auto blog generation...');
     generateAndPostBlog().catch((e) => {
       console.error('[Blog Scheduler] Error auto-generating blog:', e.message);
+    });
+  });
+
+  // Schedule a cron job to auto-generate community-driven blog 3 times a day (every 8 hours)
+  cron.schedule('0 */8 * * *', () => {
+    console.log('[Blog Scheduler] Running scheduled community-driven auto blog generation...');
+    generateCommunityBlog().catch((e) => {
+      console.error('[Blog Scheduler] Error auto-generating community blog:', e.message);
     });
   });
 }

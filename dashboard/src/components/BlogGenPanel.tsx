@@ -29,13 +29,19 @@ export default function BlogGenPanel() {
     return () => clearInterval(interval);
   }, [loading]);
 
-  const handleGenerate = async (useAutodiscover = false) => {
+  const handleGenerate = async (mode: 'custom' | 'discover' | 'community') => {
     setLoading(true);
     setError(null);
     setResult(null);
     try {
-      const searchTopic = useAutodiscover ? undefined : topic;
-      const res = await api.generateBlog(searchTopic);
+      let res;
+      if (mode === 'community') {
+        res = await api.generateBlog(undefined, true);
+      } else if (mode === 'discover') {
+        res = await api.generateBlog(undefined, false);
+      } else {
+        res = await api.generateBlog(topic, false);
+      }
       if (res.success) {
         setResult(res.data || res);
       } else {
@@ -62,7 +68,7 @@ export default function BlogGenPanel() {
             <span>✍️</span> Blog Generation Wizard
           </CardTitle>
           <CardDescription className="text-xs">
-            Generate custom topics, or let the AI discover current developer trends automatically.
+            Generate custom topics, autodiscover developer trends, or write about community news.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6 pt-5">
@@ -79,21 +85,29 @@ export default function BlogGenPanel() {
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <Button
-              onClick={() => handleGenerate(false)}
+              onClick={() => handleGenerate('custom')}
               disabled={loading || !topic.trim()}
               className="py-5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 bg-[#0061FF] hover:bg-[#0051D4] text-white"
             >
-              <span>🪄</span> Generate Custom Topic
+              <span>🪄</span> Custom Topic
             </Button>
             <Button
-              onClick={() => handleGenerate(true)}
+              onClick={() => handleGenerate('discover')}
               disabled={loading}
               variant="outline"
               className="py-5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 border-white/10 hover:bg-white/[0.02]"
             >
-              <span>🌐</span> Autodiscover Latest Trends
+              <span>🌐</span> Autodiscover Trends
+            </Button>
+            <Button
+              onClick={() => handleGenerate('community')}
+              disabled={loading}
+              variant="outline"
+              className="py-5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 border-white/10 hover:bg-white/[0.02] text-[#00E5FF] border-[#00E5FF]/20 hover:border-[#00E5FF]/40"
+            >
+              <span>🚀</span> Community News
             </Button>
           </div>
 
