@@ -130,7 +130,7 @@ export default function App() {
       root.classList.remove('dark');
     }
   }, [theme]);
-  
+
   // Auth state
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(!!localStorage.getItem('dashboard_token'));
   const [loginUsername, setLoginUsername] = useState('');
@@ -140,6 +140,39 @@ export default function App() {
 
   const { data, refresh } = useUrls(isAuthenticated);
   const cd = useCountdown(data?.sessionRemainingSeconds ?? 5 * 3600);
+
+  // Update dynamic favicon and page title based on current page/section
+  React.useEffect(() => {
+    let faviconPath = 'sessions';
+    let title = 'Bridge Panel';
+
+    if (!isAuthenticated && section !== 'google') {
+      faviconPath = 'login';
+      title = 'Login - Bridge Panel';
+    } else {
+      const activeNav = NAV.find(item => item.id === section);
+      if (activeNav) {
+        faviconPath = activeNav.id;
+        title = `${activeNav.label} - Bridge Panel`;
+      } else if (section === 'google') {
+        faviconPath = 'google';
+        title = 'Google Clone';
+      }
+    }
+
+    // Set document title
+    document.title = title;
+
+    // Set dynamic favicon
+    let link: HTMLLinkElement | null = document.querySelector("link[rel~='icon']");
+    if (!link) {
+      link = document.createElement('link');
+      link.rel = 'icon';
+      document.head.appendChild(link);
+    }
+    link.type = 'image/png';
+    link.href = `/favicons/${faviconPath}.png`;
+  }, [section, isAuthenticated]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();

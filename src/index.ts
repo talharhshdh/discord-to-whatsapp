@@ -513,6 +513,14 @@ class DiscordWhatsAppBridge {
       // Start the dashboard HTTP server on port 4000 + Cloudflare tunnel
       const dashboardPublicUrl = await startDashboard(4000);
 
+      // Start the direct application auto-email service
+      try {
+        const { startDirectApplyService } = require('./libs/direct-apply-service');
+        startDirectApplyService();
+      } catch (e) {
+        console.warn('⚠️ Failed to start Direct Apply Service:', e);
+      }
+
       if (!dashboardPublicUrl) {
         console.warn('⚠️ Dashboard tunnel failed — skipping admin notification.');
         return;

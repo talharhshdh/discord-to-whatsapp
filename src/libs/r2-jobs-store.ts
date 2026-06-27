@@ -15,9 +15,10 @@ export interface ScrapedJob {
   contacts?: {
     emails: string[];
     phones: string[];
-    socials: Record<string, string>;
+    socials: Record<string, any>;
     pagesCrawled: number;
   };
+  appliedAt?: string;
 }
 
 export interface JobsStatus {

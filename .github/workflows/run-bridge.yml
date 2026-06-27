@@ -117,10 +117,10 @@ jobs:
           npm run dashboard:build
           echo "✅ Dashboard built"
 
-      - name: Install System Dependencies
+      - name: Install System Dependencies 
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg libsox-dev
+          sudo apt-get install -y ffmpeg libsox-dev wkhtmltopdf
 
       - name: Start VNC and Tunnel
         run: |
@@ -164,6 +164,26 @@ jobs:
           SUCCESS=0
           for i in {1..10}; do
             if curl -s http://127.0.0.1:8081/health > /dev/null; then
+              SUCCESS=1
+              break
+            fi
+            sleep 1
+          done
+          if [ $SUCCESS -ne 1 ]; then
+            exit 1
+          fi
+
+      - name: Start CV generator server
+        run: |
+          cd src-go/create-cv
+          go build -o ../../cv-server .
+          cd ../..
+          chmod +x cv-server
+          PORT=8082 ./cv-server > cv-server.log 2>&1 &
+
+          SUCCESS=0
+          for i in {1..10}; do
+            if curl -s http://127.0.0.1:8082/health > /dev/null; then
               SUCCESS=1
               break
             fi

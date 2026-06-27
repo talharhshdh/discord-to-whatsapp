@@ -3,6 +3,7 @@ import { getJobsFromR2, saveJobsToR2, getJobsStatusFromR2, saveJobsStatusToR2, S
 
 const DEFAULT_KEYWORDS = [
   'software engineer',
+  "software developer",
   'web developer',
   'react developer',
   'node developer',
@@ -152,7 +153,7 @@ async function scrapeGoogleJobs(query: string): Promise<ScrapedJob[]> {
   return jobsList;
 }
 
-async function findCompanyWebsite(company: string): Promise<string | null> {
+export async function findCompanyWebsite(company: string): Promise<string | null> {
   try {
     const query = `"${company} Pakistan" official website`;
     console.log(`[Jobs Scraper] Finding website for company "${company}" via query: "${query}"`);
@@ -255,7 +256,7 @@ async function findContactsViaGoogle(company: string): Promise<{ emails: string[
   return result;
 }
 
-async function scrapeCompanyContacts(websiteUrl: string, company?: string): Promise<any | null> {
+export async function scrapeCompanyContacts(websiteUrl: string, company?: string): Promise<any | null> {
   // Run direct website scraper and Google search in parallel
   const [directResult, googleResult] = await Promise.allSettled([
     (async () => {

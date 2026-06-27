@@ -1,0 +1,35 @@
+{
+  "title": "Software Engineer (Full Stack)",
+  "company": "Mindstorm Studios",
+  "url": "https://pk.indeed.com/viewjob?jk=e48ad23719351347",
+  "description": "Lahore, Pakistan\nFull-time\nEngineering\nmin-91762\n\nAbout Us\nMindstorm Studios designs, develops, and markets some of the top games and interactive entertainment in the world today. That's the mission our founders began with back in 2006 and we continue to uphold and bring the highest quality products to market.\nMindstorm is partnered with Lion Studios, one of the world’s leading mobile games publishers, and we are headquartered in San Francisco with development in Lahore. Our products have been downloaded over 100 million times globally with #1 worldwide chart toppers like Super Salon, Flick Pool, Alliance Wars and Hexa Sort.\nWe are looking for the best and brightest minds in game development to join our team so we can empower our talent to create world #1 games.\nRole\nWe are seeking a highly skilled Full Stack Developer with a robust background in JavaScript, TypeScript, and Python. The ideal candidate will have comprehensive experience with various databases, including Redis, MySQL, and Firestore, and proficiency with cloud platforms such as AWS or Google Cloud. This role involves hands-on development, leveraging Looker for data visualization to drive business intelligence in the gaming development sector, and participating in the entire development lifecycle from concept to deployment.\nWhat will you be doing?\nDesign, build, and maintain efficient, reusable, and reliable systems.\nImplement best practices in coding, testing, and deployment to ensure high reliability and performance.\nIdentify bottlenecks and bugs, and devise solutions to address and mitigate these problems.\nSupport our in-house automated testing and user acquisition (UA) platform (Pub Force) to streamline game prototyping and multi-network campaign management.\nContribute to our market intelligence suite (Game Lens) to analyze industry trends and competitor performance.\nDevelop backend APIs using Google Cloud Functions to support game features and logic.\nUtilize Retool to build and manage custom internal tools as requested by the product team.\nCreate custom game analytics dashboards and data models using SQL and LookML.\nCollaborate with cross-functional teams to translate gaming requirements into high-quality technical solutions.\nWhat are we looking for?\nBA/BS degree in Computer Science, Game Development, or a related field (or equivalent professional experience).\n3+ years of industry experience as a Full Stack Developer, with 2+ years specifically focused on React.\nHigh proficiency in JavaScript, TypeScript, and Python.\nProven expertise with Redis, MySQL, and Firestore.\nKnowledge of task queues and message brokers like Celery or RabbitMQ.\nStrong command of advanced SQL, including joins, Common Table Expressions (CTEs), and window functions.\nExperience deploying and managing applications on AWS or Google Cloud.\nFamiliarity with automated deployment pipelines (e.g., GitHub Actions, Jenkins, or AWS CodePipeline).\nDeep understanding of design principles for building scalable web applications.\nProficiency in Git and collaborative code versioning workflows.\nHands-on experience with Laravel is a plus.\nFamiliarity with Looker for data visualization and business intelligence is a plus.\nIf you are a passionate developer with a keen interest in data science and enjoy working on challenging projects in the gaming development sector, we would love to hear from you. Apply now to join our dynamic team!",
+  "scrapedAt": "2026-06-25T16:01:24.391Z",
+  "contacts": {
+    "emails": [
+      "john.doe@mindstormstudios.com"
+    ],
+    "phones": [],
+    "socials": {
+      "linkedin": [
+        "https://www.linkedin.com/in/aamna-tayyaba"
+      ]
+    },
+    "pagesCrawled": 1
+  },
+  "source": "indeed",
+  "extractedTags": [
+    "react",
+    "python",
+    "laravel",
+    "mobile",
+    "aws",
+    "nodejs",
+    "typescript"
+  ],
+  "scores": {
+    "total": 140,
+    "tech": 100,
+    "contact": 30,
+    "recency": 10
+  }
+}
