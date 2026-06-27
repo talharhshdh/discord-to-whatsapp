@@ -30,3 +30,10 @@ npm-debug.log*
 
 # Backups
 backup.zip
+
+# Generated CV files and binaries
+/applications/
+/src-go/create-cv/storage/*.pdf
+/src-go/create-cv/cv-server
+/src-go/create-cv/test-build
+

@@ -98,7 +98,11 @@ jobs:
 
               let output = '';
               for (const [k, v] of Object.entries(merged)) {
-                output += \`\${k}=\${v}\n\`;
+                let val = v;
+                if (val.includes(' ') && !((val.startsWith('"') && val.endsWith('"')) || (val.startsWith('\'') && val.endsWith('\'')))) {
+                  val = \`"\${val}"\`;
+                }
+                output += \`\${k}=\${val}\n\`;
               }
               fs.writeFileSync('.env', output, 'utf8');
               console.log('✅ .env merged successfully');
