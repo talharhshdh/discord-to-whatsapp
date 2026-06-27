@@ -24,6 +24,7 @@ const PoolPanel = React.lazy(() => import('./components/PoolPanel'));
 const BetaGoContainerPanel = React.lazy(() => import('./components/BetaGoContainerPanel'));
 const IndeedPanel = React.lazy(() => import('./components/IndeedPanel'));
 const ContactsScraperPanel = React.lazy(() => import('./components/ContactsScraperPanel'));
+const BlogGenPanel = React.lazy(() => import('./components/BlogGenPanel'));
 
 interface NavItem {
   id: NavSection;
@@ -78,6 +79,7 @@ const NAV_CATEGORIES: NavCategory[] = [
       { id: 'movies',    label: 'Movies',         icon: '🎬' },
       { id: 'llm',       label: 'Local LLM',      icon: '🧠' },
       { id: 'tts',       label: 'Voice / TTS',    icon: '🎙️' },
+      { id: 'blog-gen',  label: 'Blog Generator', icon: '✍️' },
     ]
   }
 ];
@@ -92,7 +94,7 @@ export default function App() {
     const validSections: NavSection[] = [
       'google', 'web-proxy', 'search', 'places', 'pool', 'indeed', 'contacts', 
       'sessions', 'manager', 'android', 'urls', 'go-containers', 
-      'ai-tools', 'media', 'youtube', 'movies', 'llm', 'tts'
+      'ai-tools', 'media', 'youtube', 'movies', 'llm', 'tts', 'blog-gen'
     ];
     if (validSections.includes(current as NavSection)) {
       return current as NavSection;
@@ -570,6 +572,7 @@ export default function App() {
                   {section === 'go-containers' && <BetaGoContainerPanel />}
                   {section === 'indeed' && <IndeedPanel />}
                   {section === 'contacts' && <ContactsScraperPanel />}
+                  {section === 'blog-gen' && <BlogGenPanel />}
                 </React.Suspense>
               </div>
             </div>

@@ -534,4 +534,6 @@ export const api = {
     }),
   triggerJobsScraper: (keywords: string[], location: string) =>
     post<{ success: boolean; message: string }>('/api/jobs/trigger-scrape', { keywords, location }),
+  generateBlog: (topic?: string) =>
+    post<{ success: boolean; message: string; data?: any }>('/api/blog/generate', { topic }),
 };

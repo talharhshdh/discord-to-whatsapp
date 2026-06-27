@@ -904,7 +904,16 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   if (method === 'POST' && url === '/api/blog/generate') {
     try {
       console.log('[Dashboard API] Received manual blog generation request');
-      const result = await generateAndPostBlog();
+      let topic: string | undefined = undefined;
+      try {
+        const body = await parseJsonBody(req);
+        if (body && typeof body['topic'] === 'string' && body['topic'].trim()) {
+          topic = body['topic'].trim();
+        }
+      } catch (parseErr) {
+        // Empty body or non-JSON, default to undefined topic
+      }
+      const result = await generateAndPostBlog(topic);
       json(res, result);
     } catch (e) {
       err(res, (e as Error).message);

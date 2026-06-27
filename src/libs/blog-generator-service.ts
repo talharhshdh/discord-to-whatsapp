@@ -266,18 +266,10 @@ async function searchGoogle(query: string): Promise<Array<{ title: string; link:
  * Searches for tech trends, generates a mind-blowing blog post using Gemini,
  * and posts it to the website's Vercel endpoint.
  */
-export async function generateAndPostBlog(): Promise<{ success: boolean; message: string; data?: any; error?: string }> {
+export async function generateAndPostBlog(customTopic?: string): Promise<{ success: boolean; message: string; data?: any; error?: string }> {
   // Step 1: Discover Trending Topic
-  console.log(`[Blog Gen] Discovering latest programming and tech trends...`);
-  const trendSearchResults = await searchGoogle('latest programming and tech trends 2026');
-  if (trendSearchResults.length === 0) {
-    return { success: false, message: 'Initial trend discovery search returned 0 results. Aborting.' };
-  }
-
-  const trendContext = trendSearchResults
-    .slice(0, 8)
-    .map((res, i) => `[${i+1}] Title: ${res.title}\nSummary: ${res.snippet}\n`)
-    .join('\n');
+  let trendingTopic = '';
+  let searchQuery = '';
 
   // Initialize Gemini Client
   const apiKey = process.env.GEMINI_AI_API_KEY || process.env.GEMINI_API_KEY;
@@ -286,7 +278,78 @@ export async function generateAndPostBlog(): Promise<{ success: boolean; message
   }
   const ai = new GoogleGenAI({ apiKey });
 
-  const discoverPrompt = `
+  if (customTopic) {
+    console.log(`[Blog Gen] Custom topic provided: "${customTopic}"`);
+    const initialQuery = `latest developments and news in ${customTopic}`;
+    console.log(`[Blog Gen] Searching Google for: "${initialQuery}"`);
+    const trendSearchResults = await searchGoogle(initialQuery);
+    if (trendSearchResults.length === 0) {
+      return { success: false, message: `Initial search for custom topic "${customTopic}" returned 0 results. Aborting.` };
+    }
+
+    const trendContext = trendSearchResults
+      .slice(0, 8)
+      .map((res, i) => `[${i+1}] Title: ${res.title}\nSummary: ${res.snippet}\n`)
+      .join('\n');
+
+    const discoverPrompt = `
+Analyze these search results about recent developments in "${customTopic}".
+Identify the single most interesting, trending, or breakthrough sub-topic or specific new feature right now.
+Provide a clean JSON response specifying:
+1. "trendingTopic": The exact sub-topic/technology (e.g. "React 19 Server Actions").
+2. "searchQuery": A highly specific Google Search query to research this sub-topic further (e.g. "React 19 Server Actions new features developer guide 2026").
+
+Search results:
+${trendContext}
+
+You MUST respond with a JSON object matching this schema:
+{
+  "trendingTopic": "e.g., React 19 Server Actions",
+  "searchQuery": "e.g., React 19 Server Actions new features developer guide 2026"
+}
+`;
+
+    console.log(`[Blog Gen] Calling Gemini to identify sub-trend for: "${customTopic}"...`);
+    try {
+      const discoverRes = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: discoverPrompt,
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              trendingTopic: { type: Type.STRING },
+              searchQuery: { type: Type.STRING }
+            },
+            required: ['trendingTopic', 'searchQuery']
+          }
+        }
+      });
+
+      if (!discoverRes.text) throw new Error('Empty trend discovery response.');
+      const parsed = JSON.parse(discoverRes.text);
+      trendingTopic = parsed.trendingTopic;
+      searchQuery = parsed.searchQuery;
+      console.log(`[Blog Gen] Discovered Sub-Trend: "${trendingTopic}"`);
+      console.log(`[Blog Gen] Selected Research Search Query: "${searchQuery}"`);
+    } catch (err: any) {
+      return { success: false, message: `Failed to discover sub-trend via AI: ${err.message}` };
+    }
+
+  } else {
+    console.log(`[Blog Gen] Discovering latest programming and tech trends...`);
+    const trendSearchResults = await searchGoogle('latest programming and tech trends 2026');
+    if (trendSearchResults.length === 0) {
+      return { success: false, message: 'Initial trend discovery search returned 0 results. Aborting.' };
+    }
+
+    const trendContext = trendSearchResults
+      .slice(0, 8)
+      .map((res, i) => `[${i+1}] Title: ${res.title}\nSummary: ${res.snippet}\n`)
+      .join('\n');
+
+    const discoverPrompt = `
 Analyze these search results about recent programming and tech developments.
 Identify the single most trending, hot, or breakthrough technology/framework/topic for developers right now.
 Provide a clean JSON response specifying:
@@ -303,38 +366,40 @@ You MUST respond with a JSON object matching this schema:
 }
 `;
 
-  console.log(`[Blog Gen] Calling Gemini to identify the hot trending topic...`);
-  let trendData: { trendingTopic: string; searchQuery: string };
-  try {
-    const discoverRes = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: discoverPrompt,
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            trendingTopic: { type: Type.STRING },
-            searchQuery: { type: Type.STRING }
-          },
-          required: ['trendingTopic', 'searchQuery']
+    console.log(`[Blog Gen] Calling Gemini to identify the hot trending topic...`);
+    try {
+      const discoverRes = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: discoverPrompt,
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              trendingTopic: { type: Type.STRING },
+              searchQuery: { type: Type.STRING }
+            },
+            required: ['trendingTopic', 'searchQuery']
+          }
         }
-      }
-    });
+      });
 
-    if (!discoverRes.text) throw new Error('Empty trend discovery response.');
-    trendData = JSON.parse(discoverRes.text);
-    console.log(`[Blog Gen] Discovered Trending Topic: "${trendData.trendingTopic}"`);
-    console.log(`[Blog Gen] Selected Research Search Query: "${trendData.searchQuery}"`);
-  } catch (err: any) {
-    return { success: false, message: `Failed to discover trending topic via AI: ${err.message}` };
+      if (!discoverRes.text) throw new Error('Empty trend discovery response.');
+      const parsed = JSON.parse(discoverRes.text);
+      trendingTopic = parsed.trendingTopic;
+      searchQuery = parsed.searchQuery;
+      console.log(`[Blog Gen] Discovered Trending Topic: "${trendingTopic}"`);
+      console.log(`[Blog Gen] Selected Research Search Query: "${searchQuery}"`);
+    } catch (err: any) {
+      return { success: false, message: `Failed to discover trending topic via AI: ${err.message}` };
+    }
   }
 
   // Step 2: Research Chosen Trend Specifically
-  console.log(`[Blog Gen] Researching "${trendData.trendingTopic}" via Google Search...`);
-  const researchResults = await searchGoogle(trendData.searchQuery);
+  console.log(`[Blog Gen] Researching "${trendingTopic}" via Google Search...`);
+  const researchResults = await searchGoogle(searchQuery);
   if (researchResults.length === 0) {
-    return { success: false, message: `Google Search returned 0 results for research query: "${trendData.searchQuery}". Aborting.` };
+    return { success: false, message: `Google Search returned 0 results for research query: "${searchQuery}". Aborting.` };
   }
 
   const detailedContext = researchResults
@@ -345,7 +410,7 @@ You MUST respond with a JSON object matching this schema:
   // Step 3: Write Blog Post
   const blogPrompt = `
 You are a senior staff software engineer writing a technical, insightful blog post for developers.
-Write a blog post about the trending topic: "${trendData.trendingTopic}" based on the following research context:
+Write a blog post about the trending topic: "${trendingTopic}" based on the following research context:
 
 ${detailedContext}
 
