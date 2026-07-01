@@ -31,6 +31,8 @@ export interface JobsStatus {
     companiesScraped: number;
     lastRunCount: number;
   };
+  lastAutoBlogRun?: string;
+  lastCommunityBlogRun?: string;
 }
 
 function getS3Client() {

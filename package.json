@@ -35,7 +35,6 @@
     "dotenv": "^16.4.5",
     "jsdom": "^29.1.1",
     "libphonenumber-js": "^1.13.7",
-    "node-cron": "^4.2.1",
     "nodemailer": "^9.0.1",
     "p-limit": "^7.3.0",
     "pino": "^8.19.0",
@@ -48,7 +47,6 @@
   },
   "devDependencies": {
     "@types/node": "^20.11.19",
-    "@types/node-cron": "^3.0.11",
     "@types/qrcode-terminal": "^0.12.2",
     "typescript": "^7.0.1-rc"
   }

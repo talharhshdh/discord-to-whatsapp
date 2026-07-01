@@ -48,9 +48,8 @@ import { cookieSearchPool } from './cookie-search-pool';
 import { saveStateToR2 } from './r2-sync';
 import { startCustomContainer, restoreDockerContainers, stopCustomContainer } from './custom-container';
 import { runJobsScraper } from './jobs-scraper-service';
-import { getJobsFromR2, getJobsStatusFromR2 } from './r2-jobs-store';
+import { getJobsFromR2, getJobsStatusFromR2, saveJobsStatusToR2 } from './r2-jobs-store';
 import { generateAndPostBlog, generateCommunityBlog } from './blog-generator-service';
-import cron from 'node-cron';
 
 const Corrosion = require('corrosion');
 const webProxy = new Corrosion({
@@ -2211,33 +2210,77 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 
 // ── Server bootstrap ──────────────────────────────────────────────────────────
 
+async function checkAndTriggerBlogGeneration() {
+  try {
+    const status = await getJobsStatusFromR2();
+    const now = Date.now();
+
+    // 1. Auto Blog Generation: Every 6 hours (6 * 60 * 60 * 1000 = 21600000 ms)
+    const sixHours = 6 * 60 * 60 * 1000;
+    const lastAuto = status.lastAutoBlogRun ? new Date(status.lastAutoBlogRun).getTime() : 0;
+    
+    if (now - lastAuto >= sixHours) {
+      console.log('[Blog Scheduler] Triggering scheduled auto blog generation...');
+      
+      const updatedStatus = await getJobsStatusFromR2();
+      updatedStatus.lastAutoBlogRun = new Date().toISOString();
+      await saveJobsStatusToR2(updatedStatus);
+
+      generateAndPostBlog().then((result) => {
+        if (result.success) {
+          console.log('[Blog Scheduler] Auto blog generation succeeded.');
+        } else {
+          console.error('[Blog Scheduler] Auto blog generation failed:', result.message);
+        }
+      }).catch((e) => {
+        console.error('[Blog Scheduler] Error auto-generating blog:', e.message);
+      });
+    } else {
+      console.log(`[Blog Scheduler] Auto blog is not due yet. Last run: ${status.lastAutoBlogRun || 'never'}, Next run in ${Math.round((sixHours - (now - lastAuto)) / 60000)} minutes.`);
+    }
+
+    // 2. Community Blog Generation: Every 8 hours (8 * 60 * 60 * 1000 = 28800000 ms)
+    const eightHours = 8 * 60 * 60 * 1000;
+    const lastCommunity = status.lastCommunityBlogRun ? new Date(status.lastCommunityBlogRun).getTime() : 0;
+
+    if (now - lastCommunity >= eightHours) {
+      console.log('[Blog Scheduler] Triggering scheduled community-driven auto blog generation...');
+      
+      const updatedStatus = await getJobsStatusFromR2();
+      updatedStatus.lastCommunityBlogRun = new Date().toISOString();
+      await saveJobsStatusToR2(updatedStatus);
+
+      generateCommunityBlog().then((result) => {
+        if (result.success) {
+          console.log('[Blog Scheduler] Community blog generation succeeded.');
+        } else {
+          console.error('[Blog Scheduler] Community blog generation failed:', result.message);
+        }
+      }).catch((e) => {
+        console.error('[Blog Scheduler] Error auto-generating community blog:', e.message);
+      });
+    } else {
+      console.log(`[Blog Scheduler] Community blog is not due yet. Last run: ${status.lastCommunityBlogRun || 'never'}, Next run in ${Math.round((eightHours - (now - lastCommunity)) / 60000)} minutes.`);
+    }
+
+  } catch (err) {
+    console.error('[Blog Scheduler] Error checking scheduled blog runs:', err);
+  }
+}
+
 function startAutomatedJobsScheduler() {
-  console.log('[Jobs Scheduler] Initializing background check with cron...');
+  console.log('[Jobs Scheduler] Initializing background check with interval...');
   
   // Check immediately on boot
   checkAndTriggerScraper();
+  checkAndTriggerBlogGeneration();
   
-  // Schedule a cron job to check/trigger every hour to avoid missing the 12-hour window
-  cron.schedule('0 * * * *', () => {
-    console.log('[Jobs Scheduler] Running hourly cron check...');
+  // Periodically check every 15 minutes to avoid missing any windows due to container restarts
+  setInterval(() => {
+    console.log('[Jobs Scheduler] Running periodic interval check...');
     checkAndTriggerScraper();
-  });
-
-  // Schedule a cron job to auto-generate and post blog 4 times a day (every 6 hours)
-  cron.schedule('0 */6 * * *', () => {
-    console.log('[Blog Scheduler] Running scheduled auto blog generation...');
-    generateAndPostBlog().catch((e) => {
-      console.error('[Blog Scheduler] Error auto-generating blog:', e.message);
-    });
-  });
-
-  // Schedule a cron job to auto-generate community-driven blog 3 times a day (every 8 hours)
-  cron.schedule('0 */8 * * *', () => {
-    console.log('[Blog Scheduler] Running scheduled community-driven auto blog generation...');
-    generateCommunityBlog().catch((e) => {
-      console.error('[Blog Scheduler] Error auto-generating community blog:', e.message);
-    });
-  });
+    checkAndTriggerBlogGeneration();
+  }, 15 * 60 * 1000);
 }
 
 async function checkAndTriggerScraper() {

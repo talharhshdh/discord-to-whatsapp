@@ -427,6 +427,7 @@ export async function runJobsScraper(customKeywords?: string[], customLocation?:
 
         // Update Status
         const currentStatus: JobsStatus = {
+          ...status,
           lastRun: status.lastRun,
           status: 'scraping',
           startedAt: status.startedAt,
@@ -519,6 +520,7 @@ export async function runJobsScraper(customKeywords?: string[], customLocation?:
 
       // 6. Update Status
       const finalStatus: JobsStatus = {
+        ...status,
         lastRun: new Date().toISOString(),
         status: 'completed',
         stats: {
@@ -533,6 +535,7 @@ export async function runJobsScraper(customKeywords?: string[], customLocation?:
     } catch (err: any) {
       console.error('[Jobs Scraper] Automated job run failed:', err);
       const finalStatus: JobsStatus = {
+        ...status,
         lastRun: new Date().toISOString(),
         status: 'failed',
         error: err.message || 'Unknown error occurred.',
