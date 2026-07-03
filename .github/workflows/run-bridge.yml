@@ -124,7 +124,7 @@ jobs:
       - name: Install System Dependencies 
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg libsox-dev wkhtmltopdf
+          sudo apt-get install -y ffmpeg libsox-dev wkhtmltopdf xvfb
 
       - name: Start VNC and Tunnel
         run: |
@@ -183,7 +183,7 @@ jobs:
           go build -o ../../cv-server .
           cd ../..
           chmod +x cv-server
-          PORT=8082 ./cv-server > cv-server.log 2>&1 &
+          PORT=8082 xvfb-run ./cv-server > cv-server.log 2>&1 &
 
           SUCCESS=0
           for i in {1..10}; do
