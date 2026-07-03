@@ -1,0 +1,5 @@
+seleniumbase
+fastapi
+uvicorn
+pydantic
+pyautogui

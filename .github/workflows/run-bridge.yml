@@ -212,20 +212,25 @@ jobs:
               https://api.github.com/repos/${{ github.repository }}/actions/workflows/run-bridge.yml/dispatches \
               -d '{"ref":"${{ github.ref_name }}"}') &
 
-          MODE=whatsapp timeout 18000 npm start > bridge.log 2>&1; code=$?
-
-          if [ "$code" -eq 124 ]; then
-            echo "⏱️ Process cleanly stopped after 5 hours."
-          elif [ "$code" -eq 0 ]; then
-            echo "✅ Process completed normally."
-          else
-            echo "❌ Process failed with exit code $code"
-          fi
+          docker compose up --build -d
+          
+          # Sleep for 5 hours (18000s)
+          sleep 18000
+          
+          # Save logs before stopping
+          docker compose logs main-server > bridge.log 2>&1
+          docker compose logs whatsapp-server > whatsapp-server.log 2>&1
+          docker compose down
           exit 0
 
       - name: Sync storage teardown
         if: always()
         run: |
+          # Ensure containers are stopped and final logs collected
+          docker compose logs main-server > bridge.log 2>&1 || true
+          docker compose logs whatsapp-server > whatsapp-server.log 2>&1 || true
+          docker compose down || true
+
           sudo tar -czf state.tar.gz -C $(pwd) auth_info || echo "Tar completed with warnings"
           sudo chmod 666 state.tar.gz
 
@@ -235,7 +240,7 @@ jobs:
             aws s3 cp state.tar.gz s3://${R2_BUCKET_NAME}/state.tar.gz --endpoint-url https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com
 
             echo "📤 Uploading logs to R2..."
-            for logfile in bridge.log container-manager.log contact-scraper.log; do
+            for logfile in bridge.log whatsapp-server.log container-manager.log contact-scraper.log; do
               if [ -f "$logfile" ]; then
                 aws s3 cp "$logfile" "s3://${R2_BUCKET_NAME}/logs/bridge-${{ github.run_id }}-$logfile" --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" || echo "Failed to upload $logfile"
               fi

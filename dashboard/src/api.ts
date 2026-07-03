@@ -536,4 +536,32 @@ export const api = {
     post<{ success: boolean; message: string }>('/api/jobs/trigger-scrape', { keywords, location }),
   generateBlog: (topic?: string, community = false) =>
     post<{ success: boolean; message: string; data?: any }>('/api/blog/generate', { topic, community }),
+
+  // ── WhatsApp Accounts ──────────────────────────────────────────────────────
+  getWhatsAppAccounts: () =>
+    authFetch(`${BASE}/api/whatsapp/accounts`).then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json() as Promise<WhatsAppAccount[]>;
+    }),
+  addWhatsAppAccount: (id: string, name: string) =>
+    post<WhatsAppAccount>('/api/whatsapp/accounts/add', { id, name }),
+  deleteWhatsAppAccount: (id: string) =>
+    post<{ success: boolean }>('/api/whatsapp/accounts/delete', { id }),
+  connectWhatsAppAccount: (id: string) =>
+    post<{ success: boolean }>('/api/whatsapp/accounts/connect', { id }),
+  disconnectWhatsAppAccount: (id: string) =>
+    post<{ success: boolean }>('/api/whatsapp/accounts/disconnect', { id }),
+  reconnectWhatsAppAccount: (id: string) =>
+    post<{ success: boolean }>('/api/whatsapp/accounts/reconnect', { id }),
+  sendWhatsAppBroadcast: (text: string) =>
+    post<{ success: boolean }>('/api/whatsapp/send', { text }),
 };
+
+export interface WhatsAppAccount {
+  id: string;
+  name: string;
+  phone?: string;
+  status: 'disconnected' | 'connecting' | 'connected' | 'qr';
+  qrCode?: string;
+}
+
