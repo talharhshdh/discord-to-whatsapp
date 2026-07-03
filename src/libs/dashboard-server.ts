@@ -95,50 +95,6 @@ export function setWhatsAppSendCallback(cb: (message: string) => Promise<void>):
   whatsappSendCallback = cb;
 }
 
-let whatsappWebhookCallback: ((body: any) => Promise<void>) | null = null;
-
-export function setWhatsAppWebhookCallback(cb: (body: any) => Promise<void>): void {
-  whatsappWebhookCallback = cb;
-}
-
-const WHATSAPP_SERVER_URL = process.env.WHATSAPP_SERVER_URL || 'http://localhost:5000';
-
-async function proxyToWhatsAppServer(
-  req: IncomingMessage,
-  res: ServerResponse,
-  targetPath: string,
-  method: string,
-  hasBody = false
-): Promise<void> {
-  try {
-    let bodyData: any = undefined;
-    if (hasBody) {
-      bodyData = await readBody(req);
-    }
-
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-
-    const targetUrl = `${WHATSAPP_SERVER_URL}${targetPath}`;
-    const response = await fetch(targetUrl, {
-      method,
-      headers,
-      body: bodyData,
-    });
-
-    res.statusCode = response.status;
-    res.setHeader('Content-Type', 'application/json');
-    const responseText = await response.text();
-    res.end(responseText);
-  } catch (err: any) {
-    res.statusCode = 500;
-    res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ error: err.message || 'Failed to proxy request to WhatsApp server' }));
-  }
-}
-
-
 // ── YouTube Download Jobs ───────────────────────────────────────────────────
 
 export interface DownloadJob {
@@ -673,58 +629,21 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     return;
   }
 
-  // ── GET /api/whatsapp/accounts ──────────────────────────────────────────────
-  if (method === 'GET' && url === '/api/whatsapp/accounts') {
-    await proxyToWhatsAppServer(req, res, '/accounts', 'GET');
-    return;
-  }
-
-  // ── POST /api/whatsapp/accounts/add ─────────────────────────────────────────
-  if (method === 'POST' && url === '/api/whatsapp/accounts/add') {
-    await proxyToWhatsAppServer(req, res, '/accounts/add', 'POST', true);
-    return;
-  }
-
-  // ── POST /api/whatsapp/accounts/delete ──────────────────────────────────────
-  if (method === 'POST' && url === '/api/whatsapp/accounts/delete') {
-    await proxyToWhatsAppServer(req, res, '/accounts/delete', 'POST', true);
-    return;
-  }
-
-  // ── POST /api/whatsapp/accounts/connect ─────────────────────────────────────
-  if (method === 'POST' && url === '/api/whatsapp/accounts/connect') {
-    await proxyToWhatsAppServer(req, res, '/accounts/connect', 'POST', true);
-    return;
-  }
-
-  // ── POST /api/whatsapp/accounts/disconnect ──────────────────────────────────
-  if (method === 'POST' && url === '/api/whatsapp/accounts/disconnect') {
-    await proxyToWhatsAppServer(req, res, '/accounts/disconnect', 'POST', true);
-    return;
-  }
-
-  // ── POST /api/whatsapp/accounts/reconnect ───────────────────────────────────
-  if (method === 'POST' && url === '/api/whatsapp/accounts/reconnect') {
-    await proxyToWhatsAppServer(req, res, '/accounts/reconnect', 'POST', true);
-    return;
-  }
-
-  // ── POST /api/whatsapp/send ─────────────────────────────────────────────────
+  // ── POST /api/whatsapp/send ────────────────────────────────────────────────
   if (method === 'POST' && url === '/api/whatsapp/send') {
-    await proxyToWhatsAppServer(req, res, '/send', 'POST', true);
-    return;
-  }
-
-  // ── POST /api/whatsapp/webhook ──────────────────────────────────────────────
-  if (method === 'POST' && url === '/api/whatsapp/webhook') {
     try {
       const body = await parseJsonBody(req);
-      if (whatsappWebhookCallback) {
-        await whatsappWebhookCallback(body);
+      const text = body['text'] as string;
+      if (!text) {
+        return err(res, 'text is required', 400);
       }
+      if (!whatsappSendCallback) {
+        return err(res, 'WhatsApp sender callback is not registered', 503);
+      }
+      await whatsappSendCallback(text);
       json(res, { success: true });
-    } catch (e: any) {
-      err(res, e.message);
+    } catch (e) {
+      err(res, (e as Error).message);
     }
     return;
   }

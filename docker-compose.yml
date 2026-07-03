@@ -1,22 +1,28 @@
 services:
-  main-server:
-    build: .
-    container_name: main-server
-    restart: unless-stopped
-    network_mode: "host"
-    environment:
-      - WHATSAPP_SERVER_URL=http://127.0.0.1:5000
-    env_file:
-      - .env
-    volumes:
-      - ./auth_info:/app/auth_info
-
   whatsapp-server:
-    build: ./whatsapp-server
+    build: .
     container_name: whatsapp-server
     restart: unless-stopped
-    network_mode: "host"
+    environment:
+      - MODE=whatsapp
     env_file:
       - .env
+    ports:
+      - "4000:4000" # Expose the control panel dashboard port
     volumes:
+      # Persist WhatsApp authentication state
       - ./auth_info:/app/auth_info
+
+  discord-server:
+    build: .
+    container_name: discord-server
+    restart: unless-stopped
+    environment:
+      - MODE=discord
+      - WHATSAPP_SERVER_URL=http://whatsapp-server:4000
+    env_file:
+      - .env
+    depends_on:
+      - whatsapp-server
+      # Optional: persist the local .env changes back to the host machine
+      # - ./.env:/app/.env
