@@ -586,7 +586,8 @@ class DiscordWhatsAppBridge {
         }
         lol('📤 Dashboard URL sent to all admins.');
       }
-      this.startGoogleSearchKeeper();
+      // Commented out as requested - active search on talhatech.vercel.site/app is disabled for now
+      // this.startGoogleSearchKeeper();
     } catch (err) {
       console.error('❌ Failed to start dashboard or notify admins:', err);
     }
