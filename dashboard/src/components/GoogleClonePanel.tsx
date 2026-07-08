@@ -85,7 +85,7 @@ export default function GoogleClonePanel({ isStandalone = false }: GoogleClonePa
   };
 
   return (
-    <div className={`${isStandalone ? 'min-h-screen w-full' : 'min-h-[85vh] rounded-3xl border'} transition-all duration-300 ${darkMode
+    <div className={`${isStandalone ? 'h-screen w-full overflow-y-auto' : 'min-h-[85vh] rounded-3xl border'} transition-all duration-300 ${darkMode
       ? `bg-[#0f0f13] text-white ${isStandalone ? '' : 'border-white/[0.08]'}`
       : `bg-[#f8f9fa] text-gray-900 ${isStandalone ? '' : 'border-gray-200'}`
       }`}>

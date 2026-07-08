@@ -230,6 +230,70 @@ function selectWorkingImage(title: string, tags: string[]): string {
 }
 
 /**
+ * Query Google Images via remote browser pool or dashboard scraper to get a relevant image URL.
+ */
+async function searchGoogleImages(query: string): Promise<string | null> {
+  // Try 1: Remote browser pool
+  try {
+    console.log(`[Blog Gen] Searching Google Images for "${query}" via browser pool...`);
+    const poolRes = await searchViaPool(query, 1, false, 'images');
+    if (poolRes && Array.isArray(poolRes.images) && poolRes.images.length > 0) {
+      const img = poolRes.images.find(i => i.imageUrl && i.imageUrl.startsWith('http'));
+      if (img && img.imageUrl) {
+        console.log(`[Blog Gen] Found image from browser pool: ${img.imageUrl}`);
+        return img.imageUrl;
+      }
+    }
+  } catch (err: any) {
+    console.warn(`[Blog Gen] Browser pool image search failed: ${err.message}. Trying dashboard scraper...`);
+  }
+
+  // Try 2: Custom dashboard scraper API
+  const domain = process.env.DASHBOARD_DOMAIN || `services.${process.env.MAIN_DOMAIN || 'ufone-claim.site'}`;
+  const url = `https://${domain}/api/browser/search`;
+  const auth = Buffer.from(`${process.env.DASHBOARD_USERNAME || 'dkgklfdglkdfgljfd'}:${process.env.DASHBOARD_PASSWORD || 'sdlkfsdlglkdkl4mt'}`).toString('base64');
+
+  try {
+    console.log(`[Blog Gen] Fetching images from dashboard scraper API: ${url}`);
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        "accept": "*/*",
+        "accept-language": "en-GB,en;q=0.9,en-US;q=0.8",
+        "authorization": `Basic ${auth}`,
+        "content-type": "application/json",
+        "cookie": `dashboard_token=${auth}`
+      },
+      body: JSON.stringify({
+        text: query,
+        pageNumber: 1,
+        engine: "auto",
+        includeAI: true,
+        category: "images"
+      }),
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (resp.ok) {
+      const data = await resp.json() as any;
+      if (data && Array.isArray(data.images) && data.images.length > 0) {
+        const img = data.images.find((i: any) => i.imageUrl && i.imageUrl.startsWith('http'));
+        if (img && img.imageUrl) {
+          console.log(`[Blog Gen] Found image from dashboard scraper API: ${img.imageUrl}`);
+          return img.imageUrl;
+        }
+      }
+    } else {
+      console.warn(`[Blog Gen] Dashboard image scraper HTTP error: ${resp.status}`);
+    }
+  } catch (err: any) {
+    console.error(`[Blog Gen] Dashboard image scraper fetch failed:`, err.message);
+  }
+
+  return null;
+}
+
+/**
  * Helper to query Google Search using all available scraper backends in order.
  */
 async function searchGoogle(query: string): Promise<Array<{ title: string; link: string; snippet: string }>> {
@@ -463,15 +527,20 @@ You MUST respond with a JSON object matching this schema:
     if (!blogRes.text) throw new Error('Empty blog content response.');
     const rawBlog = JSON.parse(blogRes.text);
     
-    // Select working cover image
-    const imageUrl = selectWorkingImage(rawBlog.title, rawBlog.tags);
+    // Select working cover image dynamically using Google Images scraper, with Unsplash static selection as fallback
+    const imageQuery = trendingTopic || rawBlog.title || (rawBlog.tags && rawBlog.tags[0]) || 'software engineering';
+    let imageUrl = await searchGoogleImages(imageQuery);
+    if (!imageUrl) {
+      console.log(`[Blog Gen] Dynamic image search returned no results. Falling back to curated image list.`);
+      imageUrl = selectWorkingImage(rawBlog.title, rawBlog.tags);
+    }
 
     blogData = {
       title: rawBlog.title,
       description: rawBlog.description,
       content: rawBlog.content,
       tags: rawBlog.tags,
-      imageUrl
+      imageUrl: imageUrl || undefined
     };
     console.log(`[Blog Gen] Successfully generated blog: "${blogData.title}"`);
   } catch (err: any) {
