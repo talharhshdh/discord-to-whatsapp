@@ -23,43 +23,60 @@ async function fallbackDashboardSearch(query: string): Promise<Array<{ title: st
   const url = `https://${domain}/api/browser/search`;
   const auth = Buffer.from(`${process.env.DASHBOARD_USERNAME || 'dkgklfdglkdfgljfd'}:${process.env.DASHBOARD_PASSWORD || 'sdlkfsdlglkdkl4mt'}`).toString('base64');
 
-  try {
-    console.log(`[Blog Gen] Fetching search from dashboard scraper API: ${url}`);
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: {
-        "accept": "*/*",
-        "accept-language": "en-GB,en;q=0.9,en-US;q=0.8",
-        "authorization": `Basic ${auth}`,
-        "content-type": "application/json",
-        "cookie": `dashboard_token=${auth}`
-      },
-      body: JSON.stringify({
-        text: query,
-        pageNumber: 1,
-        engine: "auto",
-        includeAI: true,
-        category: "all"
-      }),
-      signal: AbortSignal.timeout(15000),
-    });
+  const maxRetries = 5;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`[Blog Gen] Fetching search from dashboard scraper API: ${url} (Attempt ${attempt}/${maxRetries})`);
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: {
+          "accept": "*/*",
+          "accept-language": "en-GB,en;q=0.9,en-US;q=0.8",
+          "authorization": `Basic ${auth}`,
+          "content-type": "application/json",
+          "cookie": `dashboard_token=${auth}`
+        },
+        body: JSON.stringify({
+          text: query,
+          pageNumber: 1,
+          engine: "auto",
+          includeAI: true,
+          category: "all"
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
 
-    if (!resp.ok) {
-      console.warn(`[Blog Gen] Custom dashboard scraper HTTP error: ${resp.status}`);
-      return [];
-    }
+      if (!resp.ok) {
+        console.warn(`[Blog Gen] Custom dashboard scraper HTTP error: ${resp.status} (Attempt ${attempt}/${maxRetries})`);
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          continue;
+        }
+        return [];
+      }
 
-    const data = await resp.json() as any;
-    if (data && Array.isArray(data.organic)) {
-      console.log(`[Blog Gen] Custom dashboard scraper returned ${data.organic.length} results.`);
-      return data.organic.map((item: any) => ({
-        title: item.title || '',
-        link: item.link || '',
-        snippet: item.snippet || ''
-      }));
+      const data = await resp.json() as any;
+      if (data && Array.isArray(data.organic) && data.organic.length > 0) {
+        console.log(`[Blog Gen] Custom dashboard scraper returned ${data.organic.length} results.`);
+        return data.organic.map((item: any) => ({
+          title: item.title || '',
+          link: item.link || '',
+          snippet: item.snippet || ''
+        }));
+      } else {
+        console.warn(`[Blog Gen] Custom dashboard scraper returned 0 organic results on attempt ${attempt}/${maxRetries}.`);
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          continue;
+        }
+      }
+    } catch (err: any) {
+      console.error(`[Blog Gen] Custom dashboard scraper fetch failed on attempt ${attempt}/${maxRetries}:`, err.message);
+      if (attempt < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        continue;
+      }
     }
-  } catch (err: any) {
-    console.error(`[Blog Gen] Custom dashboard scraper fetch failed:`, err.message);
   }
   return [];
 }
@@ -294,6 +311,41 @@ async function searchGoogleImages(query: string): Promise<string | null> {
 }
 
 /**
+ * Fetch and extract clean text content from a webpage to use as detailed research.
+ */
+async function fetchPageContent(url: string): Promise<string> {
+  try {
+    console.log(`[Blog Gen] Agent browsing source link: ${url}`);
+    const resp = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36'
+      },
+      signal: AbortSignal.timeout(10000)
+    });
+
+    if (!resp.ok) return '';
+    const html = await resp.text();
+    const $ = cheerio.load(html);
+
+    // Strip boilerplate tags
+    $('script, style, head, header, footer, nav, noscript, iframe, svg').remove();
+
+    const paragraphs: string[] = [];
+    $('p, h1, h2, h3, h4, li, pre code').each((_, el) => {
+      const txt = $(el).text().trim().replace(/\s+/g, ' ');
+      if (txt.length > 20) {
+        paragraphs.push(txt);
+      }
+    });
+
+    return paragraphs.join('\n\n').slice(0, 4000);
+  } catch (err: any) {
+    console.warn(`[Blog Gen] Browse failed for ${url}: ${err.message}`);
+    return '';
+  }
+}
+
+/**
  * Helper to query Google Search using all available scraper backends in order.
  */
 async function searchGoogle(query: string): Promise<Array<{ title: string; link: string; snippet: string }>> {
@@ -327,6 +379,35 @@ async function searchGoogle(query: string): Promise<Array<{ title: string; link:
 }
 
 /**
+ * Helper to call Gemini AI with automatic API key rotation and retry logic (up to max 10 attempts).
+ */
+async function callGeminiWithKeys(
+  apiKeys: string[],
+  fn: (ai: GoogleGenAI) => Promise<any>
+): Promise<any> {
+  const maxAttempts = 10;
+  let lastError: any = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    // Pick the API key based on the current attempt (wrapping around the list of available keys)
+    const apiKey = apiKeys[(attempt - 1) % apiKeys.length];
+    const ai = new GoogleGenAI({ apiKey });
+
+    try {
+      return await fn(ai);
+    } catch (err: any) {
+      lastError = err;
+      console.warn(`[Blog Gen] Gemini API attempt ${attempt}/${maxAttempts} failed using key index ${(attempt - 1) % apiKeys.length}. Status: ${err.status}, Message: ${err.message || err}`);
+      if (attempt < maxAttempts) {
+        // Wait 1.5 seconds before retrying
+        await new Promise(resolve => setTimeout(resolve, 1500));
+      }
+    }
+  }
+  throw lastError || new Error('Gemini API call failed after max attempts.');
+}
+
+/**
  * Searches for tech trends, generates a mind-blowing blog post using Gemini,
  * and posts it to the website's Vercel endpoint.
  */
@@ -335,12 +416,16 @@ export async function generateAndPostBlog(customTopic?: string): Promise<{ succe
   let trendingTopic = '';
   let searchQuery = '';
 
-  // Initialize Gemini Client
-  const apiKey = process.env.GEMINI_AI_API_KEY || process.env.GEMINI_API_KEY;
-  if (!apiKey) {
+  // Parse API keys (supporting comma-separated list of keys)
+  const rawApiKeys = process.env.GEMINI_AI_API_KEY || process.env.GEMINI_API_KEY || '';
+  const apiKeys = rawApiKeys
+    .split(',')
+    .map(key => key.replace(/['"]/g, '').trim())
+    .filter(Boolean);
+
+  if (apiKeys.length === 0) {
     return { success: false, message: 'Missing GEMINI_AI_API_KEY or GEMINI_API_KEY in environment variables.' };
   }
-  const ai = new GoogleGenAI({ apiKey });
 
   if (customTopic) {
     console.log(`[Blog Gen] Custom topic provided: "${customTopic}"`);
@@ -375,21 +460,23 @@ You MUST respond with a JSON object matching this schema:
 
     console.log(`[Blog Gen] Calling Gemini to identify sub-trend for: "${customTopic}"...`);
     try {
-      const discoverRes = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: discoverPrompt,
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              trendingTopic: { type: Type.STRING },
-              searchQuery: { type: Type.STRING }
-            },
-            required: ['trendingTopic', 'searchQuery']
+      const discoverRes = await callGeminiWithKeys(apiKeys, (aiClient) =>
+        aiClient.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: discoverPrompt,
+          config: {
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                trendingTopic: { type: Type.STRING },
+                searchQuery: { type: Type.STRING }
+              },
+              required: ['trendingTopic', 'searchQuery']
+            }
           }
-        }
-      });
+        })
+      );
 
       if (!discoverRes.text) throw new Error('Empty trend discovery response.');
       const parsed = JSON.parse(discoverRes.text);
@@ -432,21 +519,23 @@ You MUST respond with a JSON object matching this schema:
 
     console.log(`[Blog Gen] Calling Gemini to identify the hot trending topic...`);
     try {
-      const discoverRes = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: discoverPrompt,
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              trendingTopic: { type: Type.STRING },
-              searchQuery: { type: Type.STRING }
-            },
-            required: ['trendingTopic', 'searchQuery']
+      const discoverRes = await callGeminiWithKeys(apiKeys, (aiClient) =>
+        aiClient.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: discoverPrompt,
+          config: {
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                trendingTopic: { type: Type.STRING },
+                searchQuery: { type: Type.STRING }
+              },
+              required: ['trendingTopic', 'searchQuery']
+            }
           }
-        }
-      });
+        })
+      );
 
       if (!discoverRes.text) throw new Error('Empty trend discovery response.');
       const parsed = JSON.parse(discoverRes.text);
@@ -459,17 +548,42 @@ You MUST respond with a JSON object matching this schema:
     }
   }
 
-  // Step 2: Research Chosen Trend Specifically
+  // Step 2: Research Chosen Trend Specifically (Deep Browsing Research)
   console.log(`[Blog Gen] Researching "${trendingTopic}" via Google Search...`);
-  const researchResults = await searchGoogle(searchQuery);
+  let researchResults = await searchGoogle(searchQuery);
   if (researchResults.length === 0) {
-    return { success: false, message: `Google Search returned 0 results for research query: "${searchQuery}". Aborting.` };
+    console.warn(`[Blog Gen] Specific search query "${searchQuery}" returned 0 results. Retrying with simplified topic query: "${trendingTopic}"`);
+    researchResults = await searchGoogle(trendingTopic);
   }
 
-  const detailedContext = researchResults
-    .slice(0, 8)
-    .map((res, i) => `[${i+1}] Title: ${res.title}\nURL: ${res.link}\nSummary: ${res.snippet}\n`)
+  if (researchResults.length === 0) {
+    return { success: false, message: `Google Search returned 0 results for research query: "${searchQuery}" and fallback: "${trendingTopic}". Aborting.` };
+  }
+
+  console.log(`[Blog Gen] Agent performing deep research on top links...`);
+  const topLinks = researchResults.slice(0, 3);
+  const researchContents: string[] = [];
+
+  for (let i = 0; i < topLinks.length; i++) {
+    const linkInfo = topLinks[i];
+    const pageText = await fetchPageContent(linkInfo.link);
+    if (pageText) {
+      researchContents.push(`SOURCE [${i+1}] Title: ${linkInfo.title}\nURL: ${linkInfo.link}\nCONTENT:\n${pageText}\n`);
+    } else {
+      researchContents.push(`SOURCE [${i+1}] Title: ${linkInfo.title}\nURL: ${linkInfo.link}\nSUMMARY (Snippet): ${linkInfo.snippet}\n`);
+    }
+  }
+
+  // Include snippets for other results
+  const otherLinks = researchResults
+    .slice(3, 8)
+    .map((res, i) => `SOURCE [${i+4}] Title: ${res.title}\nURL: ${res.link}\nSUMMARY (Snippet): ${res.snippet}\n`)
     .join('\n');
+
+  const detailedContext = [
+    ...researchContents,
+    otherLinks
+  ].join('\n---\n');
 
   // Step 3: Write Blog Post
   const blogPrompt = `
@@ -487,8 +601,8 @@ Strict Style and Tone Guidelines:
    - Write a clear 1-2 sentence description for card list views.
    - The body must be 800+ words.
    - Use clean, well-formatted Markdown.
-   - You MUST include a realistic code block or architectural setup demonstrating the topic (e.g. showing a TypeScript/React/Python implementation pattern or configuration file matching the subject). Explain the code cleanly.
-   - Avoid overusing generic tables or lists for everything; instead, use descriptive paragraphs, code comments, and standard markdown subheadings (\`##\`, \`###\`).
+   - **Code Blocks**: Dynamically decide whether the topic warrants a code block or technical configuration file. If the topic is code-based or configuration-based (e.g. React 19 API, python library, git commands, docker configuration), include a realistic, clean code snippet with code comments. If the topic is high-level, architectural, or non-technical (e.g. product design, business strategy, cloud pricing, team management), do NOT include a code block; focus instead on architecture, concepts, or markdown tables.
+   - Avoid overusing generic tables or lists for everything; instead, use descriptive paragraphs, code comments (if applicable), and standard markdown subheadings (\`##\`, \`###\`).
 5. **Tags**: Provide a list of relevant tags (e.g. ["TypeScript", "Next.js", "AI"]).
 
 You MUST respond with a JSON object matching this schema:
@@ -503,26 +617,28 @@ You MUST respond with a JSON object matching this schema:
   console.log(`[Blog Gen] Generating blog content via Gemini...`);
   let blogData: { title: string; description: string; content: string; tags: string[]; imageUrl?: string };
   try {
-    const blogRes = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: blogPrompt,
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            title: { type: Type.STRING },
-            description: { type: Type.STRING },
-            content: { type: Type.STRING },
-            tags: {
-              type: Type.ARRAY,
-              items: { type: Type.STRING }
-            }
-          },
-          required: ['title', 'description', 'content', 'tags']
+    const blogRes = await callGeminiWithKeys(apiKeys, (aiClient) =>
+      aiClient.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: blogPrompt,
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              title: { type: Type.STRING },
+              description: { type: Type.STRING },
+              content: { type: Type.STRING },
+              tags: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+              }
+            },
+            required: ['title', 'description', 'content', 'tags']
+          }
         }
-      }
-    });
+      })
+    );
 
     if (!blogRes.text) throw new Error('Empty blog content response.');
     const rawBlog = JSON.parse(blogRes.text);
@@ -553,9 +669,10 @@ You MUST respond with a JSON object matching this schema:
     return { success: false, message: 'Missing BLOG_API_KEY in environment variables.' };
   }
 
-  console.log(`[Blog Gen] Publishing blog to Vercel...`);
+  const blogApiUrl = process.env.BLOG_API_URL || 'https://talhacodes.site/api/blog';
+  console.log(`[Blog Gen] Publishing blog to Vercel/endpoint: ${blogApiUrl}...`);
   try {
-    const publishResponse = await fetch('https://talhacodes.site/api/blog', {
+    const publishResponse = await fetch(blogApiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
