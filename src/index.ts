@@ -614,7 +614,7 @@ class DiscordWhatsAppBridge {
                   'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                  text: 'site:talhatech.vercel.app',
+                  text: 'site:talhacodes.site',
                   pageNumber: 1,
                   engine: 'auto',
                   includeAI: false,

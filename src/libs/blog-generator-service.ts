@@ -486,7 +486,7 @@ You MUST respond with a JSON object matching this schema:
 
   console.log(`[Blog Gen] Publishing blog to Vercel...`);
   try {
-    const publishResponse = await fetch('https://talhatech.vercel.app/api/blog', {
+    const publishResponse = await fetch('https://talhacodes.site/api/blog', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

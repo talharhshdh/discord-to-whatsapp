@@ -79,7 +79,7 @@ type CVFilterRequest struct {
 var DefaultCV = CVData{
 	Name:        "TALHA RIAZ",
 	Role:        "SENIOR FULL-STACK DEVELOPER",
-	ContactInfo: "Bhara Kahu, Islamabad, Pakistan | +92 318 585347 | talhariaz5425869@gmail.com | github.com/talhary | talhatech.vercel.app",
+	ContactInfo: "Bhara Kahu, Islamabad, Pakistan | +92 318 585347 | talhariaz5425869@gmail.com | github.com/talhary | talhacodes.site",
 	Education: []EducationItem{
 		{
 			Degree: "BS in Mathematics",

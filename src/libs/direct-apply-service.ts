@@ -114,7 +114,7 @@ Islamabad, Pakistan
 +92 318 585347
 talhariaz5425869@gmail.com
 GitHub: github.com/talhary
-Portfolio: talhatech.vercel.app
+Portfolio: talhacodes.site
 `;
 }
 

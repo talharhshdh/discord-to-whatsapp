@@ -584,7 +584,7 @@ export async function searchViaPool(
           return href;
         };
 
-        const linkSelector = 'a[href*="talhatech.vercel.app"]';
+        const linkSelector = 'a[href*="talhacodes.site"]';
         let clicked = false;
         try {
           console.log(`[BrowserPool] Waiting for target link on Google Search for "talhatech"...`);
@@ -612,12 +612,12 @@ export async function searchViaPool(
                 return href;
               };
 
-              const els = Array.from(document.querySelectorAll('a[href*="talhatech.vercel.app"]'));
+              const els = Array.from(document.querySelectorAll('a[href*="talhacodes.site"]'));
               for (const el of els) {
                 const href = el.getAttribute('href') || '';
                 const decoded = decodeGoogleLinkInner(href);
                 if (
-                  decoded.includes('talhatech.vercel.app') &&
+                  decoded.includes('talhacodes.site') &&
                   !decoded.includes('google.com') &&
                   !decoded.includes('/search?') &&
                   !href.startsWith('/search?')
@@ -685,7 +685,7 @@ export async function searchViaPool(
                 } catch (gotoErr: any) {
                   console.warn(`[BrowserPool] Direct navigation fallback warning: ${gotoErr.message}`);
                   // If page URL shows we actually arrived at the target site, consider it navigated
-                  if (page.url().includes('talhatech.vercel.app')) {
+                  if (page.url().includes('talhacodes.site')) {
                     navigated = true;
                   }
                 }
@@ -750,7 +750,7 @@ export async function searchViaPool(
         }
 
         return {
-          organic: [{ title: 'Talhatech Traffic Flow', link: 'https://talhatech.vercel.app/', snippet: `Successfully clicked: ${clicked}` }],
+          organic: [{ title: 'Talhatech Traffic Flow', link: 'https://talhacodes.site/', snippet: `Successfully clicked: ${clicked}` }],
           aiResponse: null
         };
       }

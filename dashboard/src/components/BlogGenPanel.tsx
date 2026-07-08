@@ -121,13 +121,12 @@ export default function BlogGenPanel() {
                 {STEPS.map((s, idx) => (
                   <div
                     key={idx}
-                    className={`flex items-center gap-2 transition-opacity duration-300 ${
-                      idx === stepIndex
+                    className={`flex items-center gap-2 transition-opacity duration-300 ${idx === stepIndex
                         ? 'text-[#00E5FF] font-bold'
                         : idx < stepIndex
-                        ? 'text-white/40 line-through'
-                        : 'text-white/20'
-                    }`}
+                          ? 'text-white/40 line-through'
+                          : 'text-white/20'
+                      }`}
                   >
                     <span>{idx < stepIndex ? '✓' : idx === stepIndex ? '▶' : '○'}</span>
                     <span>{s}</span>
@@ -182,7 +181,7 @@ export default function BlogGenPanel() {
               </div>
 
               <a
-                href={result.url || `https://talhatech.vercel.app/blog/${result.slug}`}
+                href={result.url || `https://talhacodes.site/blog/${result.slug}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-600 font-bold text-white text-xs transition-all shadow-md shadow-emerald-500/10"
