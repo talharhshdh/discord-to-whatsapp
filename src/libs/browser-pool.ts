@@ -498,7 +498,7 @@ export async function searchViaPool(
           if (
             [
               // 'image',
-              'media',
+              // 'media',
               'font',
               'stylesheet',
               'websocket',
