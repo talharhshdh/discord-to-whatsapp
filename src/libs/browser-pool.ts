@@ -497,7 +497,7 @@ export async function searchViaPool(
           // Block unnecessary resource types
           if (
             [
-              'image',
+              // 'image',
               'media',
               'font',
               'stylesheet',
