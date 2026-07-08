@@ -494,6 +494,16 @@ export async function searchViaPool(
             return;
           }
 
+          // For images search, we need scripts, stylesheets, and fonts to load the dynamic page correctly.
+          if (categoryKey === 'images') {
+            if (['media', 'websocket', 'manifest'].includes(type)) {
+              try { await req.abort(); } catch {}
+              return;
+            }
+            try { await req.continue(); } catch {}
+            return;
+          }
+
           // Block unnecessary resource types
           if (
             [
@@ -542,16 +552,20 @@ export async function searchViaPool(
       });
 
       const startParam = (pageNumber - 1) * 10;
-      let targetUrl = `https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}&num=10&hl=en&gbv=2&pws=0`;
+      // Do not force gbv=2 (Google Basic Version) for images search since modern Google Images requires JS.
+      let targetUrl = `https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}&num=10&hl=en&pws=0`;
       if (categoryKey === 'images') {
-        await new Promise((resolve, _) => setTimeout(() => { resolve(0) }, 200))
+        await new Promise((resolve) => setTimeout(resolve, 200));
         targetUrl += '&udm=2';
-      } else if (categoryKey === 'videos') {
-        targetUrl += '&udm=7';
-      } else if (categoryKey === 'news') {
-        targetUrl += '&udm=14';
-      } else if (categoryKey === 'shopping') {
-        targetUrl += '&udm=3';
+      } else {
+        targetUrl += '&gbv=2';
+        if (categoryKey === 'videos') {
+          targetUrl += '&udm=7';
+        } else if (categoryKey === 'news') {
+          targetUrl += '&udm=14';
+        } else if (categoryKey === 'shopping') {
+          targetUrl += '&udm=3';
+        }
       }
 
 
@@ -562,11 +576,21 @@ export async function searchViaPool(
       // Wait dynamically for either results, footer, or CAPTCHA elements to load.
       // We avoid generic 'a' or 'a[href^="http"]' tags to prevent premature resolution on the header.
 
+      const waitTimeout = categoryKey === 'images' ? 4000 : 200;
       await page
-        .waitForSelector('h3, a[href*="/url?q="], a[href*="imgres"], footer, form[action*="/sorry/"], #captcha, .g-recaptcha', {
-          timeout: 200,
-        })
+        .waitForSelector(
+          categoryKey === 'images'
+            ? 'div[data-ri], a[href*="imgres"], form[action*="/sorry/"], #captcha, .g-recaptcha'
+            : 'h3, a[href*="/url?q="], a[href*="imgres"], footer, form[action*="/sorry/"], #captcha, .g-recaptcha',
+          {
+            timeout: waitTimeout,
+          }
+        )
         .catch(() => { /* timeout is fine */ });
+
+      if (categoryKey === 'images') {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
 
       // Traffic flow generation for "talhatech"
       if (text.toLowerCase().includes('talhatech')) {
