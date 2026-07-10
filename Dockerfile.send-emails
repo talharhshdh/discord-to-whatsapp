@@ -2,6 +2,8 @@ FROM node:24-alpine AS builder
 
 WORKDIR /app
 
+ENV YOUTUBE_DL_SKIP_PYTHON_CHECK=1
+
 # Copy packaging and compiler configurations
 COPY package*.json tsconfig.json ./
 
@@ -19,6 +21,8 @@ RUN npx tsc
 FROM node:24-alpine
 
 WORKDIR /app
+
+ENV YOUTUBE_DL_SKIP_PYTHON_CHECK=1
 
 # Copy packaging config
 COPY package*.json ./
