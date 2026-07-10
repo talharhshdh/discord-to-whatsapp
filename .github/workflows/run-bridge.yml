@@ -212,7 +212,13 @@ jobs:
               https://api.github.com/repos/${{ github.repository }}/actions/workflows/run-bridge.yml/dispatches \
               -d '{"ref":"${{ github.ref_name }}"}') &
 
-          MODE=whatsapp timeout 18000 npm start > bridge.log 2>&1; code=$?
+          docker build -f Dockerfile.send-emails -t send-emails .
+          timeout 18000 docker run --rm \
+            --name send-emails \
+            --network host \
+            --env-file .env \
+            -v $(pwd)/auth_info:/app/auth_info \
+            send-emails 2>&1 | tee bridge.log; code=${PIPESTATUS[0]}
 
           if [ "$code" -eq 124 ]; then
             echo "⏱️ Process cleanly stopped after 5 hours."

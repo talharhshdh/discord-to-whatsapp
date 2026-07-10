@@ -1,0 +1,37 @@
+FROM node:24-alpine AS builder
+
+WORKDIR /app
+
+# Copy packaging and compiler configurations
+COPY package*.json tsconfig.json ./
+
+# Install all dependencies (development + production)
+RUN npm ci
+
+# Copy the TypeScript source files and CV assets
+COPY src/ ./src/
+COPY services/ ./services/
+
+# Compile the TypeScript files
+RUN npx tsc
+
+# Production stage
+FROM node:24-alpine
+
+WORKDIR /app
+
+# Copy packaging config
+COPY package*.json ./
+
+# Install only production dependencies
+RUN npm ci --omit=dev
+
+# Copy the compiled JS files and CV assets from the builder stage
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/services ./services
+
+# Define production environment
+ENV NODE_ENV=production
+
+# Execute the job application sender script
+CMD ["node", "dist/scripts/send-local-emails.js"]
