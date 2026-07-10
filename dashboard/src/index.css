@@ -22,61 +22,61 @@
 @tailwind utilities;
 
 :root {
-  --bg-main: #081427;
-  --bg-sidebar: #0d140e;
-  --text-main: #95f82c;
-  --text-muted: #d2ea4c;
-  --text-subtle: #c0ff9d;
+  --bg-main: #f1ecf8; /* wisteria-50 */
+  --bg-sidebar: #e3d9f2; /* wisteria-100 */
+  --text-main: #10091b; /* wisteria-950 */
+  --text-muted: #442772; /* wisteria-700 */
+  --text-subtle: #5a3498; /* wisteria-600 */
 
-  --card-bg: rgba(9, 15, 12, 0.85);
-  --card-border: rgba(16, 42, 67, 0.1);
+  --card-bg: rgba(227, 217, 242, 0.85); /* wisteria-100 */
+  --card-border: rgba(198, 179, 229, 0.5); /* wisteria-200 */
 
-  --input-bg: #1f6055;
-  --input-border: rgba(182, 195, 206, 0.12);
-  --input-text: #ffffff;
-  --input-placeholder: rgba(16, 42, 67, 0.4);
+  --input-bg: #f1ecf8; /* wisteria-50 */
+  --input-border: rgba(170, 141, 216, 0.5); /* wisteria-300 */
+  --input-text: #170d26; /* wisteria-900 */
+  --input-placeholder: rgba(141, 103, 203, 0.6); /* wisteria-400 */
 
-  --btn-secondary-bg: rgba(19, 53, 76, 0.05);
-  --btn-secondary-hover: rgba(16, 42, 67, 0.08);
-  --btn-secondary-border: rgba(16, 42, 67, 0.1);
+  --btn-secondary-bg: rgba(227, 217, 242, 0.4); /* wisteria-100 */
+  --btn-secondary-hover: rgba(198, 179, 229, 0.4); /* wisteria-200 */
+  --btn-secondary-border: rgba(198, 179, 229, 0.6); /* wisteria-200 */
 
   --glow-opacity: 0.06;
-  --shadow-color: rgba(16, 42, 67, 0.08);
+  --shadow-color: rgba(45, 26, 76, 0.08); /* wisteria-800 */
 
-  --accent-active-bg: rgba(0, 97, 255, 0.08);
-  --accent-active-text: #fefff8;
-  --accent-active-border: rgba(0, 97, 255, 0.15);
+  --accent-active-bg: rgba(38, 128, 166, 0.15); /* cerulean-600 */
+  --accent-active-text: #1c607d; /* cerulean-700 */
+  --accent-active-border: rgba(38, 128, 166, 0.3); /* cerulean-600 */
 
-  --code-bg: rgba(16, 42, 67, 0.05);
+  --code-bg: rgba(45, 26, 76, 0.05); /* wisteria-800 */
 }
 
 .dark {
-  --bg-main: #1a1f2c;
-  --bg-sidebar: #12151e;
-  --text-main: #e2e8f0;
-  --text-muted: #94a3b8;
-  --text-subtle: #64748b;
+  --bg-main: #10091b; /* wisteria-950 */
+  --bg-sidebar: #140f10; /* smoky-rose-950 */
+  --text-main: #f1ecf8; /* wisteria-50 */
+  --text-muted: #aa8dd8; /* wisteria-300 */
+  --text-subtle: #8d67cb; /* wisteria-400 */
 
-  --card-bg: #232938;
-  --card-border: rgba(255, 255, 255, 0.06);
+  --card-bg: rgba(23, 13, 38, 0.85); /* wisteria-900 */
+  --card-border: rgba(45, 26, 76, 0.3); /* wisteria-800 */
 
-  --input-bg: #181c26;
-  --input-border: rgba(255, 255, 255, 0.08);
-  --input-text: #ffffff;
-  --input-placeholder: rgba(255, 255, 255, 0.3);
+  --input-bg: #10091b; /* wisteria-950 */
+  --input-border: rgba(45, 26, 76, 0.5); /* wisteria-800 */
+  --input-text: #f1ecf8; /* wisteria-50 */
+  --input-placeholder: rgba(170, 141, 216, 0.4); /* wisteria-300 */
 
-  --btn-secondary-bg: rgba(255, 255, 255, 0.04);
-  --btn-secondary-hover: rgba(255, 255, 255, 0.08);
-  --btn-secondary-border: rgba(255, 255, 255, 0.06);
+  --btn-secondary-bg: rgba(45, 26, 76, 0.3); /* wisteria-800 */
+  --btn-secondary-hover: rgba(90, 52, 152, 0.4); /* wisteria-600 */
+  --btn-secondary-border: rgba(90, 52, 152, 0.3); /* wisteria-600 */
 
   --glow-opacity: 0.15;
-  --shadow-color: rgba(0, 0, 0, 0.4);
+  --shadow-color: rgba(16, 9, 27, 0.6); /* wisteria-950 */
 
-  --accent-active-bg: rgba(99, 102, 241, 0.15);
-  --accent-active-text: #00e5ff;
-  --accent-active-border: rgba(99, 102, 241, 0.3);
+  --accent-active-bg: rgba(47, 160, 208, 0.15); /* cerulean-500 */
+  --accent-active-text: #82c6e3; /* cerulean-300 */
+  --accent-active-border: rgba(47, 160, 208, 0.3); /* cerulean-500 */
 
-  --code-bg: rgba(0, 0, 0, 0.3);
+  --code-bg: rgba(16, 9, 27, 0.5); /* wisteria-950 */
 }
 
 @layer base {
@@ -98,71 +98,71 @@
     --font-sans: 'Inter', sans-serif;
   }
   :root {
-    --background: #d9e2ec;
-    --foreground: #102a43;
-    --card: #f0f4f8;
-    --card-foreground: #102a43;
-    --popover: #f0f4f8;
-    --popover-foreground: #102a43;
-    --primary: #0061ff;
-    --primary-foreground: #ffffff;
-    --secondary: #bcccdc;
-    --secondary-foreground: #102a43;
-    --muted: #bcccdc;
-    --muted-foreground: #486581;
-    --accent: #00e5ff;
-    --accent-foreground: #102a43;
-    --destructive: #ef4444;
-    --border: rgba(16, 42, 67, 0.1);
-    --input: rgba(16, 42, 67, 0.12);
-    --ring: #0061ff;
-    --chart-1: #0061ff;
-    --chart-2: #00e5ff;
-    --chart-3: #22c55e;
-    --chart-4: #eab308;
-    --chart-5: #ef4444;
+    --background: #f1ecf8; /* wisteria-50 */
+    --foreground: #10091b; /* wisteria-950 */
+    --card: #e3d9f2; /* wisteria-100 */
+    --card-foreground: #10091b; /* wisteria-950 */
+    --popover: #e3d9f2; /* wisteria-100 */
+    --popover-foreground: #10091b; /* wisteria-950 */
+    --primary: #7141be; /* wisteria-500 */
+    --primary-foreground: #f1ecf8; /* wisteria-50 */
+    --secondary: #e3d9f2; /* wisteria-100 */
+    --secondary-foreground: #10091b; /* wisteria-950 */
+    --muted: #e3d9f2; /* wisteria-100 */
+    --muted-foreground: #442772; /* wisteria-700 */
+    --accent: #2fa0d0; /* cerulean-500 */
+    --accent-foreground: #10091b; /* wisteria-950 */
+    --destructive: #cb344d; /* dark-amaranth-500 */
+    --border: rgba(198, 179, 229, 0.5); /* wisteria-200 */
+    --input: rgba(198, 179, 229, 0.6); /* wisteria-200 */
+    --ring: #7141be; /* wisteria-500 */
+    --chart-1: #7141be; /* wisteria-500 */
+    --chart-2: #2fa0d0; /* cerulean-500 */
+    --chart-3: #55aa7b; /* evergreen-500 */
+    --chart-4: #aa8dd8; /* wisteria-300 */
+    --chart-5: #cb344d; /* dark-amaranth-500 */
     --radius: 0.625rem;
-    --sidebar: #bcccdc;
-    --sidebar-foreground: #102a43;
-    --sidebar-primary: #0061ff;
-    --sidebar-primary-foreground: #ffffff;
-    --sidebar-accent: #00e5ff;
-    --sidebar-accent-foreground: #102a43;
-    --sidebar-border: rgba(16, 42, 67, 0.1);
-    --sidebar-ring: #0061ff;
+    --sidebar: #e3d9f2; /* wisteria-100 */
+    --sidebar-foreground: #10091b; /* wisteria-950 */
+    --sidebar-primary: #7141be; /* wisteria-500 */
+    --sidebar-primary-foreground: #f1ecf8; /* wisteria-50 */
+    --sidebar-accent: #2fa0d0; /* cerulean-500 */
+    --sidebar-accent-foreground: #10091b; /* wisteria-950 */
+    --sidebar-border: rgba(198, 179, 229, 0.5); /* wisteria-200 */
+    --sidebar-ring: #7141be; /* wisteria-500 */
   }
   .dark {
-    --background: #1a1f2c;
-    --foreground: #e2e8f0;
-    --card: #232938;
-    --card-foreground: #e2e8f0;
-    --popover: #232938;
-    --popover-foreground: #e2e8f0;
-    --primary: #6366f1;
-    --primary-foreground: #ffffff;
-    --secondary: #181c26;
-    --secondary-foreground: #e2e8f0;
-    --muted: #181c26;
-    --muted-foreground: #94a3b8;
-    --accent: #00e5ff;
-    --accent-foreground: #12151e;
-    --destructive: #ef4444;
-    --border: rgba(255, 255, 255, 0.06);
-    --input: rgba(255, 255, 255, 0.08);
-    --ring: #6366f1;
-    --chart-1: #6366f1;
-    --chart-2: #00e5ff;
-    --chart-3: #22c55e;
-    --chart-4: #eab308;
-    --chart-5: #ef4444;
-    --sidebar: #12151e;
-    --sidebar-foreground: #e2e8f0;
-    --sidebar-primary: #6366f1;
-    --sidebar-primary-foreground: #ffffff;
-    --sidebar-accent: #00e5ff;
-    --sidebar-accent-foreground: #12151e;
-    --sidebar-border: rgba(255, 255, 255, 0.06);
-    --sidebar-ring: #6366f1;
+    --background: #10091b; /* wisteria-950 */
+    --foreground: #f1ecf8; /* wisteria-50 */
+    --card: #170d26; /* wisteria-900 */
+    --card-foreground: #f1ecf8; /* wisteria-50 */
+    --popover: #170d26; /* wisteria-900 */
+    --popover-foreground: #f1ecf8; /* wisteria-50 */
+    --primary: #7141be; /* wisteria-500 */
+    --primary-foreground: #f1ecf8; /* wisteria-50 */
+    --secondary: #2d1a4c; /* wisteria-800 */
+    --secondary-foreground: #f1ecf8; /* wisteria-50 */
+    --muted: #2d1a4c; /* wisteria-800 */
+    --muted-foreground: #aa8dd8; /* wisteria-300 */
+    --accent: #2fa0d0; /* cerulean-500 */
+    --accent-foreground: #10091b; /* wisteria-950 */
+    --destructive: #cb344d; /* dark-amaranth-500 */
+    --border: rgba(45, 26, 76, 0.4); /* wisteria-800 */
+    --input: rgba(45, 26, 76, 0.5); /* wisteria-800 */
+    --ring: #7141be; /* wisteria-500 */
+    --chart-1: #7141be; /* wisteria-500 */
+    --chart-2: #2fa0d0; /* cerulean-500 */
+    --chart-3: #55aa7b; /* evergreen-500 */
+    --chart-4: #aa8dd8; /* wisteria-300 */
+    --chart-5: #cb344d; /* dark-amaranth-500 */
+    --sidebar: #140f10; /* smoky-rose-950 */
+    --sidebar-foreground: #f1ecf8; /* wisteria-50 */
+    --sidebar-primary: #7141be; /* wisteria-500 */
+    --sidebar-primary-foreground: #f1ecf8; /* wisteria-50 */
+    --sidebar-accent: #2fa0d0; /* cerulean-500 */
+    --sidebar-accent-foreground: #f1ecf8; /* wisteria-50 */
+    --sidebar-border: rgba(45, 26, 76, 0.3); /* wisteria-800 */
+    --sidebar-ring: #7141be; /* wisteria-500 */
   }
   * {
     @apply border-border;
@@ -284,55 +284,55 @@
 
   /* Glow / active states override */
   .bg-\[\#0061FF\]\/10 {
-    background-color: rgba(99, 102, 241, 0.1) !important;
+    background-color: rgba(113, 65, 190, 0.1) !important; /* wisteria-500 */
   }
-
+ 
   .bg-\[\#0061FF\]\/20 {
     background-color: var(--accent-active-bg) !important;
   }
-
+ 
   .bg-\[\#0061FF\]\/25 {
     background-color: var(--accent-active-bg) !important;
   }
-
+ 
   .bg-\[\#0061FF\]\/30 {
     background-color: var(--accent-active-bg) !important;
   }
-
+ 
   .border-\[\#0061FF\]\/30 {
     border-color: var(--accent-active-border) !important;
   }
-
+ 
   .border-\[\#0061FF\]\/25 {
     border-color: var(--accent-active-border) !important;
   }
-
+ 
   .border-\[\#0061FF\]\/20 {
     border-color: var(--accent-active-border) !important;
   }
-
+ 
   .bg-\[\#00E5FF\]\/10 {
-    background-color: rgba(0, 229, 255, 0.1) !important;
+    background-color: rgba(47, 160, 208, 0.1) !important; /* cerulean-500 */
   }
-
+ 
   .bg-\[\#00E5FF\]\/5 {
-    background-color: rgba(0, 229, 255, 0.05) !important;
+    background-color: rgba(47, 160, 208, 0.05) !important; /* cerulean-500 */
   }
-
+ 
   .border-\[\#00E5FF\]\/30 {
-    border-color: rgba(0, 229, 255, 0.3) !important;
+    border-color: rgba(47, 160, 208, 0.3) !important; /* cerulean-500 */
   }
-
+ 
   .border-\[\#00E5FF\]\/20 {
-    border-color: rgba(0, 229, 255, 0.2) !important;
+    border-color: rgba(47, 160, 208, 0.2) !important; /* cerulean-500 */
   }
-
+ 
   .border-\[\#00E5FF\]\/10 {
-    border-color: rgba(0, 229, 255, 0.1) !important;
+    border-color: rgba(47, 160, 208, 0.1) !important; /* cerulean-500 */
   }
-
+ 
   .bg-\[\#E3VR9e\]\/10 {
-    background-color: rgba(0, 229, 255, 0.1) !important;
+    background-color: rgba(47, 160, 208, 0.1) !important; /* cerulean-500 */
   }
 
   .text-\[\#a8a3ff\] {
@@ -425,7 +425,7 @@
 
   input[class*="bg-black/"]::placeholder,
   textarea[class*="bg-black/"]::placeholder {
-    color: rgba(255, 255, 255, 0.4) !important;
+    color: rgba(241, 236, 248, 0.4) !important; /* wisteria-50 */
   }
 
   /* Scrollbar overrides */
