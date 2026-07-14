@@ -1501,11 +1501,18 @@ export async function queryInstagramGraphQLViaPool(
         }
       }
 
-      // 2. Navigate to robots.txt to set origin to www.instagram.com
-      await page.goto('https://www.instagram.com/robots.txt', {
-        waitUntil: 'domcontentloaded',
-        timeout: 10000,
-      });
+      // 2. Navigate to robots.txt to set origin to www.instagram.com (only if not already on instagram.com)
+      const currentUrl = page.url() || '';
+      if (!currentUrl.includes('instagram.com')) {
+        await page.goto('https://www.instagram.com/robots.txt', {
+          waitUntil: 'domcontentloaded',
+          timeout: 10000,
+        });
+      }
+
+      // Disable request interception so that the fetch call is not routed back to Puppeteer host,
+      // saving extra websocket round-trip latency.
+      await page.setRequestInterception(false);
 
       // 3. Prepare body and fetch headers for execution inside the browser
       const body = new URLSearchParams(postData).toString();
