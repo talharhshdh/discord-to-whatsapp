@@ -13,6 +13,8 @@
  *  if (result) { sendBuffer(result.buffer, result.type, result.caption) }
  */
 
+import { queryInstagramGraphQLViaPool } from './browser-pool';
+
 // Primary downloader (ab-downloader)
 const {
   igdl,
@@ -519,14 +521,26 @@ async function downloadInstagram(url: string, onProgress?: ProgressCallback): Pr
 
     const body = new URLSearchParams(postData).toString();
 
-    const res = await fetch("https://www.instagram.com/graphql/query", {
-      method: "POST",
-      headers,
-      body
-    });
+    let json: any = null;
+    try {
+      json = await queryInstagramGraphQLViaPool(postData, headers);
+    } catch (err) {
+      console.error('[Instagram] GraphQL query via browser pool failed:', err);
+    }
 
-    if (res.ok) {
-      const json = await res.json() as any;
+    if (!json) {
+      console.log('[Instagram] Browser pool query was unsuccessful, falling back to main VPS fetch...');
+      const res = await fetch("https://www.instagram.com/graphql/query", {
+        method: "POST",
+        headers,
+        body
+      });
+      if (res.ok) {
+        json = await res.json() as any;
+      }
+    }
+
+    if (json) {
       const edges = json.data?.xdt_api__v1__clips__home__connection_v2?.edges || [];
       const videoUrl = edges[0]?.node?.media?.video_versions?.[0]?.url;
       if (videoUrl) {

@@ -1433,3 +1433,160 @@ export async function searchViaPool(
 
   return null;
 }
+
+/**
+ * Execute an Instagram GraphQL query via a remote browser from the pool.
+ */
+export async function queryInstagramGraphQLViaPool(
+  postData: any,
+  headers: any,
+): Promise<any | null> {
+  const activeBrowsers = browserPool.getActive();
+  const maxAttempts = Math.max(1, activeBrowsers.length);
+  const hasAnyCached = activeBrowsers.some(b => isWorkerCached(b.workerId));
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const browser = browserPool.getNext();
+    if (!browser) break;
+
+    // Skip uncached browsers if we have cached ones, warming them up in background
+    if (hasAnyCached && !isWorkerCached(browser.workerId)) {
+      warmupWorker(browser);
+      continue;
+    }
+
+    let conn: WorkerConnection | null = null;
+    let page: any = null;
+    let pageErrored = false;
+
+    try {
+      const acquired = await acquirePage(browser, true);
+      conn = acquired.conn;
+      page = acquired.page;
+
+      // ── Request interception: block heavy assets to load robots.txt fast ──
+      page.removeAllListeners('request');
+      await page.setRequestInterception(true);
+      page.on('request', async (req: any) => {
+        try {
+          if (req.isInterceptResolutionHandled()) return;
+          const type = req.resourceType();
+          if (['image', 'media', 'font', 'stylesheet'].includes(type)) {
+            await req.abort();
+          } else {
+            await req.continue();
+          }
+        } catch {
+          try { await req.continue(); } catch {}
+        }
+      });
+
+      // 1. Set the cookies
+      const cookieStr = headers.cookie || '';
+      if (cookieStr) {
+        const cookies = cookieStr.split(';').map((c: string) => {
+          const [name, ...valParts] = c.trim().split('=');
+          const value = valParts.join('=');
+          return {
+            name,
+            value,
+            domain: '.instagram.com',
+            path: '/',
+            secure: true,
+          };
+        }).filter((c: any) => c.name && c.value);
+
+        if (cookies.length > 0) {
+          await page.setCookie(...cookies);
+        }
+      }
+
+      // 2. Navigate to robots.txt to set origin to www.instagram.com
+      await page.goto('https://www.instagram.com/robots.txt', {
+        waitUntil: 'domcontentloaded',
+        timeout: 10000,
+      });
+
+      // 3. Prepare body and fetch headers for execution inside the browser
+      const body = new URLSearchParams(postData).toString();
+      const fetchHeaders: Record<string, string> = {};
+      for (const [k, v] of Object.entries(headers)) {
+        const lowerK = k.toLowerCase();
+        if (!['cookie', 'referer', 'user-agent', 'content-length', 'host'].includes(lowerK)) {
+          fetchHeaders[k] = v as string;
+        }
+      }
+
+      // 4. Perform fetch in page context
+      const json = await page.evaluate(async (url: string, fetchBody: string, fetchHeaders: any) => {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: fetchHeaders,
+          body: fetchBody,
+        });
+        if (!res.ok) {
+          throw new Error(`HTTP_${res.status}`);
+        }
+        return res.json();
+      }, 'https://www.instagram.com/graphql/query', body, fetchHeaders);
+
+      // Warm up the other active browsers in the background since this query succeeded
+      const otherBrowsers = activeBrowsers.filter(b => b.workerId !== browser.workerId);
+      for (const b of otherBrowsers) {
+        if (!isWorkerCached(b.workerId)) {
+          warmupWorker(b);
+        }
+      }
+
+      return json;
+
+    } catch (e) {
+      const msg = (e as Error).message;
+      console.error(
+        `❌ Instagram GraphQL query failed via ${browser.workerId} (attempt ${attempt + 1}/${maxAttempts}):`,
+        msg,
+      );
+      browserPool.recordFailure();
+
+      if (msg.includes('HTTP_403') || msg.includes('HTTP_429')) {
+        browserPool.recordCaptcha(browser.workerId);
+        if (page) {
+          try {
+            const client = await page.target().createCDPSession();
+            await client.send('Network.clearBrowserCookies');
+            await client.detach();
+          } catch { /* ignore */ }
+        }
+        pageErrored = true;
+      } else if ([
+        'CDP_UNREACHABLE', 'NO_WS_URL', 'Protocol error', 'WebSocket', 'Connection closed'
+      ].some((k) => msg.includes(k)) || (conn && !conn.browserConn.isConnected())) {
+        invalidateWorkerConnection(browser.workerId);
+        page = null;
+
+        const cdpFails = (workerCdpFailures.get(browser.workerId) ?? 0) + 1;
+        workerCdpFailures.set(browser.workerId, cdpFails);
+
+        if (cdpFails >= MAX_WORKER_CDP_FAILURES) {
+          console.warn(`🔥 Worker ${browser.workerId} hit ${cdpFails} consecutive CDP failures — evicting.`);
+          workerCdpFailures.delete(browser.workerId);
+          browserPool.deregister(browser.workerId);
+        }
+      } else {
+        pageErrored = true;
+      }
+    } finally {
+      if (conn && page) {
+        await releasePage(conn, page, pageErrored);
+      }
+    }
+  }
+
+  if (browserPool.getActive().length === 0) {
+    console.error('🚨 All pool workers are dead or none available. Triggering emergency worker restart...');
+    browserPool.restartWorkers();
+  }
+
+  return null;
+}
+
