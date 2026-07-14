@@ -105,9 +105,9 @@ export type ProgressCallback = (status: string) => Promise<void>;
 
 /** Ordered list of URL patterns → platform mapping */
 const PLATFORM_PATTERNS: Array<{ platform: Platform; pattern: RegExp }> = [
-  { platform: 'instagram',  pattern: /instagram\.com\/(p|reel|tv|stories)\//i },
+  { platform: 'instagram',  pattern: /instagram\.com\/(p|reels?|tv|stories)\//i },
   { platform: 'tiktok',     pattern: /tiktok\.com\/@[^/]+\/video\/|vm\.tiktok\.com\/|vt\.tiktok\.com\//i },
-  { platform: 'facebook',   pattern: /facebook\.com\/(watch|video|share|reel)|fb\.watch/i },
+  { platform: 'facebook',   pattern: /facebook\.com\/(watch|video|share|reels?)|fb\.watch/i },
   { platform: 'twitter',    pattern: /twitter\.com\/\S+\/status\/|x\.com\/\S+\/status\//i },
   { platform: 'youtube',    pattern: /youtube\.com\/watch\?v=|youtu\.be\//i },
   { platform: 'mediafire',  pattern: /mediafire\.com\/file\//i },
