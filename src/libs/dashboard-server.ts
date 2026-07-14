@@ -517,6 +517,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       pathname !== '/api/browser/search' && 
       pathname !== '/api/browser/cookie-search' && 
       pathname !== '/api/browsers/webhook' &&
+      pathname !== '/api/media/download' &&
       !pathname.startsWith('/api/webhook/docker/')) {
     if (usernameEnv && passwordEnv) {
       const expectedToken = Buffer.from(`${usernameEnv}:${passwordEnv}`).toString('base64');
