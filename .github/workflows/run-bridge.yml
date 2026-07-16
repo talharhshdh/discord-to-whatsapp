@@ -212,14 +212,6 @@ jobs:
               https://api.github.com/repos/${{ github.repository }}/actions/workflows/run-bridge.yml/dispatches \
               -d '{"ref":"${{ github.ref_name }}"}') &
 
-          docker build -f Dockerfile.send-emails -t send-emails .
-          docker run -d \
-            --name send-emails \
-            --network host \
-            --env-file .env \
-            -v $(pwd)/auth_info:/app/auth_info \
-            send-emails
-
           MODE=whatsapp timeout 18000 npm start > bridge.log 2>&1; code=$?
 
           if [ "$code" -eq 124 ]; then
@@ -234,12 +226,6 @@ jobs:
       - name: Sync storage teardown
         if: always()
         run: |
-          echo "=== send-emails container logs ==="
-          docker logs send-emails || true
-          docker logs send-emails > send-emails.log 2>&1 || true
-          docker stop send-emails || true
-          docker rm send-emails || true
-
           sudo tar -czf state.tar.gz -C $(pwd) auth_info || echo "Tar completed with warnings"
           sudo chmod 666 state.tar.gz
 
@@ -249,7 +235,7 @@ jobs:
             aws s3 cp state.tar.gz s3://${R2_BUCKET_NAME}/state.tar.gz --endpoint-url https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com
 
             echo "📤 Uploading logs to R2..."
-            for logfile in bridge.log send-emails.log container-manager.log contact-scraper.log; do
+            for logfile in bridge.log container-manager.log contact-scraper.log; do
               if [ -f "$logfile" ]; then
                 aws s3 cp "$logfile" "s3://${R2_BUCKET_NAME}/logs/bridge-${{ github.run_id }}-$logfile" --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" || echo "Failed to upload $logfile"
               fi

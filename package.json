@@ -10,7 +10,6 @@
     "dev": "ts-node src/index.ts",
     "sync-r2": "ts-node src/scripts/sync-r2.ts",
     "clean-r2": "ts-node src/scripts/clean-r2.ts",
-    "send-emails": "npx tsc src/scripts/send-local-emails.ts",
     "dashboard:install": "cd dashboard && npm install --legacy-peer-deps",
     "dashboard:build": "cd dashboard && npm run build"
   },
