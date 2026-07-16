@@ -211,7 +211,7 @@ export async function processDirectApplications() {
           const emailBody = generatePitchEmail(job, tags);
 
           await transporter.sendMail({
-            from: `"Talha Riaz" <${process.env.EMAIL_USER}>`,
+            from: `"Talha Riaz" <${process.env.SENDER_EMAIL || process.env.EMAIL_USER}>`,
             to: primaryEmail,
             subject: `Application for ${job.title} - Talha Riaz`,
             text: emailBody,
