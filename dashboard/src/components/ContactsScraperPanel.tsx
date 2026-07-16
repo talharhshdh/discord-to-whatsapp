@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { api, ScrapedJobItem, AutomatedJobsResponse } from '../api';
+import { api, ScrapedJobItem, AutomatedJobsResponse, ReceivedEmail } from '../api';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -15,7 +15,7 @@ interface ContactsScrapeResult {
 }
 
 export default function ContactsScraperPanel() {
-  const [activeTab, setActiveTab] = useState<'crawler' | 'jobs'>('crawler');
+  const [activeTab, setActiveTab] = useState<'crawler' | 'jobs' | 'emails'>('crawler');
 
   // Single url scraper state
   const [targetUrl, setTargetUrl] = useState('');
@@ -43,6 +43,13 @@ export default function ContactsScraperPanel() {
   const [hasContactsFilter, setHasContactsFilter] = useState(false);
   const [expandedJobJks, setExpandedJobJks] = useState<Record<string, boolean>>({});
 
+  // Inbound emails state
+  const [emailsData, setEmailsData] = useState<ReceivedEmail[]>([]);
+  const [emailsLoading, setEmailsLoading] = useState(false);
+  const [emailsError, setEmailsError] = useState<string | null>(null);
+  const [expandedEmailIds, setExpandedEmailIds] = useState<Record<string, boolean>>({});
+  const [emailSearchFilter, setEmailSearchFilter] = useState('');
+
   const fetchJobsData = async () => {
     setJobsLoading(true);
     setJobsError(null);
@@ -56,9 +63,24 @@ export default function ContactsScraperPanel() {
     }
   };
 
+  const fetchEmailsData = async () => {
+    setEmailsLoading(true);
+    setEmailsError(null);
+    try {
+      const data = await api.getReceivedEmails();
+      setEmailsData(data.emails || []);
+    } catch (err: any) {
+      setEmailsError(err.message || 'Failed to fetch received emails.');
+    } finally {
+      setEmailsLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (activeTab === 'jobs') {
       fetchJobsData();
+    } else if (activeTab === 'emails') {
+      fetchEmailsData();
     }
   }, [activeTab]);
 
@@ -151,6 +173,16 @@ export default function ContactsScraperPanel() {
           }`}
         >
           🤖 Auto Jobs database
+        </button>
+        <button
+          onClick={() => setActiveTab('emails')}
+          className={`pb-3 text-sm font-bold uppercase tracking-wider transition-all border-b-2 ${
+            activeTab === 'emails'
+              ? 'border-[#0061FF] text-white'
+              : 'border-transparent text-white/40 hover:text-white/70'
+          }`}
+        >
+          📬 Inbox (Received)
         </button>
       </div>
 
@@ -632,6 +664,156 @@ export default function ContactsScraperPanel() {
                     </div>
                   );
                 })}
+              </div>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'emails' && (
+        <div className="space-y-6">
+          {/* Header Controls */}
+          <Card className="glass rounded-3xl border border-white/[0.08] p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="relative w-full sm:w-1/3">
+              <span className="absolute inset-y-0 left-3 flex items-center text-white/35 text-xs">🔍</span>
+              <Input
+                type="text"
+                placeholder="Search by sender or subject..."
+                value={emailSearchFilter}
+                onChange={e => setEmailSearchFilter(e.target.value)}
+                className="w-full bg-white/[0.03] border border-white/[0.06] hover:border-white/15 focus:border-[#0061FF]/40 rounded-xl pl-8 py-2 text-xs text-white"
+              />
+            </div>
+            
+            <div className="flex items-center gap-3">
+              <span className="text-[11px] text-white/30 font-mono">
+                Total Received: {emailsData.length}
+              </span>
+              <Button
+                onClick={fetchEmailsData}
+                disabled={emailsLoading}
+                className="py-1.5 px-3 bg-white/5 border border-white/10 hover:bg-white/10 text-white text-[11px] font-bold rounded-lg transition-all flex items-center gap-1.5"
+              >
+                {emailsLoading ? '🔄 Refreshing...' : '🔄 Refresh Inbox'}
+              </Button>
+            </div>
+          </Card>
+
+          {/* Loading and Error States */}
+          {emailsLoading && emailsData.length === 0 && (
+            <div className="flex items-center justify-center p-12 text-white/50">
+              Loading received emails from R2 inbox...
+            </div>
+          )}
+
+          {emailsError && (
+            <div className="px-4 py-3 bg-rose-500/10 border border-rose-500/25 rounded-xl text-rose-400 text-xs font-medium">
+              ⚠️ {emailsError}
+            </div>
+          )}
+
+          {emailsData.length === 0 && !emailsLoading && (
+            <Card className="glass rounded-3xl border border-white/[0.08] p-12 text-center text-white/30 space-y-2">
+              <div className="text-3xl">📬</div>
+              <p className="font-semibold text-white/70">Your inbox is empty.</p>
+              <p className="text-xs text-white/40 max-w-md mx-auto">
+                Incoming emails sent to contact@talhacodes.site will appear here once they are received and forwarded by Brevo's Inbound Parsing Webhook.
+              </p>
+            </Card>
+          )}
+
+          {/* Emails list */}
+          {emailsData.length > 0 && (
+            <Card className="glass rounded-3xl overflow-hidden border border-white/[0.08]">
+              <div className="divide-y divide-white/[0.06]">
+                {emailsData
+                  .filter(email => {
+                    const term = emailSearchFilter.toLowerCase();
+                    return (
+                      email.subject.toLowerCase().includes(term) ||
+                      email.from.address.toLowerCase().includes(term) ||
+                      (email.from.name && email.from.name.toLowerCase().includes(term))
+                    );
+                  })
+                  .map((email, idx) => {
+                    const isExpanded = !!expandedEmailIds[email.id];
+                    const senderName = email.from.name || email.from.address.split('@')[0];
+                    const formattedDate = new Date(email.receivedAt).toLocaleString();
+
+                    return (
+                      <div key={email.id} className="p-6 hover:bg-white/[0.01] transition-colors space-y-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                          {/* Sender details and subject */}
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h3 className="font-bold text-white text-sm hover:text-teal-400 transition-colors">
+                                {idx + 1}. {email.subject}
+                              </h3>
+                            </div>
+                            <div className="text-white/50 text-xs font-medium">
+                              From: <span className="text-teal-400">{senderName}</span> &lt;{email.from.address}&gt;
+                              {email.to && email.to.length > 0 && (
+                                <span className="text-white/25"> to {email.to.join(', ')}</span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Timestamp and action */}
+                          <div className="flex items-center gap-3 self-start sm:self-center">
+                            <span className="text-[11px] text-white/30 font-mono">
+                              {formattedDate}
+                            </span>
+                            <button
+                              onClick={() => setExpandedEmailIds(prev => ({ ...prev, [email.id]: !isExpanded }))}
+                              className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-white text-[11px] font-semibold transition-all"
+                            >
+                              {isExpanded ? '🔼 Hide Body' : '🔽 Read Email'}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Email Body Content */}
+                        {isExpanded && (
+                          <div className="mt-3 bg-black/45 border border-white/[0.06] rounded-xl p-5 text-xs text-white/70 leading-relaxed font-sans max-h-[500px] overflow-y-auto scrollbar-thin select-text">
+                            {email.bodyHtml ? (
+                              <div className="rounded-lg overflow-hidden border border-white/[0.08] bg-white">
+                                <iframe
+                                  title={`email-body-${email.id}`}
+                                  srcDoc={`
+                                    <!DOCTYPE html>
+                                    <html>
+                                      <head>
+                                        <meta charset="utf-8">
+                                        <style>
+                                          body { 
+                                            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                                            font-size: 14px; 
+                                            line-height: 1.5; 
+                                            color: #333333; 
+                                            background-color: #ffffff;
+                                            margin: 15px; 
+                                          }
+                                        </style>
+                                      </head>
+                                      <body>
+                                        ${email.bodyHtml}
+                                      </body>
+                                    </html>
+                                  `}
+                                  className="w-full h-[350px] border-0"
+                                  sandbox="allow-same-origin"
+                                />
+                              </div>
+                            ) : (
+                              <pre className="whitespace-pre-wrap font-sans text-xs bg-black/20 p-4 rounded-lg select-text border border-white/[0.02]">
+                                {email.bodyText || '(Empty message body)'}
+                              </pre>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
               </div>
             </Card>
           )}

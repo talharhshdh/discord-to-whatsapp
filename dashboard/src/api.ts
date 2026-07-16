@@ -150,6 +150,21 @@ export interface YtDownloadJob {
   error?: string;
   title?: string;
 }
+export interface ReceivedEmail {
+  id: string;
+  from: { name?: string; address: string };
+  to: string[];
+  subject: string;
+  bodyText: string;
+  bodyHtml?: string;
+  receivedAt: string;
+}
+
+export interface ReceivedEmailsResponse {
+  success: boolean;
+  emails: ReceivedEmail[];
+}
+
 // ── TTS Types ───────────────────────────────────────────────────────────────
 
 export interface TTSVoice {
@@ -536,4 +551,9 @@ export const api = {
     post<{ success: boolean; message: string }>('/api/jobs/trigger-scrape', { keywords, location }),
   generateBlog: (topic?: string, community = false) =>
     post<{ success: boolean; message: string; data?: any }>('/api/blog/generate', { topic, community }),
+  getReceivedEmails: () =>
+    authFetch(`${BASE}/api/emails/received`).then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json() as Promise<ReceivedEmailsResponse>;
+    }),
 };

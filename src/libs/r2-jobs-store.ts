@@ -134,3 +134,28 @@ export async function getJobsStatusFromR2(): Promise<JobsStatus> {
 export async function saveJobsStatusToR2(status: JobsStatus): Promise<boolean> {
   return putObjectText('jobs_status.json', JSON.stringify(status, null, 2), 'application/json');
 }
+
+export interface ReceivedEmail {
+  id: string;
+  from: { name?: string; address: string };
+  to: string[];
+  subject: string;
+  bodyText: string;
+  bodyHtml?: string;
+  receivedAt: string;
+}
+
+export async function getReceivedEmailsFromR2(): Promise<ReceivedEmail[]> {
+  const data = await getObjectText('received_emails.json');
+  if (!data) return [];
+  try {
+    return JSON.parse(data) as ReceivedEmail[];
+  } catch {
+    return [];
+  }
+}
+
+export async function saveReceivedEmailsToR2(emails: ReceivedEmail[]): Promise<boolean> {
+  return putObjectText('received_emails.json', JSON.stringify(emails, null, 2), 'application/json');
+}
+

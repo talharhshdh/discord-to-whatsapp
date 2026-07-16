@@ -48,7 +48,7 @@ import { cookieSearchPool } from './cookie-search-pool';
 import { saveStateToR2 } from './r2-sync';
 import { startCustomContainer, restoreDockerContainers, stopCustomContainer } from './custom-container';
 import { runJobsScraper } from './jobs-scraper-service';
-import { getJobsFromR2, getJobsStatusFromR2, saveJobsStatusToR2 } from './r2-jobs-store';
+import { getJobsFromR2, getJobsStatusFromR2, saveJobsStatusToR2, getReceivedEmailsFromR2, saveReceivedEmailsToR2, ReceivedEmail } from './r2-jobs-store';
 import { generateAndPostBlog, generateCommunityBlog } from './blog-generator-service';
 
 const Corrosion = require('corrosion');
@@ -518,6 +518,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       pathname !== '/api/browser/cookie-search' && 
       pathname !== '/api/browsers/webhook' &&
       pathname !== '/api/media/download' &&
+      pathname !== '/api/webhook/inbound-email' &&
       !pathname.startsWith('/api/webhook/docker/')) {
     if (usernameEnv && passwordEnv) {
       const expectedToken = Buffer.from(`${usernameEnv}:${passwordEnv}`).toString('base64');
@@ -1795,6 +1796,135 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 
       const result = await runJobsScraper(keywords, location);
       json(res, result);
+    } catch (e) {
+      err(res, (e as Error).message);
+    }
+    return;
+  }
+
+  // ── POST /api/webhook/inbound-email ────────────────────────────────────────
+  if (method === 'POST' && pathname === '/api/webhook/inbound-email') {
+    try {
+      // 1. Verify Secret Token
+      const parsedUrl = new URL(url, 'http://localhost');
+      const tokenParam = parsedUrl.searchParams.get('secret');
+      const expectedSecret = process.env.INBOUND_EMAIL_WEBHOOK_SECRET;
+
+      if (expectedSecret && tokenParam !== expectedSecret) {
+        return err(res, 'Unauthorized webhook secret', 401);
+      }
+
+      const body = await parseJsonBody(req);
+      console.log('[Inbound Email Webhook] Received webhook payload:', JSON.stringify(body).substring(0, 500));
+
+      // Brevo webhook payload mapping
+      // Handle various formats (Standard Webhook, Nested array, Raw fields)
+      let fromEmail = '';
+      let fromName = '';
+      let toEmails: string[] = [];
+      let subject = '(No Subject)';
+      let bodyText = '';
+      let bodyHtml = '';
+      let dateStr = new Date().toISOString();
+      let emailId = Math.random().toString(36).substring(2, 15);
+
+      if (body && typeof body === 'object') {
+        const anyBody = body as any;
+        
+        // Format A: Standard Brevo Webhook Payload (sender object)
+        if (anyBody.sender && typeof anyBody.sender === 'object') {
+          fromEmail = anyBody.sender.email || '';
+          fromName = anyBody.sender.name || '';
+          if (Array.isArray(anyBody.to)) {
+            toEmails = anyBody.to.map((t: any) => typeof t === 'object' ? t.email : t).filter(Boolean);
+          }
+          subject = anyBody.subject || subject;
+          bodyText = anyBody.text || '';
+          bodyHtml = anyBody.html || '';
+          dateStr = anyBody.date || dateStr;
+          emailId = anyBody.uuid || emailId;
+        } 
+        // Format B: Alternative Brevo/SMTP Inbound Webhook payload
+        else if (anyBody.From || anyBody.Subject || anyBody.RawTextBody) {
+          fromEmail = anyBody.From || '';
+          fromName = anyBody.FromName || '';
+          if (anyBody.To) {
+            toEmails = Array.isArray(anyBody.To) ? anyBody.To : [anyBody.To];
+          }
+          subject = anyBody.Subject || subject;
+          bodyText = anyBody.RawTextBody || anyBody.Text || '';
+          bodyHtml = anyBody.RawHtmlBody || anyBody.Html || '';
+          dateStr = anyBody.SentAtDate || anyBody.Date || dateStr;
+          emailId = anyBody.uuid || anyBody.msgId || emailId;
+        }
+        // Format C: Nested in items array
+        else if (Array.isArray(anyBody.items) && anyBody.items[0]) {
+          const item = anyBody.items[0];
+          fromEmail = item.From || item.sender?.email || '';
+          fromName = item.FromName || item.sender?.name || '';
+          if (item.To) {
+            toEmails = Array.isArray(item.To) ? item.To : [item.To];
+          }
+          subject = item.Subject || item.subject || subject;
+          bodyText = item.RawTextBody || item.text || '';
+          bodyHtml = item.RawHtmlBody || item.html || '';
+          dateStr = item.SentAtDate || item.date || dateStr;
+          emailId = item.uuid || item.msgId || emailId;
+        }
+        // Fallback: parse raw request keys
+        else {
+          fromEmail = anyBody.from || anyBody.sender || '';
+          subject = anyBody.subject || subject;
+          bodyText = anyBody.text || anyBody.body || '';
+          bodyHtml = anyBody.html || '';
+        }
+      }
+
+      if (!fromEmail) {
+        return err(res, 'Invalid webhook payload: sender details not found', 400);
+      }
+
+      // 2. Load existing, append and save to R2
+      const existingEmails = await getReceivedEmailsFromR2();
+      
+      // Avoid duplicate webhook processing if UUID already exists
+      if (!existingEmails.some(e => e.id === emailId)) {
+        const newEmail: ReceivedEmail = {
+          id: emailId,
+          from: { name: fromName || undefined, address: fromEmail },
+          to: toEmails,
+          subject,
+          bodyText,
+          bodyHtml,
+          receivedAt: new Date(dateStr).toISOString()
+        };
+
+        existingEmails.unshift(newEmail);
+        
+        // Cap received emails storage at 500 records to save space
+        if (existingEmails.length > 500) {
+          existingEmails.length = 500;
+        }
+
+        await saveReceivedEmailsToR2(existingEmails);
+        console.log(`[Inbound Email Webhook] Successfully saved inbound email from ${fromEmail}`);
+      } else {
+        console.log(`[Inbound Email Webhook] Duplicate webhook received for email id ${emailId}. Skipped.`);
+      }
+
+      json(res, { success: true });
+    } catch (e) {
+      console.error('[Inbound Email Webhook] Webhook handler error:', e);
+      err(res, (e as Error).message);
+    }
+    return;
+  }
+
+  // ── GET /api/emails/received ──────────────────────────────────────────────
+  if (method === 'GET' && url === '/api/emails/received') {
+    try {
+      const emails = await getReceivedEmailsFromR2();
+      json(res, { success: true, emails });
     } catch (e) {
       err(res, (e as Error).message);
     }
