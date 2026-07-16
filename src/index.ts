@@ -218,7 +218,8 @@ class DiscordWhatsAppBridge {
     }
     if (this.mode === 'whatsapp' || this.mode === 'all') {
       if (this.whatsappEnabled) {
-        this.setupWhatsApp();
+        // this.setupWhatsApp();
+        this.whatsappReady = true;
       }
     }
 
