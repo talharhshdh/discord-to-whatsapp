@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { api, PlaceResult } from '../api';
+import { api, PlaceResult, PlaceDetailResult, PlaceReview } from '../api';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -251,7 +251,212 @@ function StreamProgress({ round, total, done }: { round: number; total: number; 
 
 // ── Mode toggle ───────────────────────────────────────────────────────────────
 
-type Mode = 'google-search' | 'stream' | 'paginated';
+type Mode = 'url-details' | 'google-search' | 'stream' | 'paginated';
+
+// ── Direct URL Extractor Panel ──────────────────────────────────────────────
+
+function UrlDetailsPanel() {
+  const [url, setUrl] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [detail, setDetail] = useState<PlaceDetailResult | null>(null);
+
+  const handleScrape = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!url.trim() || loading) return;
+    setLoading(true);
+    setError('');
+    setDetail(null);
+    try {
+      const res = await api.getPlaceDetails(url.trim());
+      if (res.success && res.result) {
+        setDetail(res.result);
+      } else {
+        setError('Failed to extract place details');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Error extracting place details');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <Card className="glass p-6 rounded-2xl border border-white/[0.07] shadow-xl">
+        <div className="flex items-start justify-between mb-1">
+          <div>
+            <CardTitle className="text-lg font-bold text-white flex items-center gap-2">
+              <span>🔗 Direct Place URL Extractor</span>
+            </CardTitle>
+            <CardDescription className="text-sm text-[var(--text-muted)] mt-1">
+              Extract overview attributes, photos, and customer reviews instantly (sub-second performance).
+            </CardDescription>
+          </div>
+          <Badge variant="outline" className="text-xs text-[#00E5FF] bg-[#00E5FF]/10 border border-[#00E5FF]/20 px-2 py-0.5 rounded-full font-normal">
+            0 clicks · Sub-second
+          </Badge>
+        </div>
+
+        <form onSubmit={handleScrape} className="space-y-3 mt-4">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Input
+              id="place-url-input"
+              type="text"
+              className="flex-1 bg-black/20 border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-white/30 focus:outline-none focus:border-[#00E5FF]/50 transition-colors text-xs font-mono"
+              placeholder="https://www.google.com/maps/place/..."
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              disabled={loading}
+            />
+            <Button
+              type="submit"
+              disabled={!url.trim() || loading}
+              className="px-6 py-2.5 h-auto bg-gradient-to-r from-[#00E5FF] to-[#0061FF] rounded-xl text-white font-medium hover:opacity-90 disabled:opacity-50 transition-all shadow-lg shadow-[#00E5FF]/20 whitespace-nowrap"
+            >
+              {loading ? '⚡ Extracting…' : '🚀 Extract Details'}
+            </Button>
+          </div>
+        </form>
+
+        {error && (
+          <div className="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+            {error}
+          </div>
+        )}
+      </Card>
+
+      {detail && (
+        <Card className="glass p-6 rounded-2xl border border-white/[0.1] shadow-2xl space-y-6">
+          {/* Header */}
+          <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 border-b border-white/[0.08] pb-6">
+            <div>
+              <h2 className="text-xl font-bold text-white">{detail.name}</h2>
+              {detail.category && (
+                <p className="text-xs text-[#00E5FF] mt-1 font-medium">{detail.category}</p>
+              )}
+              {detail.rating !== null && (
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="text-amber-400 font-bold text-base">{detail.rating.toFixed(1)}</span>
+                  <StarRating rating={detail.rating} />
+                  {detail.reviewCount !== null && (
+                    <span className="text-xs text-white/40">({detail.reviewCount.toLocaleString()} reviews)</span>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusBadge openNow={detail.openNow} />
+              {detail.priceLevel && (
+                <Badge variant="outline" className="text-xs font-bold text-[#00E5FF] bg-[#00E5FF]/10 border border-[#00E5FF]/20 px-2 py-0.5 rounded-lg">
+                  {detail.priceLevel}
+                </Badge>
+              )}
+            </div>
+          </div>
+
+          {/* Attributes & Badges */}
+          {detail.attributes && detail.attributes.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-white/40 mb-3">Attributes & Highlights</p>
+              <div className="flex flex-wrap gap-2">
+                {detail.attributes.map((attr, i) => (
+                  <Badge key={i} variant="outline" className="bg-white/[0.05] border-white/10 text-white/80 px-3 py-1 rounded-xl text-xs font-normal">
+                    ✨ {attr}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Overview Info Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-black/20 p-4 rounded-xl border border-white/[0.05]">
+            {detail.address && (
+              <div className="flex items-start gap-2 text-xs text-white/70">
+                <span className="text-base">📍</span>
+                <div>
+                  <span className="text-white/40 block text-[10px] uppercase font-bold">Address</span>
+                  <span>{detail.address}</span>
+                </div>
+              </div>
+            )}
+            {detail.phone && (
+              <div className="flex items-start gap-2 text-xs text-white/70">
+                <span className="text-base">📞</span>
+                <div>
+                  <span className="text-white/40 block text-[10px] uppercase font-bold">Phone</span>
+                  <a href={`tel:${detail.phone}`} className="hover:text-[#00E5FF] transition-colors">{detail.phone}</a>
+                </div>
+              </div>
+            )}
+            {detail.website && (
+              <div className="flex items-start gap-2 text-xs text-white/70">
+                <span className="text-base">🌐</span>
+                <div>
+                  <span className="text-white/40 block text-[10px] uppercase font-bold">Website</span>
+                  <a href={detail.website} target="_blank" rel="noreferrer" className="text-[#0061FF] hover:underline truncate block max-w-xs">{detail.website}</a>
+                </div>
+              </div>
+            )}
+            {detail.plusCode && (
+              <div className="flex items-start gap-2 text-xs text-white/70">
+                <span className="text-base">📍</span>
+                <div>
+                  <span className="text-white/40 block text-[10px] uppercase font-bold">Plus Code</span>
+                  <span>{detail.plusCode}</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Gallery Images */}
+          {detail.images && detail.images.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-white/40 mb-3">Photos ({detail.images.length})</p>
+              <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-white/10">
+                {detail.images.map((img, i) => (
+                  <img
+                    key={i}
+                    src={img}
+                    alt={`Photo ${i + 1}`}
+                    className="w-32 h-24 object-cover rounded-xl border border-white/10 flex-shrink-0 hover:scale-105 transition-transform"
+                    onError={(e) => (e.currentTarget.style.display = 'none')}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Customer Reviews */}
+          {detail.reviews && detail.reviews.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-white/40 mb-3">Customer Reviews ({detail.reviews.length})</p>
+              <div className="space-y-3">
+                {detail.reviews.map((rev, i) => (
+                  <div key={i} className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.05] space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        {rev.authorAvatar ? (
+                          <img src={rev.authorAvatar} alt="" className="w-6 h-6 rounded-full" />
+                        ) : (
+                          <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-[10px] text-white/60">👤</div>
+                        )}
+                        <span className="text-xs font-semibold text-white">{rev.authorName || 'Anonymous'}</span>
+                      </div>
+                      {rev.rating !== null && <StarRating rating={rev.rating} />}
+                    </div>
+                    {rev.text && <p className="text-xs text-white/70 leading-relaxed">{rev.text}</p>}
+                    {rev.relativeTime && <span className="text-[10px] text-white/30 block">{rev.relativeTime}</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </Card>
+      )}
+    </div>
+  );
+}
 
 // ── Paginated panel ───────────────────────────────────────────────────────────
 
@@ -738,6 +943,7 @@ export default function PlacesPanel() {
       {/* Mode toggle */}
       <div className="flex gap-1 p-1 bg-white/[0.04] border border-white/[0.07] rounded-xl w-fit">
         {([
+          { id: 'url-details',   label: '🔗 Direct URL Scraper' },
           { id: 'google-search', label: '🔍 Google Search' },
           { id: 'stream',        label: '📡 Maps Stream' },
           { id: 'paginated',     label: '📄 Maps Paginated' },
@@ -757,6 +963,7 @@ export default function PlacesPanel() {
         ))}
       </div>
 
+      {mode === 'url-details' && <UrlDetailsPanel />}
       {mode === 'google-search' && <GoogleSearchPanel />}
       {mode === 'paginated' && <PaginatedPanel />}
 

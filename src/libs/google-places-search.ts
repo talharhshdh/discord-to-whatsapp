@@ -77,6 +77,22 @@ export interface PlaceResult {
   firstReview: string | null;
 }
 
+export interface PlaceReview {
+  authorName: string | null;
+  authorAvatar: string | null;
+  rating: number | null;
+  relativeTime: string | null;
+  text: string | null;
+}
+
+export interface PlaceDetailResult extends PlaceResult {
+  plusCode: string | null;
+  attributes: string[];
+  services: string[];
+  reviews: PlaceReview[];
+  images: string[];
+}
+
 export interface PlacesSearchResult {
   query: string;
   page: number;
@@ -1378,3 +1394,210 @@ export async function searchViaGoogleSearchStream(
 
   onEvent({ type: 'done', total: totalEmitted, reachedEnd: false });
 }
+
+/**
+ * Scrape full place details from a direct Google Maps place URL using the remote browser pool.
+ * Performs NO simulated clicks or delayed tab navigation to ensure sub-second performance.
+ */
+export async function scrapePlaceDetailsViaPool(
+  placeUrl: string,
+): Promise<PlaceDetailResult | null> {
+  const activeBrowsers = browserPool.getActive();
+  const maxAttempts = Math.max(1, activeBrowsers.length);
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const browser = browserPool.getNext();
+    if (!browser) break;
+
+    let conn: WorkerConnection | null = null;
+    let page: any = null;
+
+    try {
+      const acquired = await acquirePage(browser);
+      conn = acquired.conn;
+      page = acquired.page;
+
+      await page.setUserAgent(USER_AGENT);
+
+      // Fast domcontentloaded navigation
+      await page.goto(placeUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+
+      // Check for Captcha
+      const hasCaptcha: boolean = await page.evaluate(() =>
+        !!document.querySelector('form[action="/sorry/index"], #captcha, .g-recaptcha'),
+      );
+      if (hasCaptcha) throw new Error('CAPTCHA_DETECTED');
+
+      // Single, instant evaluate pass — NO simulated mouse clicks or tab delays
+      const details = await page.evaluate(() => {
+        function text(sel: string, root: Document | Element = document): string | null {
+          const el = root.querySelector(sel);
+          return el ? (el as HTMLElement).innerText?.trim() || null : null;
+        }
+
+        const name = text('h1.DUwDvf') || text('[data-attrid="title"] span') || text('h1') || 'Unknown';
+        const ratingText = text('.F7nice span[aria-hidden="true"]') || text('.ceNzKf span[aria-hidden="true"]');
+        const rating = ratingText ? parseFloat(ratingText.replace(',', '.')) : null;
+
+        const reviewText = text('.F7nice span[aria-label*="review"]') || text('[aria-label*="reviews"]') || text('.HHrUdb');
+        const reviewMatch = reviewText?.replace(/,/g, '').match(/[\d.]+/);
+        const reviewCount = reviewMatch ? parseInt(reviewMatch[0], 10) : null;
+
+        const priceEl = document.querySelector('[aria-label*="Price: "], [aria-label*="price"]');
+        const priceLabel = priceEl?.getAttribute('aria-label') || '';
+        const priceMatch = priceLabel.match(/\$+/);
+        const priceLevel = priceMatch ? priceMatch[0] : null;
+
+        const category = text('.DkEaL') || text('button.DkEaL') || text('[jsaction*="category"] span') || null;
+        const address = text('[data-item-id="address"] .Io6YTe') || text('button[data-item-id="address"] .fontBodyMedium') || text('.rogA2c .Io6YTe') || null;
+        const websiteEl = document.querySelector<HTMLAnchorElement>('a[data-item-id="authority"]') || document.querySelector<HTMLAnchorElement>('[data-item-id="website"] a');
+        const website = websiteEl?.href || null;
+        const phone = text('[data-item-id^="phone:tel:"] .Io6YTe') || text('button[data-tooltip="Copy phone number"] .Io6YTe') || null;
+        const plusCode = text('[data-item-id="oloc"] .Io6YTe') || text('button[data-item-id="oloc"]') || null;
+
+        const openSpan = document.querySelector<HTMLElement>('.eXlsfd span, .o0Svhf span, .dHvSe span');
+        const openText = openSpan?.innerText?.toLowerCase() || '';
+        let openNow: boolean | null = null;
+        if (openText.includes('open')) openNow = true;
+        else if (openText.includes('closed')) openNow = false;
+
+        const todaysHours = text('.t39EBf .G8aQO') || text('[data-item-id="oh"] .fontBodyMedium') || openSpan?.innerText || null;
+
+        const weeklyHours: Record<string, string> = {};
+        document.querySelectorAll('.t39EBf table tr, [jsaction*="hours"] tr').forEach((row) => {
+          const day = (row.querySelector('td:first-child') as HTMLElement)?.innerText?.trim();
+          const hrs = (row.querySelector('td:last-child') as HTMLElement)?.innerText?.trim();
+          if (day && hrs) weeklyHours[day] = hrs;
+        });
+
+        const description = text('.PYvSYb') || text('[data-attrid="description"] .iKbnQ') || text('.xt2b0d .WeS02d') || null;
+
+        const photoCountEl = document.querySelector('[aria-label*="photo"], [aria-label*="Photo"]');
+        const photoMatch = photoCountEl?.getAttribute('aria-label')?.match(/[\d,]+/);
+        const photosCount = photoMatch ? parseInt(photoMatch[0].replace(/,/g, ''), 10) : null;
+
+        const attributes: string[] = [];
+        document.querySelectorAll('[data-item-id] .Io6YTe, .E0DTEd .CK16pd, .LTs0Rc .CK16pd, [aria-label*="Identifies as"], [aria-label*="friendly"]').forEach((el) => {
+          const t = (el as HTMLElement).innerText?.trim() || el.getAttribute('aria-label')?.trim();
+          if (t && !attributes.includes(t) && t !== address && t !== phone && t !== plusCode) {
+            attributes.push(t);
+          }
+        });
+
+        const services: string[] = [];
+        document.querySelectorAll('[data-item-id="service_list"] .Io6YTe, [jsaction*="service"] span').forEach((el) => {
+          const t = (el as HTMLElement).innerText?.trim();
+          if (t && !services.includes(t)) services.push(t);
+        });
+
+        const images: string[] = [];
+        document.querySelectorAll('img[src*="ggpht"], img[src*="googleusercontent"], button img').forEach((img) => {
+          const src = (img as HTMLImageElement).src;
+          if (src && !images.includes(src) && !src.includes('avatar') && !src.includes('cleardot')) {
+            images.push(src);
+          }
+        });
+
+        const reviews: Array<{ authorName: string | null; authorAvatar: string | null; rating: number | null; relativeTime: string | null; text: string | null }> = [];
+        document.querySelectorAll('.jJIDff, .MygVt, .W3df2, [data-review-id], .ah5Ghc, .Ahnjwc').forEach((el) => {
+          const authorName = text('.d4rG5, .X43Evd', el) || text('.qBF1Pd', el);
+          const authorAvatar = el.querySelector<HTMLImageElement>('img.N4f2pd, img')?.src || null;
+          const reviewBody = text('.wiI7pd, .MygVt', el) || (el as HTMLElement).innerText?.trim();
+          const ratingEl = el.querySelector('[aria-label*="star"], [aria-label*="stars"]');
+          const rMatch = ratingEl?.getAttribute('aria-label')?.match(/[\d.]+/);
+          const rRating = rMatch ? parseFloat(rMatch[0]) : null;
+          const relativeTime = text('.rRecSc, .publish-date', el);
+
+          if (reviewBody && (authorName || rRating)) {
+            reviews.push({
+              authorName,
+              authorAvatar,
+              rating: rRating,
+              relativeTime,
+              text: reviewBody,
+            });
+          }
+        });
+
+        const mapsUrl = window.location.href;
+        const pidM = mapsUrl.match(/0x[0-9a-f]+:0x[0-9a-f]+/i);
+        const placeId = pidM ? pidM[0] : null;
+        const latM = mapsUrl.match(/!3d(-?\d+\.\d+)/);
+        const lngM = mapsUrl.match(/!4d(-?\d+\.\d+)/);
+        const lat = latM ? parseFloat(latM[1]) : null;
+        const lng = lngM ? parseFloat(lngM[1]) : null;
+
+        const hasPopularTimes = !!document.querySelector('.g2BVhd, [jsdata*="popular"], [aria-label*="Popular times"]');
+        const isClaimed = !!document.querySelector('[aria-label*="Claimed"], [aria-label*="verified owner"]');
+
+        const relatedPlaces: string[] = [];
+        document.querySelectorAll('.Hk4XGb .qBF1Pd, .YhemCb .qBF1Pd').forEach((el) => {
+          const t = (el as HTMLElement).innerText?.trim();
+          if (t && !relatedPlaces.includes(t)) relatedPlaces.push(t);
+        });
+
+        return {
+          name,
+          address,
+          phone,
+          website,
+          rating: isNaN(rating as number) ? null : rating,
+          reviewCount: isNaN(reviewCount as number) ? null : reviewCount,
+          priceLevel,
+          category,
+          openNow,
+          todaysHours,
+          openStatus: todaysHours,
+          weeklyHours: Object.keys(weeklyHours).length ? weeklyHours : null,
+          description,
+          photosCount,
+          mapsUrl,
+          placeId,
+          lat,
+          lng,
+          hasPopularTimes,
+          isClaimed,
+          amenities: attributes,
+          relatedPlaces,
+          firstReview: reviews[0]?.text || null,
+          plusCode,
+          attributes,
+          services,
+          images: images.slice(0, 20),
+          reviews: reviews.slice(0, 15),
+        };
+      });
+
+      workerCdpFailures.delete(browser.workerId);
+      return details;
+
+    } catch (e) {
+      const msg = (e as Error).message;
+      console.error(
+        `❌ Place detail scrape failed via ${browser.workerId} (attempt ${attempt + 1}/${maxAttempts}): ${msg}`,
+      );
+      browserPool.recordFailure();
+
+      if (msg.includes('CAPTCHA_DETECTED')) {
+        browserPool.deregister(browser.workerId);
+        page = null;
+      } else if (['CDP_UNREACHABLE', 'NO_WS_URL', 'Protocol error', 'WebSocket'].some((k) => msg.includes(k))) {
+        invalidateWorkerConnection(browser.workerId);
+        page = null;
+        const cdpFails = (workerCdpFailures.get(browser.workerId) ?? 0) + 1;
+        workerCdpFailures.set(browser.workerId, cdpFails);
+        if (cdpFails >= MAX_WORKER_CDP_FAILURES) {
+          workerCdpFailures.delete(browser.workerId);
+          browserPool.deregister(browser.workerId);
+        }
+      }
+    } finally {
+      if (conn && page) {
+        await releasePage(conn, page, /* discard= */ true);
+      }
+    }
+  }
+
+  return null;
+}
+

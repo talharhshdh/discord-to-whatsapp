@@ -214,6 +214,22 @@ export interface PlaceResult {
   relatedPlaces: string[];
 }
 
+export interface PlaceReview {
+  authorName: string | null;
+  authorAvatar: string | null;
+  rating: number | null;
+  relativeTime: string | null;
+  text: string | null;
+}
+
+export interface PlaceDetailResult extends PlaceResult {
+  plusCode: string | null;
+  attributes: string[];
+  services: string[];
+  reviews: PlaceReview[];
+  images: string[];
+}
+
 export interface PlacesBatchEvent {
   type: 'batch' | 'progress' | 'done' | 'error';
   cards?: PlaceResult[];
@@ -556,4 +572,6 @@ export const api = {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       return r.json() as Promise<ReceivedEmailsResponse>;
     }),
+  getPlaceDetails: (url: string) =>
+    post<{ success: boolean; result: PlaceDetailResult }>('/api/browser/place-details', { url }),
 };

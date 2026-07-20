@@ -42,7 +42,7 @@ import type { YouTubeQualityOption } from './youtube-dl';
 import { browserPool, searchViaPool } from './browser-pool';
 // import { isConnectionCached } from './page-pool';
 import type { WebhookPayload } from './browser-pool';
-import { searchPlacesViaPool, searchPlacesStream, searchViaGoogleSearchUrl, searchViaGoogleSearchStream } from './google-places-search';
+import { searchPlacesViaPool, searchPlacesStream, searchViaGoogleSearchUrl, searchViaGoogleSearchStream, scrapePlaceDetailsViaPool } from './google-places-search';
 import { acquirePage, releasePage } from './page-pool';
 import { cookieSearchPool } from './cookie-search-pool';
 import { saveStateToR2 } from './r2-sync';
@@ -2176,6 +2176,24 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       const result = await searchPlacesViaPool(query, pageNumber, deepScrape);
       if (!result) return err(res, 'No browsers available in pool or all attempts failed', 503);
       json(res, result);
+    } catch (e) {
+      err(res, (e as Error).message);
+    }
+    return;
+  }
+
+  // ── POST /api/browser/place-details ─────────────────────────────────────
+  // Fast sub-second direct URL scrape of Google Maps place overview, attributes, photos, and reviews.
+  // Body: { url: string }
+  if (method === 'POST' && url === '/api/browser/place-details') {
+    try {
+      const body = await parseJsonBody(req);
+      const targetUrl = body['url'] as string;
+      if (!targetUrl) return err(res, 'url parameter is required', 400);
+
+      const result = await scrapePlaceDetailsViaPool(targetUrl);
+      if (!result) return err(res, 'Failed to scrape place details or no active browsers available', 503);
+      json(res, { success: true, result });
     } catch (e) {
       err(res, (e as Error).message);
     }
