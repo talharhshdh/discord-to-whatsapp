@@ -220,20 +220,30 @@ class BrowserPool {
     }
   }
 
-  /** Record a CAPTCHA and kill/replace the worker job immediately. */
+  /** Record a CAPTCHA and block/evict the worker if threshold reached. */
   recordCaptcha(workerId: string): void {
     const entry = this.browsers.get(workerId);
     if (!entry) return;
 
-    console.warn(`🔥 [BrowserPool] CAPTCHA detected on worker ${workerId}. Terminating GitHub Action job run ${entry.runId || 'N/A'} and triggering replacement worker...`);
+    const now = Date.now();
+    entry.captchaTimes.push(now);
+    const windowMs = 5 * 60 * 1000; // 5 minute window
+    entry.captchaTimes = entry.captchaTimes.filter((t) => now - t < windowMs);
 
-    if (entry.runId) {
-      this.stopWorker(entry.runId).catch((err) => {
-        console.error(`[BrowserPool] Error cancelling GitHub run for ${workerId}:`, err);
-      });
+    console.warn(`[BrowserPool] CAPTCHA recorded for worker ${workerId}. Count in last 5m: ${entry.captchaTimes.length}`);
+
+    if (entry.captchaTimes.length >= 10) {
+      entry.blockCount += 1;
+      const cooldownMs = 5 * 60 * 1000; // 5 minute cooldown
+      entry.tempBlockedUntil = now + cooldownMs;
+      entry.captchaTimes = []; // Clear for next cycle
+      console.error(`[BrowserPool] Worker ${workerId} temporarily blocked for 5 minutes (temp-block count: ${entry.blockCount}) due to excessive CAPTCHAs.`);
+
+      if (entry.blockCount >= 2) {
+        console.error(`[BrowserPool] Worker ${workerId} has reached max temp-blocks. Permanently removing.`);
+        this.deregister(workerId);
+      }
     }
-    this.deregister(workerId);
-    this.restartWorkers(true).catch(() => { });
   }
 
   /** Cancel the GitHub Actions workflow run for a worker and deregister all its browsers. */
@@ -566,7 +576,7 @@ export async function searchViaPool(
       // Wait dynamically for either results, footer, or CAPTCHA elements to load.
       // We avoid generic 'a' or 'a[href^="http"]' tags to prevent premature resolution on the header.
 
-      const waitTimeout = categoryKey === 'images' ? 4000 : 200;
+      const waitTimeout = categoryKey === 'images' ? 5000 : 1200;
       await page
         .waitForSelector(
           categoryKey === 'images'
