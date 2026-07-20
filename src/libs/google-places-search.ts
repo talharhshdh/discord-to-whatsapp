@@ -1422,10 +1422,13 @@ export async function scrapePlaceDetailsViaPool(
       // Fast domcontentloaded navigation
       await page.goto(placeUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
 
-      // Check for Captcha
-      const hasCaptcha: boolean = await page.evaluate(() =>
-        !!document.querySelector('form[action="/sorry/index"], #captcha, .g-recaptcha'),
-      );
+      // Check for Captcha / Consent / Block page
+      const hasCaptcha: boolean = await page.evaluate(() => {
+        const hasForm = !!document.querySelector('form[action*="/sorry/"], #captcha, .g-recaptcha');
+        const bodyText = document.body?.innerText || '';
+        const isBlocked = bodyText.includes('unusual traffic') || bodyText.includes('Before you continue to Google');
+        return hasForm || isBlocked;
+      });
       if (hasCaptcha) throw new Error('CAPTCHA_DETECTED');
 
       // Single, instant evaluate pass — NO simulated mouse clicks or tab delays
@@ -1435,7 +1438,11 @@ export async function scrapePlaceDetailsViaPool(
           return el ? (el as HTMLElement).innerText?.trim() || null : null;
         }
 
-        const name = text('h1.DUwDvf') || text('[data-attrid="title"] span') || text('h1') || 'Unknown';
+        const name = text('h1.DUwDvf') || text('[data-attrid="title"] span') || text('h1');
+        if (!name || name === 'Unknown') {
+          return null; // Signals CAPTCHA or failure to load place panel
+        }
+
         const ratingText = text('.F7nice span[aria-hidden="true"]') || text('.ceNzKf span[aria-hidden="true"]');
         const rating = ratingText ? parseFloat(ratingText.replace(',', '.')) : null;
 
@@ -1568,6 +1575,10 @@ export async function scrapePlaceDetailsViaPool(
         };
       });
 
+      if (!details) {
+        throw new Error('CAPTCHA_DETECTED');
+      }
+
       workerCdpFailures.delete(browser.workerId);
       return details;
 
@@ -1579,6 +1590,14 @@ export async function scrapePlaceDetailsViaPool(
       browserPool.recordFailure();
 
       if (msg.includes('CAPTCHA_DETECTED')) {
+        if (page) {
+          try {
+            const client = await page.target().createCDPSession();
+            await client.send('Network.clearBrowserCookies');
+            await client.detach();
+          } catch { /* ignore */ }
+        }
+        console.warn(`⏳ CAPTCHA / Bot block detected on ${browser.workerId} — evicting worker for IP cooldown.`);
         browserPool.deregister(browser.workerId);
         page = null;
       } else if (['CDP_UNREACHABLE', 'NO_WS_URL', 'Protocol error', 'WebSocket'].some((k) => msg.includes(k))) {
@@ -1596,6 +1615,11 @@ export async function scrapePlaceDetailsViaPool(
         await releasePage(conn, page, /* discard= */ true);
       }
     }
+  }
+
+  if (browserPool.getActive().length === 0) {
+    console.error('🚨 All pool workers are dead or evicted. Triggering worker restart...');
+    browserPool.restartWorkers();
   }
 
   return null;
