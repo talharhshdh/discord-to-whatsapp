@@ -478,6 +478,8 @@ export async function searchViaPool(
       conn = acquired.conn;
       page = acquired.page;
 
+      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
+
       // ── Request interception: block heavy assets ───────────────────────
       page.removeAllListeners('request');
       await page.setRequestInterception(true);
@@ -494,23 +496,12 @@ export async function searchViaPool(
             return;
           }
 
-          // For images search, we need scripts, stylesheets, and fonts to load the dynamic page correctly.
-          if (categoryKey === 'images') {
-            if (['media', 'websocket', 'manifest'].includes(type)) {
-              try { await req.abort(); } catch { }
-              return;
-            }
-            try { await req.continue(); } catch { }
-            return;
-          }
-
-          // Block unnecessary resource types
+          // Block unnecessary heavy resource types
           if (
             [
-              // 'image',
-              // 'media',
               'font',
               'stylesheet',
+              'media',
               'websocket',
               'manifest',
               'other',
@@ -526,21 +517,12 @@ export async function searchViaPool(
             url.includes('/log?') ||
             url.includes('sodar') ||
             url.includes('batchexecute') ||
-            url.includes('xjs=s') ||
-            url.includes('m=') ||
             url.includes('async=') ||
             url.includes('google-analytics') ||
             url.includes('play.google.com/log') ||
             url.includes('/gen_204') ||
-            url.includes('gws-wiz') ||
             url.includes('clients1.google.com')
           ) {
-            try { await req.abort(); } catch { }
-            return;
-          }
-
-          // Block JS entirely for maximum speed
-          if (['script', 'xhr', 'fetch'].includes(type)) {
             try { await req.abort(); } catch { }
             return;
           }
@@ -552,13 +534,11 @@ export async function searchViaPool(
       });
 
       const startParam = (pageNumber - 1) * 10;
-      // Do not force gbv=2 (Google Basic Version) for images search since modern Google Images requires JS.
       let targetUrl = `https://www.google.com/search?q=${encodeURIComponent(text)}&start=${startParam}&num=10&hl=en&pws=0`;
       if (categoryKey === 'images') {
         await new Promise((resolve) => setTimeout(resolve, 200));
         targetUrl += '&udm=2';
       } else {
-        targetUrl += '&gbv=2';
         if (categoryKey === 'videos') {
           targetUrl += '&udm=7';
         } else if (categoryKey === 'news') {
@@ -576,7 +556,7 @@ export async function searchViaPool(
       // Wait dynamically for either results, footer, or CAPTCHA elements to load.
       // We avoid generic 'a' or 'a[href^="http"]' tags to prevent premature resolution on the header.
 
-      const waitTimeout = categoryKey === 'images' ? 5000 : 1200;
+      const waitTimeout = categoryKey === 'images' ? 5000 : 100;
       await page
         .waitForSelector(
           categoryKey === 'images'
