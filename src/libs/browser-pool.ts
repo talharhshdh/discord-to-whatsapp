@@ -220,30 +220,20 @@ class BrowserPool {
     }
   }
 
-  /** Record a CAPTCHA and block/evict the worker if threshold reached. */
+  /** Record a CAPTCHA and kill/replace the worker job immediately. */
   recordCaptcha(workerId: string): void {
     const entry = this.browsers.get(workerId);
     if (!entry) return;
 
-    const now = Date.now();
-    entry.captchaTimes.push(now);
-    const windowMs = 5 * 60 * 1000; // 5 minute window
-    entry.captchaTimes = entry.captchaTimes.filter((t) => now - t < windowMs);
+    console.warn(`🔥 [BrowserPool] CAPTCHA detected on worker ${workerId}. Terminating GitHub Action job run ${entry.runId || 'N/A'} and triggering replacement worker...`);
 
-    console.warn(`[BrowserPool] CAPTCHA recorded for worker ${workerId}. Count in last 5m: ${entry.captchaTimes.length}`);
-
-    if (entry.captchaTimes.length >= 10) {
-      entry.blockCount += 1;
-      const cooldownMs = 5 * 60 * 1000; // 5 minute cooldown
-      entry.tempBlockedUntil = now + cooldownMs;
-      entry.captchaTimes = []; // Clear for next cycle
-      console.error(`[BrowserPool] Worker ${workerId} temporarily blocked for 5 minutes (temp-block count: ${entry.blockCount}) due to excessive CAPTCHAs.`);
-
-      if (entry.blockCount >= 2) {
-        console.error(`[BrowserPool] Worker ${workerId} has reached max temp-blocks. Permanently removing.`);
-        this.deregister(workerId);
-      }
+    if (entry.runId) {
+      this.stopWorker(entry.runId).catch((err) => {
+        console.error(`[BrowserPool] Error cancelling GitHub run for ${workerId}:`, err);
+      });
     }
+    this.deregister(workerId);
+    this.restartWorkers(true).catch(() => { });
   }
 
   /** Cancel the GitHub Actions workflow run for a worker and deregister all its browsers. */
@@ -490,17 +480,17 @@ export async function searchViaPool(
 
           // Never block the main document navigation
           if (type === 'document') {
-            try { await req.continue(); } catch {}
+            try { await req.continue(); } catch { }
             return;
           }
 
           // For images search, we need scripts, stylesheets, and fonts to load the dynamic page correctly.
           if (categoryKey === 'images') {
             if (['media', 'websocket', 'manifest'].includes(type)) {
-              try { await req.abort(); } catch {}
+              try { await req.abort(); } catch { }
               return;
             }
-            try { await req.continue(); } catch {}
+            try { await req.continue(); } catch { }
             return;
           }
 
@@ -516,7 +506,7 @@ export async function searchViaPool(
               'other',
             ].includes(type)
           ) {
-            try { await req.abort(); } catch {}
+            try { await req.abort(); } catch { }
             return;
           }
 
@@ -535,17 +525,17 @@ export async function searchViaPool(
             url.includes('gws-wiz') ||
             url.includes('clients1.google.com')
           ) {
-            try { await req.abort(); } catch {}
+            try { await req.abort(); } catch { }
             return;
           }
 
           // Block JS entirely for maximum speed
           if (['script', 'xhr', 'fetch'].includes(type)) {
-            try { await req.abort(); } catch {}
+            try { await req.abort(); } catch { }
             return;
           }
 
-          try { await req.continue(); } catch {}
+          try { await req.continue(); } catch { }
         } catch (err) {
           // ignore
         }
@@ -612,7 +602,7 @@ export async function searchViaPool(
         let clicked = false;
         try {
           console.log(`[BrowserPool] Waiting for target link on Google Search for "talhatech"...`);
-          
+
           // Wait up to 10 seconds for either the link selector or a captcha to appear
           const foundType = await Promise.race([
             page.waitForSelector(linkSelector, { timeout: 10000 }).then(() => 'link'),
@@ -632,7 +622,7 @@ export async function searchViaPool(
                     const urlPart = href.split('/url?url=')[1]?.split('&')[0];
                     if (urlPart) return decodeURIComponent(urlPart);
                   }
-                } catch (e) {}
+                } catch (e) { }
                 return href;
               };
 
@@ -655,7 +645,7 @@ export async function searchViaPool(
 
             if (targetLinkSelector) {
               console.log(`[BrowserPool] Found target link on Google Search for "talhatech". Selector: ${targetLinkSelector}`);
-              
+
               // Get the href attribute to have a reliable direct navigation fallback
               const rawHref = await page.evaluate((sel: string) => {
                 const el = document.querySelector(sel);
@@ -719,12 +709,12 @@ export async function searchViaPool(
                 console.log(`[BrowserPool] Successfully navigated to: ${page.url()}`);
                 // Scroll and move mouse randomly on the page to simulate real user behavior
                 console.log(`[BrowserPool] Simulating human interaction (random scrolls & mouse movements)...`);
-                
+
                 try {
                   const viewport = await page.viewport() || { width: 1280, height: 800 };
                   const width = viewport.width;
                   const height = viewport.height;
-                  
+
                   // Move mouse to initial random position
                   await page.mouse.move(Math.floor(Math.random() * width), Math.floor(Math.random() * height));
 
@@ -733,7 +723,7 @@ export async function searchViaPool(
                     // 85% chance to scroll down, 15% chance to scroll up slightly
                     const direction = Math.random() > 0.15 ? 1 : -1;
                     const scrollAmount = Math.floor(Math.random() * (height / 2)) * direction;
-                    
+
                     await Promise.race([
                       page.evaluate((amount: number) => {
                         window.scrollBy(0, amount);
@@ -755,7 +745,7 @@ export async function searchViaPool(
                 } catch (simErr: any) {
                   console.warn(`[BrowserPool] Warning during human simulation: ${simErr.message}`);
                 }
-                
+
                 clicked = true;
               }
             } else {
@@ -1341,7 +1331,7 @@ export async function searchViaPool(
         pageErrored = true;
         throw new Error('CAPTCHA_DETECTED');
       }
-      
+
       workerCdpFailures.delete(browser.workerId);
 
       // Offload clearing cookies in the background so it doesn't block returning the search results
@@ -1477,7 +1467,7 @@ export async function queryInstagramGraphQLViaPool(
             await req.continue();
           }
         } catch {
-          try { await req.continue(); } catch {}
+          try { await req.continue(); } catch { }
         }
       });
 

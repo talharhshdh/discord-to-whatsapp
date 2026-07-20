@@ -630,8 +630,8 @@ export async function searchPlacesViaPool(
             await client.detach();
           } catch { /* ignore */ }
         }
-        console.warn(`⏳ Temporarily evicting ${browser.workerId} for IP cooldown.`);
-        browserPool.deregister(browser.workerId);
+        console.warn(`🔥 CAPTCHA detected on ${browser.workerId} — killing action job run ${browser.runId || 'N/A'} & spawning replacement worker...`);
+        browserPool.recordCaptcha(browser.workerId);
         page = null;
       } else if (['CDP_UNREACHABLE', 'NO_WS_URL', 'Protocol error', 'WebSocket'].some((k) => msg.includes(k))) {
         invalidateWorkerConnection(browser.workerId);
@@ -1597,8 +1597,8 @@ export async function scrapePlaceDetailsViaPool(
             await client.detach();
           } catch { /* ignore */ }
         }
-        console.warn(`⏳ CAPTCHA / Bot block detected on ${browser.workerId} — evicting worker for IP cooldown.`);
-        browserPool.deregister(browser.workerId);
+        console.warn(`🔥 CAPTCHA / Bot block detected on ${browser.workerId} — killing action job run ${browser.runId || 'N/A'} & spawning replacement worker...`);
+        browserPool.recordCaptcha(browser.workerId);
         page = null;
       } else if (['CDP_UNREACHABLE', 'NO_WS_URL', 'Protocol error', 'WebSocket'].some((k) => msg.includes(k))) {
         invalidateWorkerConnection(browser.workerId);
