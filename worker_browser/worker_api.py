@@ -277,6 +277,7 @@ def sync_scrape_google(req: ScrapeGoogleRequest):
                 var organic = [];
                 var seen = new Set();
                 var cleanText = function(str) { return str ? str.trim().replace(/\\s+/g, ' ') : ''; };
+
                 var decodeGoogleLink = function(href) {
                     if (!href) return '';
                     try {
@@ -291,9 +292,11 @@ def sync_scrape_google(req: ScrapeGoogleRequest):
                     return href;
                 };
 
+                // 1. Primary Organic Results Extraction
                 document.querySelectorAll('h3').forEach(function(h3) {
                     var headingText = cleanText(h3.textContent);
                     if (
+                        !headingText ||
                         headingText === 'Search Results' ||
                         headingText === 'Weather Result' ||
                         headingText === 'Web results' ||
@@ -306,30 +309,74 @@ def sync_scrape_google(req: ScrapeGoogleRequest):
                     var container = h3.closest('.g, .MjjYud, .xpd, .Gx5Zad') || h3.parentElement;
                     if (!container) return;
 
-                    var a = container.tagName === 'A' ? container : container.querySelector('a');
-                    if (!a) return;
+                    var anchors = Array.from(container.querySelectorAll('a'));
+                    var validLink = '';
 
-                    var rawLink = a.getAttribute('href') || '';
-                    var link = decodeGoogleLink(rawLink);
+                    for (var i = 0; i < anchors.length; i++) {
+                        var rawHref = anchors[i].getAttribute('href') || '';
+                        var decoded = decodeGoogleLink(rawHref);
+                        if (
+                            decoded &&
+                            decoded.indexOf('http') === 0 &&
+                            decoded.indexOf('google.com') === -1 &&
+                            decoded.indexOf('sorry/index') === -1
+                        ) {
+                            validLink = decoded;
+                            break;
+                        }
+                    }
 
-                    if (!link || link.indexOf('google.com') !== -1 || link.indexOf('sorry/index') !== -1 || seen.has(link)) return;
-                    seen.add(link);
+                    if (!validLink || seen.has(validLink)) return;
+                    seen.add(validLink);
 
                     var snippet = '';
-                    var sn = container.querySelector('.VwiC3b, .lEBKkf, .lyLwlc, [data-sncf], .IsZvec, .ilUpNd.H66NU.aSRlid, .H66NU, .lQigmf');
-                    if (sn && sn.textContent) snippet = cleanText(sn.textContent);
+                    var snSelectors = ['.VwiC3b', '.lEBKkf', '.lyLwlc', '[data-sncf]', '.IsZvec', '.ilUpNd.H66NU.aSRlid', '.H66NU', '.lQigmf', '.s3v9rd', '.BNeawe'];
+                    for (var s = 0; s < snSelectors.length; s++) {
+                        var sn = container.querySelector(snSelectors[s]);
+                        if (sn && sn.textContent && sn.textContent.trim()) {
+                            var txt = cleanText(sn.textContent);
+                            if (txt !== headingText && txt.length > 10) {
+                                snippet = txt;
+                                break;
+                            }
+                        }
+                    }
 
                     organic.push({
                         title: headingText,
-                        link: link,
+                        link: validLink,
                         snippet: snippet
                     });
                 });
 
+                // 2. Fallback Organic Results Extraction if primary found 0
+                if (organic.length === 0) {
+                    document.querySelectorAll('a').forEach(function(a) {
+                        var h3 = a.querySelector('h3');
+                        if (!h3) return;
+                        var rawHref = a.getAttribute('href') || '';
+                        var link = decodeGoogleLink(rawHref);
+                        if (
+                            !link ||
+                            link.indexOf('http') !== 0 ||
+                            link.indexOf('google.com') !== -1 ||
+                            seen.has(link)
+                        ) return;
+
+                        seen.add(link);
+                        organic.push({
+                            title: cleanText(h3.textContent),
+                            link: link,
+                            snippet: ''
+                        });
+                    });
+                }
+
+                // 3. AI Overview Extraction
                 var aiResponse = null;
                 var aiSelectors = ['.M8OgIe', '.LLtROe', '.IZ6rdc', '[data-attrid="wa:/description"]'];
-                for (var i = 0; i < aiSelectors.length; i++) {
-                    var el = document.querySelector(aiSelectors[i]);
+                for (var k = 0; k < aiSelectors.length; k++) {
+                    var el = document.querySelector(aiSelectors[k]);
                     if (el && el.innerText && el.innerText.trim().length > 20) {
                         var txt = el.innerText;
                         if (txt.indexOf('AI Overview is not available') === -1) {

@@ -518,6 +518,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       pathname !== '/api/browser/cookie-search' && 
       pathname !== '/api/scrape/google' && 
       pathname !== '/api/scrape/indeed' && 
+      pathname !== '/api/browsers/pool' && 
       pathname !== '/api/browsers/webhook' &&
       pathname !== '/api/media/download' &&
       pathname !== '/api/webhook/inbound-email' &&
@@ -1655,7 +1656,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   }
 
   // ── GET /api/browsers/pool ──────────────────────────────────────────────
-  if (method === 'GET' && url === '/api/browsers/pool') {
+  if (method === 'GET' && (pathname === '/api/browsers/pool' || url.startsWith('/api/browsers/pool'))) {
     const all = browserPool.getAll();
     const active = browserPool.getActive();
     json(res, {
