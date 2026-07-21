@@ -549,26 +549,14 @@ export async function searchViaPool(
       }
 
 
-      const client = await page.target().createCDPSession();
-      await client.send('Page.navigate', { url: targetUrl });
-      await client.detach();
-
-      // Wait dynamically for either results, footer, or CAPTCHA elements to load.
-      // We avoid generic 'a' or 'a[href^="http"]' tags to prevent premature resolution on the header.
-
-      const waitTimeout = categoryKey === 'images' ? 5000 : 2000;
-      await page
-        .waitForSelector(
-          categoryKey === 'images'
-            ? 'div[data-ri], a[href*="imgres"], form[action*="/sorry/"], #captcha, .g-recaptcha'
-            : 'h3, a[href*="/url?q="], a[href*="imgres"], footer, form[action*="/sorry/"], #captcha, .g-recaptcha',
-          {
-            timeout: waitTimeout,
-          }
-        )
-        .catch(() => { /* timeout is fine */ });
+      await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 15000 }).catch((err: any) => {
+        console.warn(`[BrowserPool] Navigation notice for ${targetUrl}:`, err.message);
+      });
 
       if (categoryKey === 'images') {
+        await page
+          .waitForSelector('div[data-ri], a[href*="imgres"], form[action*="/sorry/"], #captcha, .g-recaptcha', { timeout: 4000 })
+          .catch(() => {});
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
 
