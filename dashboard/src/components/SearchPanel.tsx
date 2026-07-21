@@ -29,6 +29,8 @@ export default function SearchPanel() {
     try {
       const res = engine === 'cookie'
         ? await api.cookieSearch(query, targetPage)
+        : engine === 'worker'
+        ? await api.scrapeGoogle(query, targetPage, includeAI)
         : await api.browserSearch(query, targetPage, engine, includeAI);
       setResult(res);
       setPage(targetPage);

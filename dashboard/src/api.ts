@@ -421,6 +421,8 @@ export const api = {
 
   browserSearch: (text: string, pageNumber: number, engine: 'auto' | 'worker' | 'cdp' | 'selenium' = 'auto', includeAI = false, category = 'all') =>
     post<BrowserSearchResult>('/api/browser/search', { text, pageNumber, engine, includeAI, category }),
+  scrapeGoogle: (text: string, pageNumber = 1, includeAI = false, category = 'all') =>
+    post<BrowserSearchResult>('/api/scrape/google', { text, pageNumber, includeAI, category }),
   cookieSearch: (text: string, pageNumber: number, category = 'all') =>
     post<BrowserSearchResult>('/api/browser/cookie-search', { text, pageNumber, category }),
   restartBrowsers: () =>
