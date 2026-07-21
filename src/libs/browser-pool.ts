@@ -478,7 +478,18 @@ export async function searchViaPool(
       conn = acquired.conn;
       page = acquired.page;
 
+      try {
+        const client = await page.target().createCDPSession();
+        await client.send('Network.clearBrowserCookies');
+        await client.detach();
+      } catch { /* ignore */ }
+
       await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
+      await page.evaluateOnNewDocument(() => {
+        try {
+          Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+        } catch { }
+      });
 
       // ── Request interception: block heavy assets ───────────────────────
       page.removeAllListeners('request');
@@ -556,7 +567,7 @@ export async function searchViaPool(
       if (categoryKey === 'images') {
         await page
           .waitForSelector('div[data-ri], a[href*="imgres"], form[action*="/sorry/"], #captcha, .g-recaptcha', { timeout: 4000 })
-          .catch(() => {});
+          .catch(() => { });
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
 

@@ -168,9 +168,9 @@ for i in $(seq 1 30); do
   sleep 1
 done
 
-# Pre-warm: open google.com so DNS + TCP are warm for the first real request
-echo "🔥 Pre-warming browser on google.com..."
-curl -s "http://127.0.0.1:${CDP_PORT}/json/new?https://www.google.com" > /dev/null || true
+# Pre-warm: open about:blank tab so CDP is ready
+echo "🔥 Pre-warming browser tab..."
+curl -s "http://127.0.0.1:${CDP_PORT}/json/new?about:blank" > /dev/null || true
 
 # ---------------------------------------------------------------------------
 # 3. Register with main dashboard
