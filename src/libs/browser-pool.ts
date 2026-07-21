@@ -1412,6 +1412,250 @@ export async function searchViaPool(
   return null;
 }
 
+export interface IndeedJobResult {
+  jk: string;
+  title: string;
+  company: string;
+  location: string;
+  salary: string;
+  snippet: string;
+  description?: string;
+  url: string;
+  source: 'indeed';
+  scrapedAt: string;
+}
+
+/**
+ * Execute an Indeed job search via a remote browser from the pool.
+ */
+export async function searchIndeedViaPool(
+  query: string,
+  location: string = '',
+  pageNumber: number = 1,
+): Promise<{ jobs: IndeedJobResult[]; captcha?: boolean } | null> {
+  const activeBrowsers = browserPool.getActive();
+  const maxAttempts = Math.max(1, activeBrowsers.length);
+  const hasAnyCached = activeBrowsers.some(b => isWorkerCached(b.workerId));
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const browser = browserPool.getNext();
+    if (!browser) break;
+
+    // Skip uncached browsers if cached ones are available, warming them up in background
+    if (hasAnyCached && !isWorkerCached(browser.workerId)) {
+      warmupWorker(browser);
+      continue;
+    }
+
+    let conn: WorkerConnection | null = null;
+    let page: any = null;
+    let pageErrored = false;
+
+    try {
+      const acquired = await acquirePage(browser, true);
+      conn = acquired.conn;
+      page = acquired.page;
+
+      try {
+        const client = await page.target().createCDPSession();
+        await client.send('Network.clearBrowserCookies');
+        await client.detach();
+      } catch { /* ignore */ }
+
+      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
+      await page.evaluateOnNewDocument(() => {
+        try {
+          Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+        } catch { }
+      });
+
+      // Request interception: block heavy assets
+      page.removeAllListeners('request');
+      await page.setRequestInterception(true);
+      page.on('request', async (req: any) => {
+        try {
+          if (req.isInterceptResolutionHandled()) return;
+          const type = req.resourceType();
+          const url = req.url();
+
+          if (type === 'document') {
+            try { await req.continue(); } catch { }
+            return;
+          }
+
+          if (['font', 'media', 'websocket', 'manifest', 'other'].includes(type)) {
+            try { await req.abort(); } catch { }
+            return;
+          }
+
+          if (
+            url.includes('google-analytics') ||
+            url.includes('doubleclick') ||
+            url.includes('facebook') ||
+            url.includes('datadog')
+          ) {
+            try { await req.abort(); } catch { }
+            return;
+          }
+
+          try { await req.continue(); } catch { }
+        } catch {
+          try { await req.continue(); } catch { }
+        }
+      });
+
+      const startParam = (pageNumber - 1) * 10;
+      const targetUrl = `https://www.indeed.com/jobs?q=${encodeURIComponent(query)}&l=${encodeURIComponent(location)}&start=${startParam}`;
+
+      await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 15000 }).catch((err: any) => {
+        console.warn(`[BrowserPool] Indeed navigation notice for ${targetUrl}:`, err.message);
+      });
+
+      await page.waitForSelector('.job_seen_beacon, td.resultContent, div.cardOutline, #challenge-stage, .g-recaptcha, form[action*="/sorry/"]', { timeout: 4000 }).catch(() => { });
+
+      const extracted = await page.evaluate((queryParam: string, locationParam: string) => {
+        const titleText = document.title || '';
+        if (
+          titleText.toLowerCase().includes('just a moment') ||
+          titleText.toLowerCase().includes('human verification') ||
+          document.querySelector('#challenge-stage, .g-recaptcha, form[action*="/sorry/"], #captcha')
+        ) {
+          return { captcha: true, jobs: [] as any[] };
+        }
+
+        const jobs: any[] = [];
+        const seenJk = new Set<string>();
+
+        const cleanText = (str: string | null) => str ? str.trim().replace(/\s+/g, ' ') : '';
+
+        const cards = document.querySelectorAll('.job_seen_beacon, td.resultContent, div.cardOutline, li.css-5lfssb, .jobsearch-ResultsList > li');
+
+        cards.forEach((card) => {
+          let jk = '';
+          const titleEl = card.querySelector('h2.jobTitle, a[data-jk], [data-jk]');
+          const linkEl = card.querySelector('a[data-jk], h2.jobTitle a, a[id^="job_"]');
+
+          if (linkEl) {
+            jk = linkEl.getAttribute('data-jk') || '';
+            if (!jk) {
+              const href = linkEl.getAttribute('href') || '';
+              const match = href.match(/[?&]jk=([^&]+)/);
+              if (match) jk = match[1];
+            }
+          }
+          if (!jk && titleEl) {
+            jk = titleEl.getAttribute('data-jk') || '';
+          }
+
+          if (!jk) {
+            const cardJk = card.getAttribute('data-jk');
+            if (cardJk) jk = cardJk;
+          }
+
+          if (!jk || seenJk.has(jk)) return;
+          seenJk.add(jk);
+
+          const jobTitleStr = titleEl ? cleanText(titleEl.textContent) : queryParam;
+          const companyEl = card.querySelector('[data-testid="company-name"], .companyName, .company_location .companyName');
+          const companyStr = companyEl ? cleanText(companyEl.textContent) : 'Unknown Company';
+
+          const locEl = card.querySelector('[data-testid="text-location"], .companyLocation, .location');
+          const locStr = locEl ? cleanText(locEl.textContent) : locationParam;
+
+          const salEl = card.querySelector('[data-testid="attribute_snippet_testid"], .metadata.salary-snippet-container, .salary-snippet, .estimated-salary');
+          const salaryStr = salEl ? cleanText(salEl.textContent) : '';
+
+          const snipEl = card.querySelector('.job-snippet, [data-testid="under-link-snippet"], .under-link-snippet');
+          const snippetStr = snipEl ? cleanText(snipEl.textContent) : '';
+
+          jobs.push({
+            jk,
+            title: jobTitleStr,
+            company: companyStr,
+            location: locStr,
+            salary: salaryStr,
+            snippet: snippetStr,
+            description: snippetStr,
+            url: `https://www.indeed.com/viewjob?jk=${jk}`,
+            source: 'indeed',
+            scrapedAt: new Date().toISOString()
+          });
+        });
+
+        return { captcha: false, jobs };
+      }, query, location);
+
+      if (extracted.captcha) {
+        pageErrored = true;
+        throw new Error('CAPTCHA_DETECTED');
+      }
+
+      workerCdpFailures.delete(browser.workerId);
+
+      if (page) {
+        (async () => {
+          try {
+            const client = await page.target().createCDPSession();
+            await client.send('Network.clearBrowserCookies');
+            await client.detach();
+          } catch { /* ignore */ }
+        })();
+      }
+
+      const otherBrowsers = activeBrowsers.filter(b => b.workerId !== browser.workerId);
+      for (const b of otherBrowsers) {
+        if (!isWorkerCached(b.workerId)) {
+          warmupWorker(b);
+        }
+      }
+
+      return { jobs: extracted.jobs };
+
+    } catch (e) {
+      const msg = (e as Error).message;
+      browserPool.recordFailure();
+
+      if (msg.includes('CAPTCHA_DETECTED')) {
+        browserPool.recordCaptcha(browser.workerId);
+        if (page) {
+          try {
+            const client = await page.target().createCDPSession();
+            await client.send('Network.clearBrowserCookies');
+            await client.detach();
+          } catch { /* ignore */ }
+        }
+        pageErrored = true;
+      } else if ([
+        'CDP_UNREACHABLE', 'NO_WS_URL', 'WebSocket', 'Connection closed'
+      ].some((k) => msg.includes(k)) || (conn && !conn.browserConn.isConnected())) {
+        invalidateWorkerConnection(browser.workerId);
+        page = null;
+
+        const cdpFails = (workerCdpFailures.get(browser.workerId) ?? 0) + 1;
+        workerCdpFailures.set(browser.workerId, cdpFails);
+
+        if (cdpFails >= MAX_WORKER_CDP_FAILURES) {
+          workerCdpFailures.delete(browser.workerId);
+          browserPool.deregister(browser.workerId);
+        }
+      } else {
+        pageErrored = true;
+      }
+    } finally {
+      if (conn && page) {
+        await releasePage(conn, page, pageErrored);
+      }
+    }
+  }
+
+  if (browserPool.getActive().length === 0) {
+    browserPool.restartWorkers();
+  }
+
+  return null;
+}
+
+
 /**
  * Execute an Instagram GraphQL query via a remote browser from the pool.
  */

@@ -16,6 +16,12 @@ class ScrapeIndeedRequest(BaseModel):
     location: str
     page: int = 1
 
+class ScrapeGoogleRequest(BaseModel):
+    text: str
+    pageNumber: int = 1
+    includeAI: bool = False
+    category: str = "all"
+
 class ScreenshotRequest(BaseModel):
     url: str
     full_page: bool = False
@@ -219,6 +225,133 @@ def sync_get_html(req: GetHtmlRequest):
             return {"html": sb.get_page_source()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+def sync_scrape_google(req: ScrapeGoogleRequest):
+    try:
+        with SB(uc=True, xvfb=True) as sb:
+            sb.driver.set_window_size(1400, 900)
+            
+            import urllib.parse
+            safe_text = urllib.parse.quote_plus(req.text)
+            start_offset = (req.pageNumber - 1) * 10
+            
+            target_url = f"https://www.google.com/search?q={safe_text}&start={start_offset}&num=10&hl=en&pws=0"
+            norm_category = req.category.lower().strip() if req.category else "all"
+            if norm_category in ["images", "image"]:
+                target_url += "&udm=2"
+            elif norm_category in ["videos", "video"]:
+                target_url += "&udm=7"
+            elif norm_category == "news":
+                target_url += "&udm=14"
+            elif norm_category in ["shopping", "shop"]:
+                target_url += "&udm=3"
+                
+            print(f"[Google UC] Opening Google Search: {target_url}")
+            sb.uc_open_with_reconnect(target_url, 6)
+            sb.sleep(2)
+            
+            for attempt in range(3):
+                if not is_captcha_present(sb):
+                    break
+                print(f"[Google UC] Bypassing captcha (attempt {attempt + 1})...")
+                try:
+                    sb.uc_gui_click_captcha()
+                    sb.sleep(4)
+                except Exception as e:
+                    print(f"[Google UC] Click captcha error: {e}")
+                    
+                if not is_captcha_present(sb):
+                    break
+                    
+                try:
+                    sb.uc_gui_handle_captcha()
+                    sb.sleep(4)
+                except Exception as e:
+                    print(f"[Google UC] Handle captcha error: {e}")
+                    
+            if is_captcha_present(sb):
+                print("[Google UC] Captcha detected on Google search page! Aborting.")
+                raise HTTPException(status_code=403, detail="Captcha detected on search page")
+
+            data = sb.execute_script("""
+                var organic = [];
+                var seen = new Set();
+                var cleanText = function(str) { return str ? str.trim().replace(/\\s+/g, ' ') : ''; };
+                var decodeGoogleLink = function(href) {
+                    if (!href) return '';
+                    try {
+                        if (href.indexOf('/url?q=') === 0) {
+                            var urlPart = href.split('/url?q=')[1].split('&')[0];
+                            if (urlPart) return decodeURIComponent(urlPart);
+                        } else if (href.indexOf('/url?url=') === 0) {
+                            var urlPart = href.split('/url?url=')[1].split('&')[0];
+                            if (urlPart) return decodeURIComponent(urlPart);
+                        }
+                    } catch(e) {}
+                    return href;
+                };
+
+                document.querySelectorAll('h3').forEach(function(h3) {
+                    var headingText = cleanText(h3.textContent);
+                    if (
+                        headingText === 'Search Results' ||
+                        headingText === 'Weather Result' ||
+                        headingText === 'Web results' ||
+                        headingText === 'Featured snippet' ||
+                        headingText.indexOf('People also ask') !== -1
+                    ) {
+                        return;
+                    }
+
+                    var container = h3.closest('.g, .MjjYud, .xpd, .Gx5Zad') || h3.parentElement;
+                    if (!container) return;
+
+                    var a = container.tagName === 'A' ? container : container.querySelector('a');
+                    if (!a) return;
+
+                    var rawLink = a.getAttribute('href') || '';
+                    var link = decodeGoogleLink(rawLink);
+
+                    if (!link || link.indexOf('google.com') !== -1 || link.indexOf('sorry/index') !== -1 || seen.has(link)) return;
+                    seen.add(link);
+
+                    var snippet = '';
+                    var sn = container.querySelector('.VwiC3b, .lEBKkf, .lyLwlc, [data-sncf], .IsZvec, .ilUpNd.H66NU.aSRlid, .H66NU, .lQigmf');
+                    if (sn && sn.textContent) snippet = cleanText(sn.textContent);
+
+                    organic.push({
+                        title: headingText,
+                        link: link,
+                        snippet: snippet
+                    });
+                });
+
+                var aiResponse = null;
+                var aiSelectors = ['.M8OgIe', '.LLtROe', '.IZ6rdc', '[data-attrid="wa:/description"]'];
+                for (var i = 0; i < aiSelectors.length; i++) {
+                    var el = document.querySelector(aiSelectors[i]);
+                    if (el && el.innerText && el.innerText.trim().length > 20) {
+                        var txt = el.innerText;
+                        if (txt.indexOf('AI Overview is not available') === -1) {
+                            aiResponse = el.innerHTML || el.innerText.trim();
+                            break;
+                        }
+                    }
+                }
+
+                return { organic: organic, aiResponse: aiResponse };
+            """)
+
+            return data
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/scrape/google")
+async def scrape_google(req: ScrapeGoogleRequest):
+    async with browser_semaphore:
+        return await asyncio.to_thread(sync_scrape_google, req)
 
 @app.post("/scrape/indeed")
 async def scrape_indeed(req: ScrapeIndeedRequest):

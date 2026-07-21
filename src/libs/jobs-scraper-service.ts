@@ -1,4 +1,4 @@
-import { searchViaPool, browserPool } from './browser-pool';
+import { searchViaPool, searchIndeedViaPool, browserPool } from './browser-pool';
 import { getJobsFromR2, saveJobsToR2, getJobsStatusFromR2, saveJobsStatusToR2, ScrapedJob, JobsStatus } from './r2-jobs-store';
 
 const DEFAULT_KEYWORDS = [
@@ -80,33 +80,15 @@ function parseGoogleJob(title: string, link: string, snippet: string): ScrapedJo
 }
 
 async function scrapeIndeedJobs(query: string, location: string): Promise<ScrapedJob[]> {
-  const activeWorkers = browserPool.getActive().filter(b => b.apiUrl);
-  if (activeWorkers.length === 0) {
-    console.warn('[Jobs Scraper] Indeed scraping skipped: No active workers with API support.');
-    return [];
-  }
-
-  const worker = activeWorkers[0]; // use the first worker
   const jobsList: ScrapedJob[] = [];
 
-  // Scrape up to 2 pages of Indeed for this keyword to avoid timeouts
+  // Scrape up to 2 pages of Indeed for this keyword
   for (let page = 1; page <= 2; page++) {
     try {
-      console.log(`[Jobs Scraper] Scraping Indeed: ${query} in ${location} (Page ${page}) via worker ${worker.workerId}`);
-      const response = await fetch(`${worker.apiUrl}/scrape/indeed`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, location, page }),
-      });
-
-      if (!response.ok) {
-        console.warn(`[Jobs Scraper] Indeed worker returned status ${response.status}`);
-        continue;
-      }
-
-      const jobs = await response.json() as any[];
-      if (Array.isArray(jobs)) {
-        for (const j of jobs) {
+      console.log(`[Jobs Scraper] Scraping Indeed via BrowserPool: ${query} in ${location} (Page ${page})`);
+      const poolRes = await searchIndeedViaPool(query, location, page);
+      if (poolRes && poolRes.jobs && poolRes.jobs.length > 0) {
+        for (const j of poolRes.jobs) {
           if (j.jk) {
             jobsList.push({
               jk: j.jk,
@@ -116,10 +98,45 @@ async function scrapeIndeedJobs(query: string, location: string): Promise<Scrape
               salary: j.salary || '',
               snippet: j.snippet || '',
               description: j.description || j.snippet || '',
-              url: j.url || `https://pk.indeed.com/viewjob?jk=${j.jk}`,
+              url: j.url || `https://www.indeed.com/viewjob?jk=${j.jk}`,
               source: 'indeed',
               scrapedAt: new Date().toISOString()
             });
+          }
+        }
+        continue;
+      }
+
+      // Fallback: worker API
+      const activeWorkers = browserPool.getActive().filter(b => b.apiUrl);
+      if (activeWorkers.length > 0) {
+        const worker = activeWorkers[0];
+        console.log(`[Jobs Scraper] Fallback: Scraping Indeed via worker API ${worker.workerId}`);
+        const response = await fetch(`${worker.apiUrl}/scrape/indeed`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query, location, page }),
+        });
+
+        if (response.ok) {
+          const jobs = await response.json() as any[];
+          if (Array.isArray(jobs)) {
+            for (const j of jobs) {
+              if (j.jk) {
+                jobsList.push({
+                  jk: j.jk,
+                  title: j.title || query,
+                  company: j.company || 'Unknown Company',
+                  location: j.location || location,
+                  salary: j.salary || '',
+                  snippet: j.snippet || '',
+                  description: j.description || j.snippet || '',
+                  url: j.url || `https://www.indeed.com/viewjob?jk=${j.jk}`,
+                  source: 'indeed',
+                  scrapedAt: new Date().toISOString()
+                });
+              }
+            }
           }
         }
       }

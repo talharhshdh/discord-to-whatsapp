@@ -39,7 +39,7 @@ import { detectAndDownload } from './downloader';
 import { searchYouTube, getYouTubeInfo, downloadYouTubeVideo } from './youtube-dl';
 import { searchMovies } from './movie-search';
 import type { YouTubeQualityOption } from './youtube-dl';
-import { browserPool, searchViaPool } from './browser-pool';
+import { browserPool, searchViaPool, searchIndeedViaPool } from './browser-pool';
 // import { isConnectionCached } from './page-pool';
 import type { WebhookPayload } from './browser-pool';
 import { searchPlacesViaPool, searchPlacesStream, searchViaGoogleSearchUrl, searchViaGoogleSearchStream, scrapePlaceDetailsViaPool } from './google-places-search';
@@ -516,6 +516,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       pathname !== '/api/auth/login' && 
       pathname !== '/api/browser/search' && 
       pathname !== '/api/browser/cookie-search' && 
+      pathname !== '/api/scrape/google' && 
+      pathname !== '/api/scrape/indeed' && 
       pathname !== '/api/browsers/webhook' &&
       pathname !== '/api/media/download' &&
       pathname !== '/api/webhook/inbound-email' &&
@@ -1683,55 +1685,101 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   }
 
   // ── POST /api/scrape/indeed ──────────────────────────────────────────────
-  if (method === 'POST' && url === '/api/scrape/indeed') {
+  if (method === 'POST' && (pathname === '/api/scrape/indeed' || url.startsWith('/api/scrape/indeed'))) {
     try {
       const body = await parseJsonBody(req);
       const query = (body['query'] as string) || 'software engineer';
       const location = (body['location'] as string) || '';
       const pagesCount = (body['pages'] as number) || 3;
 
-      const activeWorkers = browserPool.getActive().filter(b => b.apiUrl);
-      if (activeWorkers.length === 0) {
-        return err(res, 'No active browser workers with API support available', 503);
-      }
+      console.log(`[Indeed Scrape] Query: "${query}", Location: "${location}", Pages: ${pagesCount}. Active pool browsers: ${browserPool.getActive().length}`);
 
-      console.log(`[Indeed Scrape] Query: "${query}", Location: "${location}", Pages: ${pagesCount}. Active workers: ${activeWorkers.length}`);
-
-      // Scrape pages sequentially — Indeed requires page 1 to be loaded first each
-      // time to establish session cookies, so parallel requests on the same worker
-      // cause pages 2+ to return empty results or hit captcha.
       const allJobs: any[] = [];
       const seen = new Set<string>();
-      for (let i = 0; i < pagesCount; i++) {
-        const worker = activeWorkers[i % activeWorkers.length];
-        const pageNum = i + 1;
+
+      for (let pageNum = 1; pageNum <= pagesCount; pageNum++) {
         try {
-          console.log(`[Indeed Scrape] Fetching Page ${pageNum} via worker ${worker.workerId} at ${worker.apiUrl}`);
-          const response = await fetch(`${worker.apiUrl}/scrape/indeed`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query, location, page: pageNum }),
-          });
-          if (!response.ok) {
-            const text = await response.text();
-            console.error(`[Indeed Scrape] Worker returned HTTP ${response.status} for Page ${pageNum}: ${text}`);
+          const resPool = await searchIndeedViaPool(query, location, pageNum);
+          if (resPool && resPool.jobs && resPool.jobs.length > 0) {
+            for (const job of resPool.jobs) {
+              if (job && job.jk && !seen.has(job.jk)) {
+                seen.add(job.jk);
+                allJobs.push(job);
+              }
+            }
             continue;
           }
-          const data = await response.json() as any[];
-          console.log(`[Indeed Scrape] Worker ${worker.workerId} returned ${data.length} jobs for Page ${pageNum}`);
-          for (const job of data) {
-            if (job && job.jk && !seen.has(job.jk)) {
-              seen.add(job.jk);
-              allJobs.push(job);
+
+          // Fallback to worker API if browser pool returned no jobs and worker API exists
+          const activeWorkers = browserPool.getActive().filter(b => b.apiUrl);
+          if (activeWorkers.length > 0) {
+            const worker = activeWorkers[(pageNum - 1) % activeWorkers.length];
+            const response = await fetch(`${worker.apiUrl}/scrape/indeed`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ query, location, page: pageNum }),
+            });
+            if (response.ok) {
+              const data = await response.json() as any[];
+              for (const job of data) {
+                if (job && job.jk && !seen.has(job.jk)) {
+                  seen.add(job.jk);
+                  allJobs.push(job);
+                }
+              }
             }
           }
         } catch (e) {
-          console.error(`[Indeed Scrape] Error on Page ${pageNum} using worker ${worker.workerId}:`, e);
+          console.error(`[Indeed Scrape] Error on Page ${pageNum}:`, e);
         }
       }
 
       console.log(`[Indeed Scrape] Finished. Scraped ${allJobs.length} jobs in total.`);
       json(res, { success: true, jobsCount: allJobs.length, jobs: allJobs });
+    } catch (e) {
+      err(res, (e as Error).message);
+    }
+    return;
+  }
+
+  // ── POST /api/scrape/google ──────────────────────────────────────────────
+  if (method === 'POST' && (pathname === '/api/scrape/google' || url.startsWith('/api/scrape/google'))) {
+    try {
+      const body = await parseJsonBody(req);
+      const text = (body['text'] as string) || (body['query'] as string);
+      if (!text) return err(res, 'text is required', 400);
+      const pageNumber = Number(body['pageNumber']) || 1;
+      const includeAI = Boolean(body['includeAI']);
+      const category = (body['category'] as string) || 'all';
+
+      // 1. Try searchViaPool first
+      let results = await searchViaPool(text, pageNumber, includeAI, category);
+
+      // 2. Fallback to active worker Python API /scrape/google if pool CDP returned null
+      if (!results) {
+        const activeWorkers = browserPool.getActive().filter(b => b.apiUrl);
+        if (activeWorkers.length > 0) {
+          const worker = activeWorkers[0];
+          console.log(`[Google Scrape] Fallback to worker API at ${worker.apiUrl}`);
+          const resp = await fetch(`${worker.apiUrl}/scrape/google`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, pageNumber, includeAI, category }),
+          });
+          if (resp.ok) {
+            results = await resp.json();
+          }
+        }
+      }
+
+      if (!results) {
+        if (browserPool.getActive().length === 0) {
+          browserPool.restartWorkers();
+        }
+        return err(res, 'Google search failed or no active browser workers available', 503);
+      }
+
+      json(res, results);
     } catch (e) {
       err(res, (e as Error).message);
     }
@@ -1934,7 +1982,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 
   // ── POST /api/browser/search ───────────────────────────────────────────
   // Supports ?engine=cdp|selenium. Default: tries CDP first, falls back to selenium.
-  if (method === 'POST' && url === '/api/browser/search') {
+  if (method === 'POST' && (pathname === '/api/browser/search' || url.startsWith('/api/browser/search'))) {
     try {
       const body = await parseJsonBody(req);
       const text = body['text'] as string;
@@ -1944,14 +1992,22 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       const includeAI = Boolean(body['includeAI']);
       const category = (body['category'] as string) || 'all';
 
+      if (category.toLowerCase() === 'indeed' || engine.toLowerCase() === 'indeed') {
+        const indeedRes = await searchIndeedViaPool(text, '', pageNumber);
+        if (indeedRes) {
+          return json(res, indeedRes);
+        }
+        return err(res, 'No active browsers available for Indeed search in pool', 503);
+      }
+
       // ── CDP / Puppeteer search ──────────────────────────────────────────
       const tryCdpSearch = async (): Promise<any | null> => {
         const { getGeneralBrowserCdpPort } = require('./browser');
         const cdpPort = getGeneralBrowserCdpPort() || 9222;
 
         // Pre-flight check
-        const cdpResp = await fetch(`http://127.0.0.1:${cdpPort}/json/version`);
-        if (!cdpResp.ok) return null;
+        const cdpResp = await fetch(`http://127.0.0.1:${cdpPort}/json/version`).catch(() => null);
+        if (!cdpResp || !cdpResp.ok) return null;
         const info = await cdpResp.json() as { webSocketDebuggerUrl?: string };
         const wsUrl = info.webSocketDebuggerUrl;
         if (!wsUrl) return null;
@@ -1971,10 +2027,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
           googleUrl += '&udm=3';
         }
         await page.goto(googleUrl, { waitUntil: 'domcontentloaded' });
-        // Wait dynamically for elements to load
         await page.waitForSelector('#search, .g, h3, form[action*="/sorry/"], #captcha, .g-recaptcha', { timeout: 100 }).catch(() => { });
 
-        // Click "Show more" buttons only when AI response is requested
         if (includeAI) {
           try {
             const hasButtons = await page.evaluate(() => {
@@ -1997,7 +2051,6 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
           const seen = new Set<string>();
 
           if (fetchAI) {
-            // AI overview — grab the entire container's HTML for rich rendering
             const aiSelectors = ['.M8OgIe', '.LLtROe', '.IZ6rdc', '[data-attrid="wa:/description"]'];
             for (const sel of aiSelectors) {
               const el = document.querySelector(sel);
@@ -2012,7 +2065,6 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
             }
           }
 
-          // Organic results
           document.querySelectorAll('#search .g, #rso .g, .MjjYud .g').forEach(el => {
             const h3 = el.querySelector('h3');
             const a = el.querySelector('a[href^="http"]');
@@ -2028,7 +2080,6 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
             organic.push({ title: (h3 as HTMLElement).innerText.trim(), link, snippet });
           });
 
-          // Fallback
           if (organic.length === 0) {
             document.querySelectorAll('a[href^="http"]').forEach(a => {
               const h3 = a.querySelector('h3');
@@ -2048,42 +2099,31 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         return results;
       };
 
-      // ── Python / SeleniumBase search ─────────────────────────────────────
-      const trySeleniumSearch = async (): Promise<any> => {
-        throw new Error('Selenium search is disabled (Python server offline).');
-        /*
-        const resp = await fetch(`${PYTHON_API}/search`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text, pageNumber, includeAI, category }),
-        });
-        if (!resp.ok) throw new Error(`Python API /search → HTTP ${resp.status}`);
-        return resp.json();
-        */
-      };
-
       let results: any;
 
       if (engine === 'cdp') {
         results = await tryCdpSearch();
         if (!results) return err(res, 'CDP not reachable. Is the browser container + socat sidecar running?', 400);
-      } else if (engine === 'selenium') {
-        results = await trySeleniumSearch();
       } else if (engine === 'pool') {
         results = await searchViaPool(text, pageNumber, includeAI, category);
-        if (!results) return err(res, 'No browsers available in pool', 503);
+        if (!results) return err(res, 'No active browsers available in pool', 503);
       } else {
-        // auto: try pool first → local CDP → selenium fallback
+        // auto: try pool first → local CDP fallback
         try {
           results = await searchViaPool(text, pageNumber, includeAI, category);
         } catch { results = null; }
+
         if (!results) {
           try {
             results = await tryCdpSearch();
           } catch { results = null; }
         }
+
         if (!results) {
-          results = await trySeleniumSearch();
+          if (browserPool.getActive().length === 0) {
+            browserPool.restartWorkers();
+          }
+          return err(res, 'No active browsers available in pool. Emergency worker restart has been triggered.', 503);
         }
       }
 
