@@ -2099,19 +2099,44 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         return results;
       };
 
+      const tryWorkerApiSearch = async (): Promise<any | null> => {
+        const activeWorkers = browserPool.getActive().filter(b => b.apiUrl);
+        if (activeWorkers.length === 0) return null;
+        const worker = activeWorkers[0];
+        console.log(`[Google Search] Calling Python Worker API at ${worker.apiUrl}`);
+        const resp = await fetch(`${worker.apiUrl}/scrape/google`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, pageNumber, includeAI, category }),
+        }).catch(() => null);
+        if (resp && resp.ok) {
+          return resp.json();
+        }
+        return null;
+      };
+
       let results: any;
 
       if (engine === 'cdp') {
         results = await tryCdpSearch();
         if (!results) return err(res, 'CDP not reachable. Is the browser container + socat sidecar running?', 400);
+      } else if (engine === 'worker' || engine === 'worker-api') {
+        results = await tryWorkerApiSearch();
+        if (!results) return err(res, 'No active browser workers with Python API available', 503);
       } else if (engine === 'pool') {
         results = await searchViaPool(text, pageNumber, includeAI, category);
         if (!results) return err(res, 'No active browsers available in pool', 503);
       } else {
-        // auto: try pool first → local CDP fallback
+        // auto: try pool first → worker API fallback → local CDP fallback
         try {
           results = await searchViaPool(text, pageNumber, includeAI, category);
         } catch { results = null; }
+
+        if (!results) {
+          try {
+            results = await tryWorkerApiSearch();
+          } catch { results = null; }
+        }
 
         if (!results) {
           try {

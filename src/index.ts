@@ -595,7 +595,7 @@ class DiscordWhatsAppBridge {
   }
 
   private startGoogleSearchKeeper(): void {
-    const domain = process.env.DASHBOARD_DOMAIN || 'services.ufone-claim.site';
+    const domain = process.env.DASHBOARD_DOMAIN || 'localhost:3000';
     const intervalMs = 1 * 60 * 1000; // 1 minute
 
     const performSearch = async () => {

@@ -19,9 +19,9 @@ interface BlogPayload {
  * Fallback to custom dashboard scraper proxy.
  */
 async function fallbackDashboardSearch(query: string): Promise<Array<{ title: string; link: string; snippet: string }>> {
-  const domain = process.env.DASHBOARD_DOMAIN || `services.${process.env.MAIN_DOMAIN || 'ufone-claim.site'}`;
-  const url = `https://${domain}/api/browser/search`;
-  const auth = Buffer.from(`${process.env.DASHBOARD_USERNAME || 'dkgklfdglkdfgljfd'}:${process.env.DASHBOARD_PASSWORD || 'sdlkfsdlglkdkl4mt'}`).toString('base64');
+  const domain = process.env.DASHBOARD_DOMAIN || (process.env.MAIN_DOMAIN ? `services.${process.env.MAIN_DOMAIN}` : 'localhost:3000');
+  const url = domain.startsWith('http') ? `${domain}/api/browser/search` : `https://${domain}/api/browser/search`;
+  const auth = Buffer.from(`${process.env.DASHBOARD_USERNAME || ''}:${process.env.DASHBOARD_PASSWORD || ''}`).toString('base64');
 
   const maxRetries = 5;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -266,9 +266,9 @@ async function searchGoogleImages(query: string): Promise<string | null> {
   }
 
   // Try 2: Custom dashboard scraper API
-  const domain = process.env.DASHBOARD_DOMAIN || `services.${process.env.MAIN_DOMAIN || 'ufone-claim.site'}`;
-  const url = `https://${domain}/api/browser/search`;
-  const auth = Buffer.from(`${process.env.DASHBOARD_USERNAME || 'dkgklfdglkdfgljfd'}:${process.env.DASHBOARD_PASSWORD || 'sdlkfsdlglkdkl4mt'}`).toString('base64');
+  const domain = process.env.DASHBOARD_DOMAIN || (process.env.MAIN_DOMAIN ? `services.${process.env.MAIN_DOMAIN}` : 'localhost:3000');
+  const url = domain.startsWith('http') ? `${domain}/api/browser/search` : `https://${domain}/api/browser/search`;
+  const auth = Buffer.from(`${process.env.DASHBOARD_USERNAME || ''}:${process.env.DASHBOARD_PASSWORD || ''}`).toString('base64');
 
   try {
     console.log(`[Blog Gen] Fetching images from dashboard scraper API: ${url}`);

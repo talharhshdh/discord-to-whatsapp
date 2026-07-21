@@ -2,14 +2,13 @@ import { browserPool } from '../libs/browser-pool';
 import { acquirePage, releasePage } from '../libs/page-pool';
 
 async function syncRemotePool() {
-  const poolUrl = 'https://services.ufone-claim.site/api/browsers/pool';
-  const headers = {
+  const poolUrl = `${process.env.DASHBOARD_URL || 'http://localhost:3000'}/api/browsers/pool`;
+  const headers: Record<string, string> = {
     'accept': '*/*',
-    'accept-language': 'en-GB,en;q=0.9,en-US;q=0.8',
-    'authorization': 'Basic ZGtna2xmZGdsa2RmZ2xqZmQ6c2Rsa2ZzZGxnbGtka2w0bXQ=',
-    'cookie': 'dashboard_token=ZGtna2xmZGdsa2RmZ2xqZmQ6c2Rsa2ZzZGxnbGtka2w0bXQ=',
-    'Referer': 'https://services.ufone-claim.site/'
   };
+  if (process.env.DASHBOARD_AUTH) {
+    headers['authorization'] = process.env.DASHBOARD_AUTH;
+  }
 
   try {
     console.log('Fetching remote pool from', poolUrl);

@@ -419,7 +419,7 @@ export const api = {
   exportYtCookies: () =>
     post<{ success: boolean; message: string; cookiesPath?: string }>('/api/browser/export-cookies', {}),
 
-  browserSearch: (text: string, pageNumber: number, engine: 'auto' | 'cdp' | 'selenium' = 'auto', includeAI = false, category = 'all') =>
+  browserSearch: (text: string, pageNumber: number, engine: 'auto' | 'worker' | 'cdp' | 'selenium' = 'auto', includeAI = false, category = 'all') =>
     post<BrowserSearchResult>('/api/browser/search', { text, pageNumber, engine, includeAI, category }),
   cookieSearch: (text: string, pageNumber: number, category = 'all') =>
     post<BrowserSearchResult>('/api/browser/cookie-search', { text, pageNumber, category }),
