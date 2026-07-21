@@ -556,7 +556,7 @@ export async function searchViaPool(
       // Wait dynamically for either results, footer, or CAPTCHA elements to load.
       // We avoid generic 'a' or 'a[href^="http"]' tags to prevent premature resolution on the header.
 
-      const waitTimeout = categoryKey === 'images' ? 5000 : 500;
+      const waitTimeout = categoryKey === 'images' ? 5000 : 2000;
       await page
         .waitForSelector(
           categoryKey === 'images'
