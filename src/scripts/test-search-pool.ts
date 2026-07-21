@@ -1,8 +1,5 @@
 import { browserPool, searchViaPool } from '../libs/browser-pool';
 
-/**
- * Fetch and register remote active browsers from the API pool endpoint.
- */
 async function syncRemotePool() {
   const poolUrl = 'https://services.ufone-claim.site/api/browsers/pool';
   const headers = {
@@ -16,9 +13,6 @@ async function syncRemotePool() {
   try {
     console.log(`🌐 Syncing remote browsers from ${poolUrl}...`);
     const res = await fetch(poolUrl, { headers });
-    if (!res.ok) {
-      throw new Error(`HTTP error! status: ${res.status}`);
-    }
     const data = await res.json();
     if (data.browsers && Array.isArray(data.browsers)) {
       let registered = 0;
@@ -28,54 +22,78 @@ async function syncRemotePool() {
           registered++;
         }
       }
-      console.log(`✅ Successfully synced ${registered} active remote browsers into local BrowserPool.`);
+      console.log(`✅ Synced ${registered} active remote browsers into local BrowserPool.\n`);
     }
   } catch (err: any) {
     console.error('❌ Remote pool sync error:', err.message);
   }
 }
 
-async function testSearchPool() {
+async function run10Tests() {
   await syncRemotePool();
 
   const activeCount = browserPool.getActive().length;
-  console.log(`\n🏊 Active Browsers Pool Count: ${activeCount}`);
+  console.log(`🏊 Active Browsers Pool Count: ${activeCount}`);
   if (activeCount === 0) {
-    console.error('❌ No active browsers available in pool. Exiting test.');
+    console.error('❌ No active browsers available in pool.');
     return;
   }
 
-  // 1. Test Regular Search
-  console.log('\n--- 🔍 Test 1: Organic Search ("dentist in london") ---');
-  const t0 = Date.now();
-  const searchResult = await searchViaPool('dentist in london', 1, false, 'all');
-  console.log(`⚡ Search completed in ${Date.now() - t0} ms`);
+  const testQueries = [
+    { query: 'dentist in london', category: 'all' },
+    { query: 'tech news', category: 'news' },
+    { query: 'best laptops 2026', category: 'all' },
+    { query: 'weather in new york', category: 'all' },
+    { query: 'python tutorial', category: 'all' },
+    { query: 'health tech software', category: 'all' },
+    { query: 'openai chatgpt', category: 'all' },
+    { query: 'github actions tutorial', category: 'all' },
+    { query: 'latest movies 2026', category: 'all' },
+    { query: 'world news today', category: 'news' },
+  ];
 
-  if (!searchResult) {
-    console.error('❌ searchViaPool returned null');
-  } else {
-    console.log(`📊 Organic Results Found: ${searchResult.organic.length}`);
-    if (searchResult.organic.length > 0) {
-      console.log('Top 3 Results:');
-      searchResult.organic.slice(0, 3).forEach((item, index) => {
-        console.log(`  ${index + 1}. ${item.title}`);
-        console.log(`     Link: ${item.link}`);
-        console.log(`     Snippet: ${item.snippet}\n`);
-      });
+  console.log(`\n🚀 Starting 10 Sequential Search Tests...\n`);
+
+  let successCount = 0;
+  let failCount = 0;
+
+  for (let i = 0; i < testQueries.length; i++) {
+    const { query, category } = testQueries[i];
+    console.log(`--- Test ${i + 1}/10: "${query}" (category: ${category}) ---`);
+    const t0 = Date.now();
+    try {
+      const res = await searchViaPool(query, 1, false, category);
+      const elapsed = Date.now() - t0;
+
+      if (!res) {
+        failCount++;
+        console.error(`❌ Test ${i + 1} FAILED (returned null, elapsed: ${elapsed}ms)\n`);
+      } else {
+        const resultsCount = category === 'news' ? (res.news?.length || 0) : (res.organic?.length || 0);
+        if (resultsCount > 0) {
+          successCount++;
+          console.log(`✅ Test ${i + 1} SUCCESS: ${resultsCount} results found in ${elapsed}ms`);
+          const firstItem = category === 'news' ? res.news?.[0]?.title : res.organic?.[0]?.title;
+          console.log(`   Top Result: "${firstItem}"\n`);
+        } else {
+          failCount++;
+          console.warn(`⚠️ Test ${i + 1} WARNING: 0 results found in ${elapsed}ms\n`);
+        }
+      }
+    } catch (err: any) {
+      failCount++;
+      console.error(`❌ Test ${i + 1} ERROR: ${err.message}\n`);
     }
+
+    // Brief 500ms delay between consecutive requests
+    await new Promise((r) => setTimeout(r, 500));
   }
 
-  // 2. Test News Search
-  console.log('\n--- 📰 Test 2: News Search ("tech news") ---');
-  const t1 = Date.now();
-  const newsResult = await searchViaPool('tech news', 1, false, 'news');
-  console.log(`⚡ News search completed in ${Date.now() - t1} ms`);
-  if (newsResult && newsResult.news) {
-    console.log(`📊 News Results Found: ${newsResult.news.length}`);
-    if (newsResult.news.length > 0) {
-      console.log('Top News Item:', newsResult.news[0]);
-    }
-  }
+  console.log(`========================================`);
+  console.log(`🏁 10 TESTS SUMMARY:`);
+  console.log(`   Success: ${successCount}/10`);
+  console.log(`   Failed:  ${failCount}/10`);
+  console.log(`========================================`);
 }
 
-testSearchPool();
+run10Tests();
