@@ -57,8 +57,7 @@ class CookieSearchPool {
     return (
       html.includes('action="/sorry/index"') ||
       html.includes('id="captcha"') ||
-      html.includes('g-recaptcha') ||
-      html.includes('consent.google.com')
+      html.includes('g-recaptcha')
     );
   }
 
@@ -278,10 +277,7 @@ class CookieSearchPool {
             finalUrl = fetchResult.finalUrl;
             lastHtml = html;
 
-            isRedirectedToBlock = finalUrl && (
-              finalUrl.includes('consent.google.com') ||
-              finalUrl.includes('/sorry/')
-            );
+            isRedirectedToBlock = finalUrl && finalUrl.includes('/sorry/');
 
             if (isRedirectedToBlock || this.isCaptcha(html)) {
               console.warn(`[CookieSearchPool] CAPTCHA still detected on browser ${browser.workerId} after retry. Trying next browser...`);
@@ -823,7 +819,6 @@ class CookieSearchPool {
           console.warn(`[CookieSearchPool] Zero results parsed for category "${categoryKey}" on browser ${browser.workerId}. Trying next browser...`);
           this.cookiesMap.delete(browser.workerId);
           this.clearAndRefreshCookiesInBackground(browser);
-          browserPool.recordCaptcha(browser.workerId);
           continue;
         }
 
