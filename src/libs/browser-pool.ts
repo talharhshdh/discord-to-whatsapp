@@ -511,7 +511,6 @@ export async function searchViaPool(
           if (
             [
               'font',
-              'stylesheet',
               'media',
               'websocket',
               'manifest',
