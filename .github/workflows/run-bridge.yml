@@ -7,6 +7,13 @@ on:
   schedule:
     - cron: "0 */5 * * *" # Fallback in case the self-trigger fails
 
+# Only one bridge instance at a time. New triggers (self-restart, cron, push,
+# manual) wait for the current run instead of overlapping — overlapping bridges
+# each ran their own browser pool and multiplied spawn-browsers dispatches.
+concurrency:
+  group: discord-whatsapp-bridge
+  cancel-in-progress: false
+
 jobs:
   run-whatsapp:
     runs-on: ubuntu-latest

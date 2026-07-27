@@ -352,6 +352,33 @@ class BrowserPool {
             console.log(`[BrowserPool] A browser worker run (ID: ${recentRun.id}) was triggered recently (${elapsedSec}s ago). Skipping duplicate spawn.`);
             return;
           }
+
+          // Cancel stale QUEUED runs before dispatching a fresh one.
+          // A run stuck in "queued" for >4 min will not produce workers in
+          // time; leaving them piles up an unbounded Actions backlog (this
+          // caused hundreds of queued runs). In-progress runs are real
+          // workers and must NOT be touched here.
+          const staleQueued = activeRuns.filter(
+            (run: any) => run.status === 'queued' || run.status === 'waiting' || run.status === 'pending'
+          );
+          if (staleQueued.length > 0) {
+            console.log(`[BrowserPool] Cancelling ${staleQueued.length} stale queued browser-worker run(s) before new dispatch...`);
+            for (const run of staleQueued) {
+              try {
+                await fetch(`https://api.github.com/repos/${repo}/actions/runs/${run.id}/cancel`, {
+                  method: 'POST',
+                  headers: {
+                    Accept: 'application/vnd.github+json',
+                    Authorization: `Bearer ${pat}`,
+                    'X-GitHub-Api-Version': '2022-11-28',
+                  },
+                });
+                console.log(`[BrowserPool] Cancelled stale queued run ${run.id}.`);
+              } catch (err) {
+                console.error(`[BrowserPool] Failed to cancel stale queued run ${run.id}:`, err);
+              }
+            }
+          }
         }
       }
     } catch (e) {
@@ -1400,6 +1427,175 @@ export async function searchViaPool(
     } finally {
       if (conn && page) {
         // Reuse pages used for Search, discard if page errored
+        await releasePage(conn, page, pageErrored);
+      }
+    }
+  }
+
+  if (browserPool.getActive().length === 0) {
+    browserPool.restartWorkers();
+  }
+
+  return null;
+}
+
+/**
+ * Execute a DuckDuckGo web search via a remote browser from the pool.
+ *
+ * Uses the DuckDuckGo HTML endpoint (html.duckduckgo.com/html/) which renders
+ * server-side and is far less aggressive with bot-blocking than Google.
+ * Same pool/acquire/release mechanics as searchViaPool.
+ */
+export async function searchDuckViaPool(
+  text: string,
+  pageNumber: number = 1,
+): Promise<{
+  organic: Array<{ title: string; link: string; snippet: string }>;
+  aiResponse: string | null;
+  relatedSearches?: string[];
+} | null> {
+  const activeBrowsers = browserPool.getActive();
+  const maxAttempts = Math.max(1, activeBrowsers.length);
+  const hasAnyCached = activeBrowsers.some(b => isWorkerCached(b.workerId));
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const browser = browserPool.getNext();
+    if (!browser) break;
+
+    // Skip uncached browsers if cached ones are available, warming them up in background
+    if (hasAnyCached && !isWorkerCached(browser.workerId)) {
+      warmupWorker(browser);
+      continue;
+    }
+
+    let conn: WorkerConnection | null = null;
+    let page: any = null;
+    let pageErrored = false;
+
+    try {
+      const acquired = await acquirePage(browser, true);
+      conn = acquired.conn;
+      page = acquired.page;
+
+      try {
+        const client = await page.target().createCDPSession();
+        await client.send('Network.clearBrowserCookies');
+        await client.detach();
+      } catch { /* ignore */ }
+
+      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
+      await page.evaluateOnNewDocument(() => {
+        try {
+          Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+        } catch { }
+      });
+
+      // ── Request interception: block heavy assets ───────────────────────
+      page.removeAllListeners('request');
+      await page.setRequestInterception(true);
+      page.on('request', async (req: any) => {
+        try {
+          if (req.isInterceptResolutionHandled()) return;
+          const type = req.resourceType();
+          if (type === 'document') {
+            try { await req.continue(); } catch { }
+            return;
+          }
+          if (['font', 'media', 'websocket', 'manifest', 'other'].includes(type)) {
+            try { await req.abort(); } catch { }
+            return;
+          }
+          try { await req.continue(); } catch { }
+        } catch { /* ignore */ }
+      });
+
+      // DDG html endpoint paginates with the `s` offset param (~30 results/page)
+      const offset = (pageNumber - 1) * 30;
+      const targetUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(text)}${offset > 0 ? `&s=${offset}` : ''}`;
+
+      await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 15000 }).catch((err: any) => {
+        console.warn(`[BrowserPool] DuckDuckGo navigation notice for ${targetUrl}:`, err.message);
+      });
+
+      await page
+        .waitForSelector('.result, .no-results, #links_wrapper', { timeout: 5000 })
+        .catch(() => { });
+
+      const results = await page.evaluate(() => {
+        const organic: Array<{ title: string; link: string; snippet: string }> = [];
+        const seen = new Set<string>();
+
+        // DDG wraps outbound links: //duckduckgo.com/l/?uddg=<url-encoded>
+        const decodeDuckLink = (href: string | null): string => {
+          if (!href) return '';
+          try {
+            const u = new URL(href, location.origin);
+            const uddg = u.searchParams.get('uddg');
+            if (uddg) return decodeURIComponent(uddg);
+          } catch { }
+          return href;
+        };
+
+        document.querySelectorAll('.result').forEach(el => {
+          const a = el.querySelector('.result__a');
+          if (!a) return;
+          const link = decodeDuckLink(a.getAttribute('href'));
+          if (!link || seen.has(link)) return;
+          seen.add(link);
+          const sn = el.querySelector('.result__snippet');
+          organic.push({
+            title: (a.textContent || '').trim(),
+            link,
+            snippet: sn ? (sn.textContent || '').trim() : '',
+          });
+        });
+
+        const relatedSearches: string[] = [];
+        document.querySelectorAll('.did-you-mean a, #did_you_mean a').forEach(a => {
+          const t = (a.textContent || '').trim();
+          if (t) relatedSearches.push(t);
+        });
+
+        return { organic, relatedSearches };
+      });
+
+      if (results.organic.length === 0) {
+        console.warn(`[BrowserPool] DuckDuckGo returned no results on ${browser.workerId}. Trying next browser...`);
+        pageErrored = true;
+        continue;
+      }
+
+      workerCdpFailures.delete(browser.workerId);
+
+      return {
+        organic: results.organic,
+        aiResponse: null,
+        relatedSearches: results.relatedSearches.length > 0 ? results.relatedSearches : undefined,
+      };
+
+    } catch (e) {
+      const msg = (e as Error).message;
+      console.warn(`[BrowserPool] DuckDuckGo search failed on ${browser.workerId}: ${msg}`);
+      browserPool.recordFailure();
+
+      if ([
+        'CDP_UNREACHABLE', 'NO_WS_URL', 'WebSocket', 'Connection closed'
+      ].some((k) => msg.includes(k)) || (conn && !conn.browserConn.isConnected())) {
+        invalidateWorkerConnection(browser.workerId);
+        page = null;
+
+        const cdpFails = (workerCdpFailures.get(browser.workerId) ?? 0) + 1;
+        workerCdpFailures.set(browser.workerId, cdpFails);
+
+        if (cdpFails >= MAX_WORKER_CDP_FAILURES) {
+          workerCdpFailures.delete(browser.workerId);
+          browserPool.deregister(browser.workerId);
+        }
+      } else {
+        pageErrored = true;
+      }
+    } finally {
+      if (conn && page) {
         await releasePage(conn, page, pageErrored);
       }
     }

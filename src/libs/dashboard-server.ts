@@ -39,7 +39,7 @@ import { detectAndDownload } from './downloader';
 import { searchYouTube, getYouTubeInfo, downloadYouTubeVideo } from './youtube-dl';
 import { searchMovies } from './movie-search';
 import type { YouTubeQualityOption } from './youtube-dl';
-import { browserPool, searchViaPool, searchIndeedViaPool } from './browser-pool';
+import { browserPool, searchViaPool, searchDuckViaPool, searchIndeedViaPool } from './browser-pool';
 // import { isConnectionCached } from './page-pool';
 import type { WebhookPayload } from './browser-pool';
 import { searchPlacesViaPool, searchPlacesStream, searchViaGoogleSearchUrl, searchViaGoogleSearchStream, scrapePlaceDetailsViaPool } from './google-places-search';
@@ -2118,7 +2118,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 
       let results: any;
 
-      if (engine === 'cdp') {
+      if (engine === 'duckduckgo' || engine === 'duck' || engine === 'ddg') {
+        results = await searchDuckViaPool(text, pageNumber);
+        if (!results) return err(res, 'No active browsers available in pool for DuckDuckGo search', 503);
+      } else if (engine === 'cdp') {
         results = await tryCdpSearch();
         if (!results) return err(res, 'CDP not reachable. Is the browser container + socat sidecar running?', 400);
       } else if (engine === 'worker' || engine === 'worker-api') {
@@ -2128,10 +2131,16 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         results = await searchViaPool(text, pageNumber, includeAI, category);
         if (!results) return err(res, 'No active browsers available in pool', 503);
       } else {
-        // auto: try pool first → worker API fallback → local CDP fallback
+        // auto: try Google pool first → DuckDuckGo pool → worker API fallback → local CDP fallback
         try {
           results = await searchViaPool(text, pageNumber, includeAI, category);
         } catch { results = null; }
+
+        if (!results) {
+          try {
+            results = await searchDuckViaPool(text, pageNumber);
+          } catch { results = null; }
+        }
 
         if (!results) {
           try {

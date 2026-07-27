@@ -5,7 +5,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 
-type SearchEngine = 'auto' | 'worker' | 'cdp' | 'selenium' | 'cookie';
+type SearchEngine = 'auto' | 'worker' | 'cdp' | 'selenium' | 'cookie' | 'duckduckgo';
 
 export default function SearchPanel() {
   const [query, setQuery] = useState('');
@@ -73,7 +73,7 @@ export default function SearchPanel() {
           {/* Engine selector */}
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-[var(--text-subtle)]">Engine:</span>
-            {(['auto', 'worker', 'cdp', 'selenium', 'cookie'] as SearchEngine[]).map(eng => (
+            {(['auto', 'worker', 'cdp', 'selenium', 'cookie', 'duckduckgo'] as SearchEngine[]).map(eng => (
               <Button
                 key={eng}
                 onClick={() => setEngine(eng)}
@@ -84,7 +84,7 @@ export default function SearchPanel() {
                     : 'bg-[var(--btn-secondary-bg)] border-[var(--btn-secondary-border)] text-[var(--text-muted)] hover:text-[var(--text-main)]'
                 }`}
               >
-                {eng === 'auto' ? '⚡ Auto' : eng === 'worker' ? '🤖 Worker API' : eng === 'cdp' ? '🔌 CDP' : eng === 'selenium' ? '🐍 Selenium' : '🍪 Cookie'}
+                {eng === 'auto' ? '⚡ Auto' : eng === 'worker' ? '🤖 Worker API' : eng === 'cdp' ? '🔌 CDP' : eng === 'selenium' ? '🐍 Selenium' : eng === 'cookie' ? '🍪 Cookie' : '🦆 DuckDuckGo'}
               </Button>
             ))}
           </div>
