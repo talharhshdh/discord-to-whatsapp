@@ -37,6 +37,8 @@ class CodeExecRequest(BaseModel):
     code: str
     timeout: int = 30
 
+NodeExecRequest = CodeExecRequest
+
 class PythonExecRequest(BaseModel):
     code: str
     timeout: int = 30
