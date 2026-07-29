@@ -25,6 +25,8 @@ const BetaGoContainerPanel = React.lazy(() => import('./components/BetaGoContain
 const IndeedPanel = React.lazy(() => import('./components/IndeedPanel'));
 const ContactsScraperPanel = React.lazy(() => import('./components/ContactsScraperPanel'));
 const BlogGenPanel = React.lazy(() => import('./components/BlogGenPanel'));
+const CodeExecPanel = React.lazy(() => import('./components/CodeExecPanel'));
+const ProxyPanel = React.lazy(() => import('./components/ProxyPanel'));
 
 interface NavItem {
   id: NavSection;
@@ -64,6 +66,8 @@ const NAV_CATEGORIES: NavCategory[] = [
     items: [
       { id: 'sessions',  label: 'Dev Sessions',   icon: '🖥️' },
       { id: 'manager',   label: 'Session Manager', icon: '📊' },
+      { id: 'code-exec', label: 'Code Executor (Runner)', icon: '💻' },
+      { id: 'proxy-net', label: 'HTTP Network Proxy', icon: '📡' },
       { id: 'android',   label: 'Android',        icon: '📱' },
       { id: 'urls',      label: 'Live URLs',      icon: '🔗' },
       { id: 'go-containers', label: 'Beta Containers (Go)', icon: '⚡' },
@@ -93,9 +97,10 @@ export default function App() {
     const current = hash || path;
     const validSections: NavSection[] = [
       'google', 'web-proxy', 'search', 'places', 'pool', 'indeed', 'contacts', 
-      'sessions', 'manager', 'android', 'urls', 'go-containers', 
+      'sessions', 'manager', 'code-exec', 'proxy-net', 'android', 'urls', 'go-containers', 
       'ai-tools', 'media', 'youtube', 'movies', 'llm', 'tts', 'blog-gen'
     ];
+
     if (validSections.includes(current as NavSection)) {
       return current as NavSection;
     }
@@ -557,7 +562,10 @@ export default function App() {
                 <React.Suspense fallback={<div className="flex items-center justify-center p-12 text-white/50">Loading panel...</div>}>
                   {section === 'sessions' && <SessionsPanel />}
                   {section === 'manager' && <SessionsManagerPanel />}
+                  {section === 'code-exec' && <CodeExecPanel />}
+                  {section === 'proxy-net' && <ProxyPanel />}
                   {section === 'android' && <AndroidPanel />}
+
                   {section === 'ai-tools' && <AIToolsPanel />}
                   {section === 'media' && <MediaPanel />}
                   {section === 'youtube' && <YoutubePanel />}

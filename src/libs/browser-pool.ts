@@ -285,6 +285,72 @@ class BrowserPool {
     return true;
   }
 
+  /** Execute Node.js, Python, or Shell code on a specific worker or auto-selected active worker. */
+  async executeCode(
+    workerId: string | undefined,
+    lang: 'node' | 'python' | 'shell',
+    code: string,
+    timeout = 30
+  ): Promise<{ exit_code: number; stdout: string; stderr: string; execution_time_ms: number; workerId: string }> {
+    const worker = workerId && this.browsers.has(workerId) ? this.browsers.get(workerId)! : this.getNext();
+    if (!worker) {
+      throw new Error('No active browser worker available for code execution.');
+    }
+    if (!worker.apiUrl) {
+      throw new Error(`Worker ${worker.workerId} does not have an API URL configured.`);
+    }
+
+    const endpointMap = {
+      node: '/exec/node',
+      python: '/exec/python',
+      shell: '/exec/shell',
+    };
+
+    const payload = lang === 'shell' ? { command: code, timeout } : { code, timeout };
+    const resp = await fetch(`${worker.apiUrl}${endpointMap[lang]}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      throw new Error(`Worker execution error (${resp.status}): ${errText}`);
+    }
+
+    const result = await resp.json();
+    return { ...result, workerId: worker.workerId };
+  }
+
+  /** Proxy an arbitrary HTTP/HTTPS request through a specific worker or auto-selected active worker's IP. */
+  async proxyRequest(
+    workerId: string | undefined,
+    req: { url: string; method?: string; headers?: Record<string, string>; body?: string; timeout?: number }
+  ): Promise<{ status_code: number; headers: Record<string, string>; body: string; execution_time_ms: number; workerId: string }> {
+    const worker = workerId && this.browsers.has(workerId) ? this.browsers.get(workerId)! : this.getNext();
+    if (!worker) {
+      throw new Error('No active browser worker available for proxy request.');
+    }
+    if (!worker.apiUrl) {
+      throw new Error(`Worker ${worker.workerId} does not have an API URL configured.`);
+    }
+
+    const resp = await fetch(`${worker.apiUrl}/proxy/request`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req),
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      throw new Error(`Worker proxy error (${resp.status}): ${errText}`);
+    }
+
+    const result = await resp.json();
+    return { ...result, workerId: worker.workerId };
+  }
+
+
   /** Trigger a restart of all browser workers via GitHub Actions. */
   async restartWorkers(forceRestart = false): Promise<void> {
     const now = Date.now();

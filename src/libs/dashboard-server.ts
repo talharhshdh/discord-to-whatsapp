@@ -1851,6 +1851,53 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     return;
   }
 
+  // ── POST /api/workers/exec ────────────────────────────────────────────────
+  if (method === 'POST' && url === '/api/workers/exec') {
+    try {
+      const body = await parseJsonBody(req);
+      const workerId = body['workerId'] as string | undefined;
+      const lang = (body['lang'] || 'node') as 'node' | 'python' | 'shell';
+      const code = body['code'] as string;
+      const timeout = Number(body['timeout']) || 30;
+
+      if (!code) return err(res, 'code field is required', 400);
+
+      const result = await browserPool.executeCode(workerId, lang, code, timeout);
+      json(res, { success: true, ...result });
+    } catch (e) {
+      err(res, (e as Error).message);
+    }
+    return;
+  }
+
+  // ── POST /api/workers/proxy ───────────────────────────────────────────────
+  if (method === 'POST' && url === '/api/workers/proxy') {
+    try {
+      const body = await parseJsonBody(req);
+      const workerId = body['workerId'] as string | undefined;
+      const targetUrl = body['url'] as string;
+      const reqMethod = (body['method'] || 'GET') as string;
+      const reqHeaders = (body['headers'] || {}) as Record<string, string>;
+      const reqBody = body['body'] as string | undefined;
+      const timeout = Number(body['timeout']) || 15;
+
+      if (!targetUrl) return err(res, 'url field is required', 400);
+
+      const result = await browserPool.proxyRequest(workerId, {
+        url: targetUrl,
+        method: reqMethod,
+        headers: reqHeaders,
+        body: reqBody,
+        timeout
+      });
+      json(res, { success: true, ...result });
+    } catch (e) {
+      err(res, (e as Error).message);
+    }
+    return;
+  }
+
+
   // ── POST /api/webhook/inbound-email ────────────────────────────────────────
   if (method === 'POST' && pathname === '/api/webhook/inbound-email') {
     try {

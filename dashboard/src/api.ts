@@ -576,4 +576,44 @@ export const api = {
     }),
   getPlaceDetails: (url: string) =>
     post<{ success: boolean; result: PlaceDetailResult }>('/api/browser/place-details', { url }),
+  execCodeOnWorker: (req: WorkerExecRequest) =>
+    post<WorkerExecResponse>('/api/workers/exec', req),
+  proxyRequestViaWorker: (req: WorkerProxyRequest) =>
+    post<WorkerProxyResponse>('/api/workers/proxy', req),
 };
+
+export interface WorkerExecRequest {
+  workerId?: string;
+  lang: 'node' | 'python' | 'shell';
+  code: string;
+  timeout?: number;
+}
+
+export interface WorkerExecResponse {
+  success: boolean;
+  workerId: string;
+  exit_code: number;
+  stdout: string;
+  stderr: string;
+  execution_time_ms: number;
+}
+
+export interface WorkerProxyRequest {
+  workerId?: string;
+  url: string;
+  method?: string;
+  headers?: Record<string, string>;
+  body?: string;
+  timeout?: number;
+}
+
+export interface WorkerProxyResponse {
+  success: boolean;
+  workerId: string;
+  status_code: number;
+  headers: Record<string, string>;
+  body: string;
+  execution_time_ms: number;
+}
+
+

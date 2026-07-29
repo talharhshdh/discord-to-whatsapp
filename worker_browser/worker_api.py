@@ -6,6 +6,9 @@ import random
 import tempfile
 import os
 import asyncio
+import subprocess
+import time
+import httpx
 
 app = FastAPI(title="Worker Browser API")
 
@@ -28,6 +31,25 @@ class ScreenshotRequest(BaseModel):
 
 class GetHtmlRequest(BaseModel):
     url: str
+
+class NodeExecRequest(BaseModel):
+    code: str
+    timeout: int = 30
+
+class PythonExecRequest(BaseModel):
+    code: str
+    timeout: int = 30
+
+class ShellExecRequest(BaseModel):
+    command: str
+    timeout: int = 30
+
+class ProxyForwardRequest(BaseModel):
+    url: str
+    method: str = "GET"
+    headers: dict = {}
+    body: str = None
+    timeout: int = 15
 
 def is_captcha_present(sb):
     """
@@ -414,6 +436,146 @@ async def take_screenshot(req: ScreenshotRequest):
 async def get_html(req: GetHtmlRequest):
     async with browser_semaphore:
         return await asyncio.to_thread(sync_get_html, req)
+
+@app.post("/exec/node")
+async def exec_node(req: NodeExecRequest):
+    start_t = time.time()
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".js", mode="w", delete=False, encoding="utf-8") as tmp:
+            tmp.write(req.code)
+            tmp_path = tmp.name
+
+        proc = await asyncio.create_subprocess_exec(
+            "node", tmp_path,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+
+        try:
+            stdout_bytes, stderr_bytes = await asyncio.wait_for(proc.communicate(), timeout=req.timeout)
+        except asyncio.TimeoutError:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+            raise HTTPException(status_code=408, detail=f"Node.js script execution timed out after {req.timeout}s")
+
+        duration_ms = int((time.time() - start_t) * 1000)
+        return {
+            "exit_code": proc.returncode,
+            "stdout": stdout_bytes.decode("utf-8", errors="replace"),
+            "stderr": stderr_bytes.decode("utf-8", errors="replace"),
+            "execution_time_ms": duration_ms
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if 'tmp_path' in locals() and os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
+
+@app.post("/exec/python")
+async def exec_python(req: PythonExecRequest):
+    start_t = time.time()
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False, encoding="utf-8") as tmp:
+            tmp.write(req.code)
+            tmp_path = tmp.name
+
+        proc = await asyncio.create_subprocess_exec(
+            "python3", tmp_path,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+
+        try:
+            stdout_bytes, stderr_bytes = await asyncio.wait_for(proc.communicate(), timeout=req.timeout)
+        except asyncio.TimeoutError:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+            raise HTTPException(status_code=408, detail=f"Python script execution timed out after {req.timeout}s")
+
+        duration_ms = int((time.time() - start_t) * 1000)
+        return {
+            "exit_code": proc.returncode,
+            "stdout": stdout_bytes.decode("utf-8", errors="replace"),
+            "stderr": stderr_bytes.decode("utf-8", errors="replace"),
+            "execution_time_ms": duration_ms
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if 'tmp_path' in locals() and os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
+
+@app.post("/exec/shell")
+async def exec_shell(req: ShellExecRequest):
+    start_t = time.time()
+    try:
+        proc = await asyncio.create_subprocess_shell(
+            req.command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+
+        try:
+            stdout_bytes, stderr_bytes = await asyncio.wait_for(proc.communicate(), timeout=req.timeout)
+        except asyncio.TimeoutError:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+            raise HTTPException(status_code=408, detail=f"Shell command execution timed out after {req.timeout}s")
+
+        duration_ms = int((time.time() - start_t) * 1000)
+        return {
+            "exit_code": proc.returncode,
+            "stdout": stdout_bytes.decode("utf-8", errors="replace"),
+            "stderr": stderr_bytes.decode("utf-8", errors="replace"),
+            "execution_time_ms": duration_ms
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/proxy/request")
+async def proxy_request(req: ProxyForwardRequest):
+    start_t = time.time()
+    headers = dict(req.headers) if req.headers else {}
+    if "user-agent" not in {k.lower() for k in headers}:
+        headers["User-Agent"] = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+    async with httpx.AsyncClient(timeout=req.timeout, follow_redirects=True) as client:
+        try:
+            resp = await client.request(
+                method=req.method.upper(),
+                url=req.url,
+                headers=headers,
+                content=req.body.encode("utf-8") if req.body else None
+            )
+            duration_ms = int((time.time() - start_t) * 1000)
+            return {
+                "status_code": resp.status_code,
+                "headers": dict(resp.headers),
+                "body": resp.text,
+                "execution_time_ms": duration_ms
+            }
+        except httpx.TimeoutException:
+            raise HTTPException(status_code=504, detail=f"Proxy target {req.url} timed out after {req.timeout}s")
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Proxy error fetching {req.url}: {str(e)}")
 
 @app.get("/logs")
 def get_logs():
