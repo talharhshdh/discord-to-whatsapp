@@ -174,9 +174,15 @@ class BrowserPool {
     );
   }
 
-  /** Round-robin pick from active browsers. Returns null if none available. */
+  /** Return active workers with configured apiUrl. */
+  getApiWorkers(): RemoteBrowser[] {
+    return this.getActive().filter((b) => !!b.apiUrl);
+  }
+
+  /** Round-robin pick from active browsers (preferring workers with API URL). Returns null if none available. */
   getNext(): RemoteBrowser | null {
-    const active = this.getActive();
+    const apiWorkers = this.getApiWorkers();
+    const active = apiWorkers.length > 0 ? apiWorkers : this.getActive();
     if (active.length === 0) return null;
     this.roundRobinIndex = this.roundRobinIndex % active.length;
     const picked = active[this.roundRobinIndex];
@@ -285,19 +291,35 @@ class BrowserPool {
     return true;
   }
 
-  /** Execute Node.js, Python, or Shell code on a specific worker or auto-selected active worker. */
+  /** Execute Node.js, Python, or Shell code on a specific worker or auto-selected active worker with fallback retries. */
   async executeCode(
     workerId: string | undefined,
     lang: 'node' | 'python' | 'shell',
     code: string,
     timeout = 30
   ): Promise<{ exit_code: number; stdout: string; stderr: string; execution_time_ms: number; workerId: string }> {
-    const worker = workerId && this.browsers.has(workerId) ? this.browsers.get(workerId)! : this.getNext();
-    if (!worker) {
-      throw new Error('No active browser worker available for code execution.');
+    let candidates: RemoteBrowser[] = [];
+
+    if (workerId && this.browsers.has(workerId)) {
+      const specificWorker = this.browsers.get(workerId)!;
+      candidates.push(specificWorker);
+      const others = this.getApiWorkers().filter((b) => b.workerId !== workerId);
+      candidates.push(...others);
+    } else {
+      const allApiWorkers = this.getApiWorkers();
+      if (allApiWorkers.length > 0) {
+        this.roundRobinIndex = this.roundRobinIndex % allApiWorkers.length;
+        candidates = [
+          ...allApiWorkers.slice(this.roundRobinIndex),
+          ...allApiWorkers.slice(0, this.roundRobinIndex),
+        ];
+        this.roundRobinIndex = (this.roundRobinIndex + 1) % allApiWorkers.length;
+      }
     }
-    if (!worker.apiUrl) {
-      throw new Error(`Worker ${worker.workerId} does not have an API URL configured.`);
+
+    if (candidates.length === 0) {
+      this.restartWorkers().catch(() => {});
+      throw new Error('No active browser worker with an API URL is available. Triggered worker restart via GitHub Actions.');
     }
 
     const endpointMap = {
@@ -305,49 +327,94 @@ class BrowserPool {
       python: '/exec/python',
       shell: '/exec/shell',
     };
-
     const payload = lang === 'shell' ? { command: code, timeout } : { code, timeout };
-    const resp = await fetch(`${worker.apiUrl}${endpointMap[lang]}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    let lastError = '';
 
-    if (!resp.ok) {
-      const errText = await resp.text();
-      throw new Error(`Worker execution error (${resp.status}): ${errText}`);
+    for (const worker of candidates) {
+      if (!worker.apiUrl) continue;
+
+      try {
+        const resp = await fetch(`${worker.apiUrl}${endpointMap[lang]}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        if (resp.ok) {
+          const result = await resp.json();
+          return { ...result, workerId: worker.workerId };
+        }
+
+        const errText = await resp.text();
+        lastError = `Worker ${worker.workerId} exec HTTP ${resp.status}: ${errText}`;
+        console.warn(`[BrowserPool] ${lastError}. Retrying next worker...`);
+      } catch (e: any) {
+        lastError = `Worker ${worker.workerId} connection failed: ${e.message}`;
+        console.warn(`[BrowserPool] ${lastError}. Retrying next worker...`);
+      }
     }
 
-    const result = await resp.json();
-    return { ...result, workerId: worker.workerId };
+    this.restartWorkers().catch(() => {});
+    throw new Error(`Worker execution error: All available browser worker(s) failed. (${lastError})`);
   }
 
-  /** Proxy an arbitrary HTTP/HTTPS request through a specific worker or auto-selected active worker's IP. */
+  /** Proxy an arbitrary HTTP/HTTPS request through a specific worker or auto-selected active worker's IP with fallback retries. */
   async proxyRequest(
     workerId: string | undefined,
     req: { url: string; method?: string; headers?: Record<string, string>; body?: string; timeout?: number }
   ): Promise<{ status_code: number; headers: Record<string, string>; body: string; execution_time_ms: number; workerId: string }> {
-    const worker = workerId && this.browsers.has(workerId) ? this.browsers.get(workerId)! : this.getNext();
-    if (!worker) {
-      throw new Error('No active browser worker available for proxy request.');
-    }
-    if (!worker.apiUrl) {
-      throw new Error(`Worker ${worker.workerId} does not have an API URL configured.`);
+    let candidates: RemoteBrowser[] = [];
+
+    if (workerId && this.browsers.has(workerId)) {
+      const specificWorker = this.browsers.get(workerId)!;
+      candidates.push(specificWorker);
+      const others = this.getApiWorkers().filter((b) => b.workerId !== workerId);
+      candidates.push(...others);
+    } else {
+      const allApiWorkers = this.getApiWorkers();
+      if (allApiWorkers.length > 0) {
+        this.roundRobinIndex = this.roundRobinIndex % allApiWorkers.length;
+        candidates = [
+          ...allApiWorkers.slice(this.roundRobinIndex),
+          ...allApiWorkers.slice(0, this.roundRobinIndex),
+        ];
+        this.roundRobinIndex = (this.roundRobinIndex + 1) % allApiWorkers.length;
+      }
     }
 
-    const resp = await fetch(`${worker.apiUrl}/proxy/request`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(req),
-    });
-
-    if (!resp.ok) {
-      const errText = await resp.text();
-      throw new Error(`Worker proxy error (${resp.status}): ${errText}`);
+    if (candidates.length === 0) {
+      this.restartWorkers().catch(() => {});
+      throw new Error('No active browser worker with an API URL is available. Triggered worker restart via GitHub Actions.');
     }
 
-    const result = await resp.json();
-    return { ...result, workerId: worker.workerId };
+    let lastError = '';
+
+    for (const worker of candidates) {
+      if (!worker.apiUrl) continue;
+
+      try {
+        const resp = await fetch(`${worker.apiUrl}/proxy/request`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(req),
+        });
+
+        if (resp.ok) {
+          const result = await resp.json();
+          return { ...result, workerId: worker.workerId };
+        }
+
+        const errText = await resp.text();
+        lastError = `Worker ${worker.workerId} proxy HTTP ${resp.status}: ${errText}`;
+        console.warn(`[BrowserPool] ${lastError}. Retrying next worker...`);
+      } catch (e: any) {
+        lastError = `Worker ${worker.workerId} connection failed: ${e.message}`;
+        console.warn(`[BrowserPool] ${lastError}. Retrying next worker...`);
+      }
+    }
+
+    this.restartWorkers().catch(() => {});
+    throw new Error(`Worker proxy error: All available browser worker(s) failed. (${lastError})`);
   }
 
 

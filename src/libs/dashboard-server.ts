@@ -1852,7 +1852,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   }
 
   // ── POST /api/workers/exec ────────────────────────────────────────────────
-  if (method === 'POST' && url === '/api/workers/exec') {
+  if (method === 'POST' && pathname === '/api/workers/exec') {
     try {
       const body = await parseJsonBody(req);
       const workerId = body['workerId'] as string | undefined;
@@ -1871,7 +1871,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   }
 
   // ── POST /api/workers/proxy ───────────────────────────────────────────────
-  if (method === 'POST' && url === '/api/workers/proxy') {
+  if (method === 'POST' && pathname === '/api/workers/proxy') {
     try {
       const body = await parseJsonBody(req);
       const workerId = body['workerId'] as string | undefined;

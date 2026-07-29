@@ -1,3 +1,4 @@
+from typing import Dict, Optional
 from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel
 from seleniumbase import SB
@@ -23,7 +24,7 @@ class ScrapeGoogleRequest(BaseModel):
     text: str
     pageNumber: int = 1
     includeAI: bool = False
-    category: str = "all"
+    category: str = None
 
 class ScreenshotRequest(BaseModel):
     url: str
@@ -32,7 +33,7 @@ class ScreenshotRequest(BaseModel):
 class GetHtmlRequest(BaseModel):
     url: str
 
-class NodeExecRequest(BaseModel):
+class CodeExecRequest(BaseModel):
     code: str
     timeout: int = 30
 
@@ -551,6 +552,7 @@ async def exec_shell(req: ShellExecRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/proxy/request")
+@app.post("/proxy/request/")
 async def proxy_request(req: ProxyForwardRequest):
     start_t = time.time()
     headers = dict(req.headers) if req.headers else {}
