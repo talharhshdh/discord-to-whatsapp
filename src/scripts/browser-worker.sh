@@ -39,6 +39,9 @@ TUNNEL_API_PID=""
 # Cleanup handler
 # ---------------------------------------------------------------------------
 cleanup() {
+  EXIT_CODE=$?
+  echo "🧹 Cleaning up worker processes (Exit code: $EXIT_CODE)..."
+
   # Best-effort deregister
   if [ -n "$TUNNEL_URL" ]; then
     for attempt in 1 2 3; do
@@ -60,7 +63,7 @@ cleanup() {
   [ -n "$TUNNEL_PID" ] && kill "$TUNNEL_PID" 2>/dev/null || true
   [ -n "$CHROME_PID" ] && kill "$CHROME_PID" 2>/dev/null || true
 
-  exit 0
+  exit $EXIT_CODE
 }
 trap cleanup EXIT SIGTERM SIGINT
 
@@ -120,7 +123,8 @@ for i in $(seq 1 30); do
     break
   fi
   if [ $i -eq 30 ]; then
-    echo "❌ FastAPI failed to start within 30 seconds"
+    echo "❌ FastAPI failed to start within 30 seconds:"
+    cat /tmp/worker_api.log 2>/dev/null || true
     exit 1
   fi
   sleep 1
@@ -144,7 +148,8 @@ for i in $(seq 1 30); do
     break
   fi
   if [ $i -eq 30 ]; then
-    echo "❌ CDP tunnel failed to start within 30 seconds"
+    echo "❌ CDP tunnel failed to start within 30 seconds:"
+    cat "$TUNNEL_LOG" 2>/dev/null || true
     exit 1
   fi
   sleep 1
@@ -162,7 +167,8 @@ for i in $(seq 1 30); do
     break
   fi
   if [ $i -eq 30 ]; then
-    echo "❌ FastAPI tunnel failed to start within 30 seconds"
+    echo "❌ FastAPI tunnel failed to start within 30 seconds:"
+    cat "$TUNNEL_API_LOG" 2>/dev/null || true
     exit 1
   fi
   sleep 1
@@ -175,9 +181,10 @@ curl -s "http://127.0.0.1:${CDP_PORT}/json/new?about:blank" > /dev/null || true
 # ---------------------------------------------------------------------------
 # 3. Register with main dashboard
 # ---------------------------------------------------------------------------
-echo "📡 Registering with dashboard at ..."
+echo "📡 Registering with dashboard at ${WEBHOOK_URL}..."
 
 REGISTERED=false
+HTTP_CODE="000"
 for attempt in $(seq 1 20); do
   HTTP_CODE=$(curl -s -o /tmp/register-resp.txt -w "%{http_code}" --max-time 15 \
     -X POST "$WEBHOOK_URL" \
@@ -187,9 +194,11 @@ for attempt in $(seq 1 20); do
 
   if [ "$HTTP_CODE" = "200" ]; then
     REGISTERED=true
+    echo "✅ Successfully registered worker ${WORKER_ID} with dashboard!"
     break
   fi
 
+  echo "⚠️ Registration attempt ${attempt} failed with status code ${HTTP_CODE}. Retrying..."
   # Exponential backoff: 5, 10, 20, 40, 60, 60, ...
   BACKOFF=$(( 5 * (2 ** (attempt - 1)) ))
   [ $BACKOFF -gt 60 ] && BACKOFF=60
@@ -197,11 +206,13 @@ for attempt in $(seq 1 20); do
 done
 
 if [ "$REGISTERED" != "true" ]; then
+  echo "❌ Registration failed with status code: ${HTTP_CODE}"
+  cat /tmp/register-resp.txt 2>/dev/null || true
   exit 1
 fi
 
 # ---------------------------------------------------------------------------
-# 4. Heartbeat loop
+# 4. Heartbeat loop (with process watchdog & auto-recovery)
 # ---------------------------------------------------------------------------
 echo "💓 Starting heartbeat loop (every ${HEARTBEAT_INTERVAL}s, max runtime ${MAX_RUNTIME}s)..."
 
@@ -212,17 +223,80 @@ MAX_CONSECUTIVE_FAILURES=10
 while true; do
   ELAPSED=$(( $(date +%s) - START_TIME ))
   if [ $ELAPSED -ge $MAX_RUNTIME ]; then
+    echo "⏰ Max runtime (${MAX_RUNTIME}s) reached. Exiting gracefully."
     break
   fi
 
-  # Check Chrome is still alive
+  # ── Watchdog 1: Chrome ──────────────────────────────────────────────────
   if ! kill -0 "$CHROME_PID" 2>/dev/null; then
-    break
+    echo "⚠️ Chrome process PID $CHROME_PID died! Restarting Chrome..."
+    google-chrome-stable \
+      --headless=new \
+      --no-sandbox \
+      --disable-dev-shm-usage \
+      --disable-gpu \
+      --remote-debugging-port=${CDP_PORT} \
+      --remote-debugging-address=0.0.0.0 \
+      --remote-allow-origins=* \
+      --user-data-dir=/tmp/chrome-user-data \
+      --disable-background-networking \
+      --disable-extensions \
+      --disable-sync \
+      --no-first-run \
+      --disable-default-apps \
+      &
+    CHROME_PID=$!
   fi
 
-  # Check tunnel is still alive
+  # ── Watchdog 2: FastAPI ─────────────────────────────────────────────────
+  if ! kill -0 "$API_PID" 2>/dev/null; then
+    echo "⚠️ FastAPI server PID $API_PID died! Restarting FastAPI..."
+    python3 worker_browser/worker_api.py > /tmp/worker_api.log 2>&1 &
+    API_PID=$!
+  fi
+
+  # ── Watchdog 3: CDP Tunnel ──────────────────────────────────────────────
+  NEED_REREGISTER=false
   if ! kill -0 "$TUNNEL_PID" 2>/dev/null; then
-    break
+    echo "⚠️ CDP Tunnel PID $TUNNEL_PID died! Restarting CDP tunnel..."
+    cloudflared tunnel --url "http://127.0.0.1:${CDP_PORT}" --http-host-header "localhost" > "$TUNNEL_LOG" 2>&1 &
+    TUNNEL_PID=$!
+    for i in $(seq 1 15); do
+      NEW_URL=$(grep -oP 'https://[-0-9a-z]+\.trycloudflare\.com' "$TUNNEL_LOG" 2>/dev/null | head -1 || true)
+      if [ -n "$NEW_URL" ]; then
+        TUNNEL_URL="$NEW_URL"
+        echo "✅ New CDP Tunnel URL: $TUNNEL_URL"
+        NEED_REREGISTER=true
+        break
+      fi
+      sleep 1
+    done
+  fi
+
+  # ── Watchdog 4: FastAPI Tunnel ──────────────────────────────────────────
+  if ! kill -0 "$TUNNEL_API_PID" 2>/dev/null; then
+    echo "⚠️ FastAPI Tunnel PID $TUNNEL_API_PID died! Restarting FastAPI tunnel..."
+    cloudflared tunnel --url "http://127.0.0.1:8000" > "$TUNNEL_API_LOG" 2>&1 &
+    TUNNEL_API_PID=$!
+    for i in $(seq 1 15); do
+      NEW_API_URL=$(grep -oP 'https://[-0-9a-z]+\.trycloudflare\.com' "$TUNNEL_API_LOG" 2>/dev/null | head -1 || true)
+      if [ -n "$NEW_API_URL" ]; then
+        TUNNEL_API_URL="$NEW_API_URL"
+        echo "✅ New FastAPI Tunnel URL: $TUNNEL_API_URL"
+        NEED_REREGISTER=true
+        break
+      fi
+      sleep 1
+    done
+  fi
+
+  if [ "$NEED_REREGISTER" = "true" ]; then
+    echo "📡 Re-registering worker with updated tunnel URLs..."
+    curl -s -o /dev/null --max-time 15 \
+      -X POST "$WEBHOOK_URL" \
+      -H "Content-Type: application/json" \
+      -d "{\"event\":\"register\",\"workerId\":\"${WORKER_ID}\",\"cdpUrl\":\"${TUNNEL_URL}\",\"apiUrl\":\"${TUNNEL_API_URL}\",\"runId\":\"${GITHUB_RUN_ID:-}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
+      2>/dev/null || true
   fi
 
   sleep "$HEARTBEAT_INTERVAL"
@@ -238,6 +312,7 @@ while true; do
     CONSECUTIVE_FAILURES=0
   elif [ "$HTTP_CODE" = "404" ]; then
     # Dashboard doesn't know us — re-register
+    echo "⚠️ Dashboard returned 404 for heartbeat. Re-registering worker..."
     curl -s -o /dev/null --max-time 15 \
       -X POST "$WEBHOOK_URL" \
       -H "Content-Type: application/json" \
@@ -246,7 +321,9 @@ while true; do
     CONSECUTIVE_FAILURES=0
   else
     CONSECUTIVE_FAILURES=$(( CONSECUTIVE_FAILURES + 1 ))
+    echo "⚠️ Heartbeat failed with status code ${HTTP_CODE} (attempt ${CONSECUTIVE_FAILURES}/${MAX_CONSECUTIVE_FAILURES})."
     if [ $CONSECUTIVE_FAILURES -ge $MAX_CONSECUTIVE_FAILURES ]; then
+      echo "❌ Too many consecutive heartbeat failures. Exiting loop."
       break
     fi
   fi

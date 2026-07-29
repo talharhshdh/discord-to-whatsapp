@@ -148,7 +148,7 @@ jobs:
           export HEARTBEAT_INTERVAL=60
 
           chmod +x src/scripts/browser-worker.sh
-          bash src/scripts/browser-worker.sh > worker.log 2>&1
+          bash src/scripts/browser-worker.sh 2>&1 | tee worker.log
 
       - name: Setup AWS CLI for Cloudflare R2
         if: always()
