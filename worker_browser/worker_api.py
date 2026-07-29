@@ -48,9 +48,9 @@ class ShellExecRequest(BaseModel):
 class ProxyForwardRequest(BaseModel):
     url: str
     method: str = "GET"
-    headers: dict = {}
-    body: str = None
-    timeout: int = 15
+    headers: Optional[Dict[str, str]] = None
+    body: Optional[str] = None
+    timeout: float = 15.0
 
 def is_captcha_present(sb):
     """
