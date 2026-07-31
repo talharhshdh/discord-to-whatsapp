@@ -2148,3 +2148,23 @@ export async function queryInstagramGraphQLViaPool(
   return null;
 }
 
+/** Execute an Instagram GraphQL query through a worker's lightweight HTTP proxy. */
+export async function queryInstagramGraphQLViaProxy(
+  postData: Record<string, string>,
+  headers: Record<string, string>,
+): Promise<any> {
+  const result = await browserPool.proxyRequest(undefined, {
+    url: 'https://www.instagram.com/graphql/query',
+    method: 'POST',
+    headers,
+    body: new URLSearchParams(postData).toString(),
+    timeout: 10,
+  });
+
+  if (result.status_code < 200 || result.status_code >= 300) {
+    throw new Error(`Instagram proxy GraphQL HTTP ${result.status_code}`);
+  }
+
+  return JSON.parse(result.body);
+}
+

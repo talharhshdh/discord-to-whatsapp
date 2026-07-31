@@ -13,7 +13,7 @@
  *  if (result) { sendBuffer(result.buffer, result.type, result.caption) }
  */
 
-import { queryInstagramGraphQLViaPool } from './browser-pool';
+import { queryInstagramGraphQLViaProxy } from './browser-pool';
 
 // Primary downloader (ab-downloader)
 const {
@@ -438,12 +438,11 @@ function resolveMediaType(
 // ---------------------------------------------------------------------------
 
 async function downloadInstagram(url: string, onProgress?: ProgressCallback): Promise<DownloadResult> {
-  await onProgress?.('🔍 Fetching Instagram link...');
+  void onProgress?.('🔍 Fetching Instagram link...').catch(() => { /* non-fatal */ });
 
   try {
     const match = url.match(/\/reels?\/([A-Za-z0-9_\-]+)/) || url.match(/\/p\/([A-Za-z0-9_\-]+)/) || url.match(/^([A-Za-z0-9_\-]+)$/);
     const shortcode = match ? match[1] : null;
-    if (!shortcode) throw new Error('Instagram: invalid URL format');
 
     const headers = {
       "accept": "*/*",
@@ -521,64 +520,55 @@ async function downloadInstagram(url: string, onProgress?: ProgressCallback): Pr
 
     const body = new URLSearchParams(postData).toString();
 
-    let json: any = null;
-    try {
-      json = await queryInstagramGraphQLViaPool(postData, headers);
-    } catch (err) {
-      console.error('[Instagram] GraphQL query via browser pool failed:', err);
-    }
-
-    if (!json) {
-      console.log('[Instagram] Browser pool query was unsuccessful, falling back to main VPS fetch...');
-      const res = await fetch("https://www.instagram.com/graphql/query", {
-        method: "POST",
-        headers,
-        body
-      });
-      if (res.ok) {
-        json = await res.json() as any;
-      }
-    }
-
-    if (json) {
-      const edges = json.data?.xdt_api__v1__clips__home__connection_v2?.edges || [];
+    const mediaUrlFromGraphQL = async (jsonPromise: Promise<any>): Promise<string> => {
+      const json = await jsonPromise;
+      const edges = json?.data?.xdt_api__v1__clips__home__connection_v2?.edges || [];
       const videoUrl = edges[0]?.node?.media?.video_versions?.[0]?.url;
-      if (videoUrl) {
-        await onProgress?.('📥 Downloading media...');
-        const { buffer, contentType } = await fetchBuffer(videoUrl);
-        const { mediaType, mimetype } = resolveMediaType(contentType, videoUrl, 'video/mp4');
-        const ext = mimeToExt(mimetype);
-        return { buffer, mediaType, mimetype, caption: '📸 *Instagram*', filename: `instagram_${Date.now()}.${ext}` };
-      }
+      if (typeof videoUrl !== 'string') throw new Error('Instagram GraphQL returned no video');
+      return videoUrl;
+    };
+
+    const mediaUrlFromProvider = async (provider: () => Promise<unknown>): Promise<string> => {
+      const data = await provider();
+      const mediaUrl = pickBestUrl(data) ?? pickBtchUrl(data);
+      if (!mediaUrl) throw new Error('Instagram provider returned no media');
+      return mediaUrl;
+    };
+
+    // These resolvers are independent. Racing them avoids waiting for a slow remote browser
+    // before trying the much lighter provider APIs.
+    const resolvers: Promise<string>[] = [
+      mediaUrlFromProvider(() => igdl(url)),
+      mediaUrlFromProvider(() => btch['igdl'](url)),
+    ];
+
+    if (shortcode) {
+      const directGraphQL = fetch('https://www.instagram.com/graphql/query', {
+        method: 'POST',
+        headers,
+        body,
+        signal: AbortSignal.timeout(10000),
+      }).then(async res => {
+        if (!res.ok) throw new Error(`Instagram GraphQL HTTP ${res.status}`);
+        return res.json();
+      });
+      resolvers.push(
+        mediaUrlFromGraphQL(directGraphQL),
+        mediaUrlFromGraphQL(queryInstagramGraphQLViaProxy(postData, headers)),
+      );
     }
+
+    const mediaUrl = await Promise.any(resolvers);
+
+    void onProgress?.('📥 Downloading media...').catch(() => { /* non-fatal */ });
+    const { buffer, contentType } = await fetchBuffer(mediaUrl);
+    const { mediaType, mimetype } = resolveMediaType(contentType, mediaUrl, 'video/mp4');
+    const ext = mimeToExt(mimetype);
+    return { buffer, mediaType, mimetype, caption: '📸 *Instagram*', filename: `instagram_${Date.now()}.${ext}` };
   } catch (err) {
-    console.error('Instagram GraphQL query failed, attempting fallback...', err);
+    console.error('Instagram download failed:', err);
+    throw new Error('Instagram: no download URL found');
   }
-
-  // Fallback to old download logic
-  let mediaUrl: string | null = null;
-  try {
-    const data = await igdl(url);
-    mediaUrl = pickBestUrl(data);
-  } catch (_) { /* fall through to btch-downloader */ }
-
-  if (!mediaUrl) {
-    const data = await btch['igdl'](url);
-    const obj = data as Record<string, unknown>;
-    const arr = obj['result'];
-    if (Array.isArray(arr)) {
-      for (const item of arr as Record<string, unknown>[]) {
-        if (typeof item['url'] === 'string') { mediaUrl = item['url']; break; }
-      }
-    }
-  }
-  if (!mediaUrl) throw new Error('Instagram: no download URL found');
-
-  await onProgress?.('📥 Downloading media...');
-  const { buffer, contentType } = await fetchBuffer(mediaUrl);
-  const { mediaType, mimetype } = resolveMediaType(contentType, mediaUrl, 'video/mp4');
-  const ext = mimeToExt(mimetype);
-  return { buffer, mediaType, mimetype, caption: '📸 *Instagram*', filename: `instagram_${Date.now()}.${ext}` };
 }
 
 async function downloadTikTok(url: string, onProgress?: ProgressCallback): Promise<DownloadResult> {
