@@ -4,7 +4,7 @@
  * handles all /api/* routes. Both are exposed through the same Cloudflare
  * tunnel — no base URL config needed.
  */
-export let BASE = '';
+export let BASE = import.meta.env.BASE_URL||'';
 
 export function setBase(url: string) {
   BASE = url;

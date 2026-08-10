@@ -34,11 +34,11 @@ function useScrapedData() {
 function BulkActions({ entries, streaming }: { entries: PlaceEntry[], streaming: boolean }) {
   const scrapedData = useScrapedData();
   const [isBulkScraping, setIsBulkScraping] = useState(false);
+  const [chunkSize, setChunkSize] = useState(10);
 
   const handleBulkScrape = async () => {
     setIsBulkScraping(true);
     const urls = entries.map(e => e.place.website).filter(u => u && !scrapedData[u]);
-    const chunkSize = 3;
     for (let i = 0; i < urls.length; i += chunkSize) {
       if (!isBulkScraping) {
         // Can't easily break without a ref, but it's ok for now
@@ -97,6 +97,18 @@ function BulkActions({ entries, streaming }: { entries: PlaceEntry[], streaming:
 
   return (
     <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-center gap-1 bg-[var(--btn-secondary-bg)] border-[var(--card-border)] rounded-md px-2 py-0.5 border">
+        <label className="text-[10px] text-[var(--text-muted)] font-bold uppercase">Workers:</label>
+        <Input 
+          type="number"
+          min="1"
+          max="50"
+          value={chunkSize}
+          onChange={(e) => setChunkSize(parseInt(e.target.value) || 1)}
+          disabled={isBulkScraping}
+          className="h-6 w-12 px-1 py-0 text-xs text-center bg-transparent border-none focus:ring-0 text-[var(--text-main)]"
+        />
+      </div>
       <Button 
         onClick={handleBulkScrape} 
         disabled={isBulkScraping || entries.length === 0 || streaming} 
@@ -1167,6 +1179,9 @@ export default function PlacesPanel() {
   const [entries, setEntries]   = useState<PlaceEntry[]>([]);
   const [round, setRound]       = useState(0);
   const [total, setTotal]       = useState(0);
+  const globalScrapedData = useScrapedData();
+  const [filterEmail, setFilterEmail] = useState(false);
+  const [filterPhone, setFilterPhone] = useState(false);
 
   const esRef = useRef<EventSource | null>(null);
   const newNamesRef = useRef<Set<string>>(new Set());
@@ -1325,15 +1340,48 @@ export default function PlacesPanel() {
       {/* Results grid — grows in real-time */}
       {entries.length > 0 && (
         <div className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="text-white/60 text-sm font-medium">
-              {entries.length} place{entries.length !== 1 ? 's' : ''}
-              {streaming && <span className="ml-2 text-[#0061FF] animate-pulse">● live</span>}
-            </span>
+          {(() => {
+            const filteredEntries = entries.filter(e => {
+              const scrape = globalScrapedData[e.place.website || ''];
+              if (filterEmail) {
+                if (!scrape || !scrape.emails || scrape.emails.length === 0) return false;
+              }
+              if (filterPhone) {
+                const hasPhone = !!e.place.phone || (scrape?.phones && scrape.phones.length > 0);
+                if (!hasPhone) return false;
+              }
+              return true;
+            });
+            return (
+              <>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <span className="text-[var(--text-muted)] text-sm font-medium">
+                    {filteredEntries.length} place{filteredEntries.length !== 1 ? 's' : ''}
+                    {streaming && <span className="ml-2 text-[var(--accent-active-text)] animate-pulse">● live</span>}
+                    {filteredEntries.length !== entries.length && ` (filtered from ${entries.length})`}
+                  </span>
             <div className="flex items-center gap-3">
-              <BulkActions entries={entries} streaming={streaming} />
+              <div className="flex gap-2">
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  onClick={() => setFilterEmail(v => !v)}
+                  className={`h-7 text-xs ${filterEmail ? 'bg-[var(--accent-active-bg)] border-[var(--accent-active-border)] text-[var(--accent-active-text)]' : 'bg-[var(--btn-secondary-bg)] border-[var(--card-border)] text-[var(--text-main)] hover:bg-[var(--btn-secondary-hover)]'}`}
+                >
+                  Has Email
+                </Button>
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  onClick={() => setFilterPhone(v => !v)}
+                  className={`h-7 text-xs ${filterPhone ? 'bg-[var(--accent-active-bg)] border-[var(--accent-active-border)] text-[var(--accent-active-text)]' : 'bg-[var(--btn-secondary-bg)] border-[var(--card-border)] text-[var(--text-main)] hover:bg-[var(--btn-secondary-hover)]'}`}
+                >
+                  Has Phone
+                </Button>
+              </div>
+              <BulkActions entries={filteredEntries} streaming={streaming} />
               {done && !streaming && (
-                <Badge variant="outline" className="text-xs text-emerald-400/70 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full font-normal">
+                <Badge variant="outline" className="text-xs text-emerald-500 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full font-normal">
                   ✓ Complete
                 </Badge>
               )}
@@ -1341,7 +1389,7 @@ export default function PlacesPanel() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {entries.map((entry, idx) => (
+            {filteredEntries.map((entry, idx) => (
               <PlaceCard
                 key={`${entry.place.name}-${idx}`}
                 place={entry.place}
@@ -1349,6 +1397,9 @@ export default function PlacesPanel() {
               />
             ))}
           </div>
+          </>
+        );
+      })()}
         </div>
       )}
 
