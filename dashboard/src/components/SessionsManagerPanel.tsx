@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { BASE } from '../api';
 
 interface Session {
@@ -32,7 +32,7 @@ export default function SessionsManagerPanel() {
   const [android, setAndroid] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState('');
-  
+
   // --- UI States ---
   const [activeTab, setActiveTab] = useState<TabType>('all');
 
@@ -84,7 +84,7 @@ export default function SessionsManagerPanel() {
     setEditImage(session.metadata?.image || '');
     setEditPort(session.metadata?.port?.toString() || '80');
     setEditHostPort(session.metadata?.hostPort?.toString() || '15000');
-    
+
     let nameVal = '';
     if (session.metadata?.containerName) {
       const parts = session.metadata.containerName.split('-');
@@ -93,11 +93,11 @@ export default function SessionsManagerPanel() {
       }
     }
     setEditName(nameVal);
-    
+
     setEditDomainMode(session.metadata?.domainMode || 'quick');
     setEditCustomDomain(session.metadata?.customDomain || '');
     setEditTunnelToken(session.metadata?.tunnelToken || '');
-    
+
     const envObj = session.metadata?.env || {};
     const envStr = Object.entries(envObj)
       .map(([k, v]) => `${k}=${v}`)
@@ -108,10 +108,10 @@ export default function SessionsManagerPanel() {
   const saveEditedContainer = async () => {
     if (!editingSession) return;
     if (!editImage) return setResult('❌ Please enter a Docker Image URI');
-    
+
     const portNum = parseInt(editPort, 10);
     if (isNaN(portNum) || portNum <= 0) return setResult('❌ Invalid container port');
-    
+
     const hostPortNum = parseInt(editHostPort, 10);
     if (isNaN(hostPortNum) || hostPortNum <= 0) return setResult('❌ Invalid host port');
 
@@ -145,7 +145,7 @@ export default function SessionsManagerPanel() {
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      
+
       setResult(`✅ Redeployed successfully!\nURL: ${data.url}\nContainer: ${data.containerName}`);
       setEditingSession(null);
       await loadSessions();
@@ -186,7 +186,7 @@ export default function SessionsManagerPanel() {
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      
+
       setResult(`✅ Browser started!\nURL: ${data.url}\nUser: ${data.username} | Pass: ${data.password}`);
       setCustomUrl('');
       await loadSessions();
@@ -233,7 +233,7 @@ export default function SessionsManagerPanel() {
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      
+
       setResult(`✅ Container started!\nURL: ${data.url}\nContainer: ${data.containerName}`);
       setDockerImage(''); setDockerName(''); setDockerEnv(''); setCustomDomain(''); setTunnelToken('');
       await loadSessions();
@@ -259,7 +259,7 @@ export default function SessionsManagerPanel() {
 
   return (
     <div className="space-y-6 mx-auto text-sm">
-      
+
       {/* Top Banner Area (Restores & Notifications) */}
       <div className="space-y-3">
         {sessions.length > 0 && (
@@ -283,10 +283,10 @@ export default function SessionsManagerPanel() {
 
       {/* Main Grid Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
+
         {/* LEFT COLUMN: Controls & Launchpad */}
         <div className="lg:col-span-4 space-y-6">
-          
+
           {/* Stats Widget */}
           <div className="glass rounded-2xl p-5 border border-white/10 grid grid-cols-2 gap-4">
             <div className="col-span-2 flex justify-between items-end border-b border-white/5 pb-3">
@@ -338,7 +338,7 @@ export default function SessionsManagerPanel() {
             <h3 className="font-semibold text-white flex items-center gap-2">
               <span>🐋</span> Deploy Container
             </h3>
-            
+
             <div className="space-y-3">
               <div>
                 <label className="text-[10px] text-white/50 font-bold uppercase block mb-1">Image URI</label>
@@ -376,6 +376,17 @@ export default function SessionsManagerPanel() {
                 </div>
               )}
 
+              <div>
+                <label className="text-[10px] text-white/50 font-bold uppercase block mb-1">Environment Variables</label>
+                <textarea
+                  value={dockerEnv}
+                  onChange={(e) => setDockerEnv(e.target.value)}
+                  rows={3}
+                  placeholder={"KEY=VALUE\nOTHER_KEY=123"}
+                  className="w-full px-3 py-2 rounded-lg bg-black/20 border border-white/10 text-white font-mono text-xs focus:border-indigo-500 outline-none resize-y"
+                />
+              </div>
+
               <button
                 onClick={deployCustomContainer}
                 disabled={loading}
@@ -389,18 +400,17 @@ export default function SessionsManagerPanel() {
 
         {/* RIGHT COLUMN: Active Workloads & Tabs */}
         <div className="lg:col-span-8 glass rounded-2xl border border-white/10 overflow-hidden flex flex-col h-full min-h-[600px]">
-          
+
           {/* Tabs Header */}
           <div className="flex overflow-x-auto border-b border-white/10 bg-white/5 scrollbar-hide">
             {(['all', 'docker', 'browser', 'terminal', 'vscode', 'android'] as TabType[]).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`px-5 py-3 text-xs font-semibold uppercase tracking-wider whitespace-nowrap transition-colors border-b-2 ${
-                  activeTab === tab 
-                    ? 'border-indigo-400 text-white bg-white/5' 
+                className={`px-5 py-3 text-xs font-semibold uppercase tracking-wider whitespace-nowrap transition-colors border-b-2 ${activeTab === tab
+                    ? 'border-indigo-400 text-white bg-white/5'
                     : 'border-transparent text-white/40 hover:text-white hover:bg-white/5'
-                }`}
+                  }`}
               >
                 {tab === 'all' ? 'All Workloads' : tab}
               </button>
@@ -409,7 +419,7 @@ export default function SessionsManagerPanel() {
 
           {/* Tab Content Area */}
           <div className="p-5 flex-1 overflow-y-auto space-y-3">
-            
+
             {/* Helper to render Session Cards cleanly */}
             {(() => {
               const SessionCard = ({ session, icon, accent }: { session: Session, icon: string, accent: string }) => (
@@ -426,7 +436,7 @@ export default function SessionsManagerPanel() {
                             {session.type.replace('-container', '')}
                           </span>
                         </div>
-                        
+
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs">
                           <div className="flex items-center gap-2 text-white/50 truncate">
                             🔗 <button onClick={() => copyToClipboard(session.metadata?.cloudflaredUrl || session.url)} className="hover:text-white truncate">{session.metadata?.cloudflaredUrl || session.url}</button>
@@ -453,7 +463,7 @@ export default function SessionsManagerPanel() {
                         </div>
                       </div>
                     </div>
-                    
+
                     <div className="flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                       {session.type === 'docker-container' && (
                         <button onClick={() => startEditing(session)} className="px-3 py-1.5 rounded-lg bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30 text-xs transition-colors">Edit</button>
@@ -520,12 +530,12 @@ export default function SessionsManagerPanel() {
       {editingSession && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
           <div className="w-full max-w-lg glass rounded-2xl border border-white/10 bg-[#0d1117] shadow-2xl flex flex-col max-h-[90vh]">
-            
+
             <div className="p-5 border-b border-white/10 flex justify-between items-center bg-white/5">
               <h3 className="font-semibold text-white flex items-center gap-2">⚙️ Edit Container Config</h3>
               <button onClick={() => setEditingSession(null)} className="text-white/40 hover:text-white p-1">✕</button>
             </div>
-            
+
             <div className="p-5 overflow-y-auto space-y-4">
               <div>
                 <label className="text-[10px] text-white/50 font-bold uppercase">Image URI</label>
@@ -578,7 +588,7 @@ export default function SessionsManagerPanel() {
                 {loading ? 'Redeploying...' : 'Save & Redeploy'}
               </button>
             </div>
-            
+
           </div>
         </div>
       )}
