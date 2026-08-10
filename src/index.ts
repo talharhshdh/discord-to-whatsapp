@@ -617,7 +617,7 @@ class DiscordWhatsAppBridge {
                 body: JSON.stringify({
                   text: 'site:talhacodes.site',
                   pageNumber: 1,
-                  engine: 'auto',
+                  engine: 'duckduckgo',
                   includeAI: false,
                   category: 'all'
                 })
