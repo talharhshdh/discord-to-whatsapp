@@ -7,6 +7,127 @@ import { Badge } from '@/components/ui/badge';
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
+export interface PlaceEntry {
+  place: PlaceResult;
+  isNew: boolean;
+}
+
+// Global state for scraped data
+let globalScrapedData: Record<string, any> = {};
+const scrapedDataListeners: Set<() => void> = new Set();
+
+function setGlobalScrapedData(url: string, data: any) {
+  globalScrapedData = { ...globalScrapedData, [url]: data };
+  scrapedDataListeners.forEach(l => l());
+}
+
+function useScrapedData() {
+  const [data, setData] = useState(globalScrapedData);
+  useEffect(() => {
+    const listener = () => setData(globalScrapedData);
+    scrapedDataListeners.add(listener);
+    return () => { scrapedDataListeners.delete(listener); };
+  }, []);
+  return data;
+}
+
+function BulkActions({ entries, streaming }: { entries: PlaceEntry[], streaming: boolean }) {
+  const scrapedData = useScrapedData();
+  const [isBulkScraping, setIsBulkScraping] = useState(false);
+
+  const handleBulkScrape = async () => {
+    setIsBulkScraping(true);
+    const urls = entries.map(e => e.place.website).filter(u => u && !scrapedData[u]);
+    const chunkSize = 3;
+    for (let i = 0; i < urls.length; i += chunkSize) {
+      if (!isBulkScraping) {
+        // Can't easily break without a ref, but it's ok for now
+      }
+      const chunk = urls.slice(i, i + chunkSize);
+      await Promise.all(chunk.map(async (url) => {
+        try {
+          const res = await api.scrapeContacts(url as string, 5, 5, '30s');
+          setGlobalScrapedData(url as string, res);
+        } catch(e) {}
+      }));
+    }
+    setIsBulkScraping(false);
+  };
+
+  const handleDownload = (format: 'json'|'csv') => {
+    const dataToExport = entries.map(e => {
+      const p = e.place;
+      const scrape = scrapedData[p.website || ''] || {};
+      return {
+        Name: p.name,
+        Category: p.category || '',
+        Address: p.address || '',
+        Phone: p.phone || '',
+        Website: p.website || '',
+        Rating: p.rating || '',
+        Reviews: p.reviewCount || '',
+        Hours: p.todaysHours || '',
+        ScrapedEmails: scrape.emails?.join(', ') || '',
+        ScrapedPhones: scrape.phones?.join(', ') || '',
+        ScrapedSocials: scrape.socials ? JSON.stringify(scrape.socials) : '',
+      };
+    });
+
+    if (dataToExport.length === 0) return;
+
+    if (format === 'json') {
+      const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `places_${new Date().getTime()}.json`;
+      a.click();
+    } else {
+      const header = Object.keys(dataToExport[0]).join(',');
+      const rows = dataToExport.map(obj => Object.values(obj).map(v => `"${String(v).replace(/"/g, '""')}"`).join(','));
+      const csv = [header, ...rows].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `places_${new Date().getTime()}.csv`;
+      a.click();
+    }
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Button 
+        onClick={handleBulkScrape} 
+        disabled={isBulkScraping || entries.length === 0 || streaming} 
+        size="sm" 
+        variant="outline" 
+        className="h-7 text-xs bg-[var(--accent-active-bg)] border-[var(--accent-active-border)] text-[var(--accent-active-text)] hover:opacity-80"
+      >
+        {isBulkScraping ? 'Scraping All...' : 'Scrape Contacts For All'}
+      </Button>
+      <Button 
+        onClick={() => handleDownload('csv')} 
+        disabled={entries.length === 0} 
+        size="sm" 
+        variant="outline" 
+        className="h-7 text-xs bg-[var(--btn-secondary-bg)] border-[var(--card-border)] text-[var(--text-main)] hover:bg-[var(--btn-secondary-hover)]"
+      >
+        Download CSV
+      </Button>
+      <Button 
+        onClick={() => handleDownload('json')} 
+        disabled={entries.length === 0} 
+        size="sm" 
+        variant="outline" 
+        className="h-7 text-xs bg-[var(--btn-secondary-bg)] border-[var(--card-border)] text-[var(--text-main)] hover:bg-[var(--btn-secondary-hover)]"
+      >
+        Download JSON
+      </Button>
+    </div>
+  );
+}
+
 function StarRating({ rating }: { rating: number }) {
   const full = Math.floor(rating);
   const half = rating - full >= 0.5;
@@ -51,13 +172,15 @@ function PlaceCard({ place, isNew }: { place: PlaceResult; isNew: boolean }) {
   const [expanded, setExpanded] = useState(false);
   
   // Scraper State
+  const globalScrapedData = useScrapedData();
   const [isScraping, setIsScraping] = useState(false);
-  const [scrapeResult, setScrapeResult] = useState<any>(null);
+  const scrapeResult = place.website ? globalScrapedData[place.website] : null;
 
   // Email State
   const [emailFormVisible, setEmailFormVisible] = useState(false);
   const [emailTarget, setEmailTarget] = useState('');
   const [emailSubject, setEmailSubject] = useState('Reaching out from Talha Codes');
+  const [emailBodyType, setEmailBodyType] = useState<'text' | 'html'>('text');
   const [emailText, setEmailText] = useState('Hello Team,\n\nWe would love to connect and see how our services can benefit your organization.\n\nBest regards,\nTalha');
   const [emailHtml, setEmailHtml] = useState('');
   const [isSendingEmail, setIsSendingEmail] = useState(false);
@@ -68,7 +191,7 @@ function PlaceCard({ place, isNew }: { place: PlaceResult; isNew: boolean }) {
     setIsScraping(true);
     try {
       const res = await api.scrapeContacts(place.website, 5, 5, '30s');
-      setScrapeResult(res);
+      setGlobalScrapedData(place.website, res);
     } catch (e: any) {
       alert("Error scraping contacts: " + e.message);
     } finally {
@@ -103,23 +226,24 @@ function PlaceCard({ place, isNew }: { place: PlaceResult; isNew: boolean }) {
     <Card
       className={`glass rounded-2xl border transition-all duration-500 overflow-hidden group ${
         isNew
-          ? 'border-[#0061FF]/40 shadow-lg shadow-[#0061FF]/10 animate-in fade-in slide-in-from-bottom-2 duration-400'
-          : 'border-white/[0.06] hover:border-white/[0.12]'
+          ? 'border-[var(--accent-active-border)] shadow-lg animate-in fade-in slide-in-from-bottom-2 duration-400'
+          : 'border-[var(--card-border)] hover:border-[var(--accent-active-border)]'
       }`}
+      style={{ backgroundColor: 'var(--card-bg)' }}
     >
       {/* Header */}
       <div className="p-5">
         <div className="flex items-start justify-between gap-3 mb-2">
           <div className="flex-1 min-w-0">
-            <CardTitle className="text-white font-semibold text-base leading-tight truncate group-hover:text-[#0061FF] transition-colors">
+            <CardTitle className="text-[var(--text-main)] font-semibold text-base leading-tight truncate group-hover:text-[var(--accent-active-text)] transition-colors">
               {place.name}
             </CardTitle>
             {place.category && (
-              <p className="text-xs text-white/40 mt-0.5">{place.category}</p>
+              <p className="text-xs text-[var(--text-muted)] mt-0.5">{place.category}</p>
             )}
           </div>
           {place.priceLevel && (
-            <Badge variant="outline" className="flex-shrink-0 text-xs font-bold text-[#00E5FF] bg-[#00E5FF]/10 border border-[#00E5FF]/20 px-2 py-0.5 rounded-lg">
+            <Badge variant="outline" className="flex-shrink-0 text-xs font-bold bg-[var(--accent-active-bg)] border-[var(--accent-active-border)] text-[var(--accent-active-text)] px-2 py-0.5 rounded-lg">
               {place.priceLevel}
             </Badge>
           )}
@@ -130,7 +254,7 @@ function PlaceCard({ place, isNew }: { place: PlaceResult; isNew: boolean }) {
             <span className="text-amber-400 font-bold text-sm">{place.rating.toFixed(1)}</span>
             <StarRating rating={place.rating} />
             {place.reviewCount !== null && (
-              <span className="text-xs text-white/35">
+              <span className="text-xs text-[var(--text-muted)]">
                 ({place.reviewCount.toLocaleString()} reviews)
               </span>
             )}
@@ -146,15 +270,15 @@ function PlaceCard({ place, isNew }: { place: PlaceResult; isNew: boolean }) {
 
         <div className="space-y-1.5">
           {place.address && (
-            <div className="flex items-start gap-2 text-xs text-white/55">
+            <div className="flex items-start gap-2 text-xs text-[var(--text-subtle)]">
               <span className="mt-0.5 flex-shrink-0">📍</span>
               <span>{place.address}</span>
             </div>
           )}
           {place.phone && (
-            <div className="flex items-center gap-2 text-xs text-white/55">
+            <div className="flex items-center gap-2 text-xs text-[var(--text-subtle)]">
               <span>📞</span>
-              <a href={`tel:${place.phone}`} className="hover:text-[#00E5FF] transition-colors">
+              <a href={`tel:${place.phone}`} className="hover:text-[var(--accent-active-text)] transition-colors">
                 {place.phone}
               </a>
             </div>
@@ -166,14 +290,14 @@ function PlaceCard({ place, isNew }: { place: PlaceResult; isNew: boolean }) {
                 href={place.website}
                 target="_blank"
                 rel="noreferrer"
-                className="text-[#0061FF] hover:underline truncate max-w-[240px]"
+                className="text-[var(--accent-active-text)] hover:underline truncate max-w-[240px]"
               >
                 {place.website.replace(/^https?:\/\//, '')}
               </a>
               <Button 
                 size="sm" 
                 variant="outline" 
-                className="h-6 text-[10px] px-2 ml-2 bg-[#0061FF]/10 border-[#0061FF]/20 text-[#0061FF] hover:bg-[#0061FF] hover:text-white"
+                className="h-6 text-[10px] px-2 ml-2 bg-[var(--accent-active-bg)] border-[var(--accent-active-border)] text-[var(--accent-active-text)] hover:opacity-80"
                 onClick={handleScrape}
                 disabled={isScraping}
               >
@@ -184,20 +308,20 @@ function PlaceCard({ place, isNew }: { place: PlaceResult; isNew: boolean }) {
         </div>
 
         {scrapeResult && (
-          <div className="mt-4 p-3 bg-white/[0.02] border border-white/[0.05] rounded-lg">
-            <p className="text-[10px] uppercase tracking-wider text-white/30 font-bold mb-2">Scraped Contacts</p>
+          <div className="mt-4 p-3 bg-[var(--code-bg)] border border-[var(--card-border)] rounded-lg">
+            <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-bold mb-2">Scraped Contacts</p>
             
             {scrapeResult.emails?.length > 0 ? (
               <div className="space-y-2 mb-2">
                 {scrapeResult.emails.map((email: string, i: number) => (
-                  <div key={i} className="flex items-center justify-between gap-2 bg-white/[0.03] p-1.5 rounded border border-white/[0.05]">
-                    <a href={`mailto:${email}`} className="text-xs text-[#00E5FF] hover:underline truncate">
+                  <div key={i} className="flex items-center justify-between gap-2 bg-[var(--btn-secondary-bg)] p-1.5 rounded border border-[var(--btn-secondary-border)]">
+                    <a href={`mailto:${email}`} className="text-xs text-[var(--accent-active-text)] hover:underline truncate">
                       {email}
                     </a>
                     <Button 
                       size="sm" 
                       variant="ghost" 
-                      className="h-6 px-2 text-[10px] bg-[#0061FF]/10 text-[#0061FF] hover:bg-[#0061FF] hover:text-white"
+                      className="h-6 px-2 text-[10px] bg-[var(--accent-active-bg)] text-[var(--accent-active-text)] hover:opacity-80"
                       onClick={() => openEmailForm(email)}
                     >
                       Send Custom Email
@@ -206,13 +330,13 @@ function PlaceCard({ place, isNew }: { place: PlaceResult; isNew: boolean }) {
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-white/40 mb-2">No emails found.</p>
+              <p className="text-xs text-[var(--text-muted)] mb-2">No emails found.</p>
             )}
 
             {scrapeResult.phones?.length > 0 && (
               <div className="flex flex-wrap gap-1 mb-2">
                 {scrapeResult.phones.map((p: string, i: number) => (
-                  <Badge key={i} variant="outline" className="text-[10px] bg-white/[0.05] border-white/[0.1] text-white/70">
+                  <Badge key={i} variant="outline" className="text-[10px] bg-[var(--btn-secondary-bg)] border-[var(--btn-secondary-border)] text-[var(--text-subtle)]">
                     📞 {p}
                   </Badge>
                 ))}
@@ -222,7 +346,7 @@ function PlaceCard({ place, isNew }: { place: PlaceResult; isNew: boolean }) {
             {scrapeResult.socials && Object.keys(scrapeResult.socials).length > 0 && (
               <div className="flex flex-wrap gap-1">
                 {Object.entries(scrapeResult.socials).map(([platform, url]) => (
-                  <a key={platform} href={url as string} target="_blank" rel="noreferrer" className="text-[10px] px-2 py-0.5 rounded-full bg-white/[0.05] border border-white/[0.1] text-white/70 hover:text-white transition-colors capitalize">
+                  <a key={platform} href={url as string} target="_blank" rel="noreferrer" className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--btn-secondary-bg)] border border-[var(--btn-secondary-border)] text-[var(--text-subtle)] hover:text-[var(--text-main)] transition-colors capitalize">
                     {platform} ↗
                   </a>
                 ))}
@@ -232,37 +356,67 @@ function PlaceCard({ place, isNew }: { place: PlaceResult; isNew: boolean }) {
         )}
 
         {emailFormVisible && (
-          <div className="mt-3 p-3 bg-[#0061FF]/5 border border-[#0061FF]/20 rounded-lg shadow-lg">
+          <div className="mt-3 p-3 bg-[var(--accent-active-bg)] border border-[var(--accent-active-border)] rounded-lg shadow-lg">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-bold text-white">Send Email to <span className="text-[#00E5FF]">{emailTarget}</span></p>
-              <Button size="sm" variant="ghost" className="h-5 w-5 p-0 text-white/40 hover:text-white" onClick={() => setEmailFormVisible(false)}>✕</Button>
+              <p className="text-xs font-bold text-[var(--text-main)]">Send Email to <span className="text-[var(--accent-active-text)]">{emailTarget}</span></p>
+              <Button size="sm" variant="ghost" className="h-5 w-5 p-0 text-[var(--text-muted)] hover:text-[var(--text-main)]" onClick={() => setEmailFormVisible(false)}>✕</Button>
             </div>
-            <form onSubmit={handleSendEmail} className="space-y-2">
-              <Input 
-                placeholder="Subject" 
-                value={emailSubject} 
-                onChange={e => setEmailSubject(e.target.value)}
-                required
-                className="h-8 text-xs bg-black/40 border-white/[0.1]"
-              />
-              <textarea 
-                placeholder="Plain Text Body" 
-                value={emailText} 
-                onChange={e => setEmailText(e.target.value)}
-                className="w-full h-20 p-2 text-xs bg-black/40 border border-white/[0.1] rounded-md text-white focus:outline-none focus:border-[#0061FF]"
-              />
-              <textarea 
-                placeholder="HTML Body (Optional)" 
-                value={emailHtml} 
-                onChange={e => setEmailHtml(e.target.value)}
-                className="w-full h-12 p-2 text-xs bg-black/40 border border-white/[0.1] rounded-md text-white font-mono focus:outline-none focus:border-[#0061FF]"
-              />
+            <form onSubmit={handleSendEmail} className="space-y-3">
+              <div>
+                <label className="block text-[10px] uppercase font-bold text-[var(--text-muted)] mb-1">Subject</label>
+                <Input 
+                  placeholder="Subject" 
+                  value={emailSubject} 
+                  onChange={e => setEmailSubject(e.target.value)}
+                  required
+                  className="h-8 text-xs bg-[var(--input-bg)] border-[var(--input-border)] text-[var(--input-text)]"
+                />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-[10px] uppercase font-bold text-[var(--text-muted)]">Body</label>
+                  <div className="flex bg-[var(--input-bg)] rounded border border-[var(--input-border)] overflow-hidden">
+                    <button 
+                      type="button"
+                      onClick={() => setEmailBodyType('text')}
+                      className={`px-2 py-0.5 text-[10px] ${emailBodyType === 'text' ? 'bg-[var(--accent-active-bg)] text-[var(--accent-active-text)] font-bold' : 'text-[var(--text-muted)] hover:bg-[var(--btn-secondary-bg)]'}`}
+                    >
+                      Plain Text
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => setEmailBodyType('html')}
+                      className={`px-2 py-0.5 text-[10px] ${emailBodyType === 'html' ? 'bg-[var(--accent-active-bg)] text-[var(--accent-active-text)] font-bold' : 'text-[var(--text-muted)] hover:bg-[var(--btn-secondary-bg)]'}`}
+                    >
+                      HTML
+                    </button>
+                  </div>
+                </div>
+
+                {emailBodyType === 'text' ? (
+                  <textarea 
+                    placeholder="Plain Text Body" 
+                    value={emailText} 
+                    onChange={e => setEmailText(e.target.value)}
+                    className="w-full h-24 p-2 text-xs bg-[var(--input-bg)] border border-[var(--input-border)] rounded-md text-[var(--input-text)] focus:outline-none focus:border-[var(--accent-active-border)] resize-none"
+                  />
+                ) : (
+                  <textarea 
+                    placeholder="HTML Body" 
+                    value={emailHtml} 
+                    onChange={e => setEmailHtml(e.target.value)}
+                    className="w-full h-24 p-2 text-xs bg-[var(--input-bg)] border border-[var(--input-border)] rounded-md text-[var(--input-text)] font-mono focus:outline-none focus:border-[var(--accent-active-border)] resize-none"
+                  />
+                )}
+              </div>
+
               <div className="flex items-center justify-between pt-1">
                 <span className="text-[10px]">
-                  {emailStatus?.type === 'success' && <span className="text-emerald-400">{emailStatus.msg}</span>}
-                  {emailStatus?.type === 'error' && <span className="text-red-400">{emailStatus.msg}</span>}
+                  {emailStatus?.type === 'success' && <span className="text-emerald-500">{emailStatus.msg}</span>}
+                  {emailStatus?.type === 'error' && <span className="text-red-500">{emailStatus.msg}</span>}
                 </span>
-                <Button type="submit" size="sm" disabled={isSendingEmail} className="h-7 text-xs bg-[#0061FF] text-white hover:bg-[#0061FF]/90 px-4">
+                <Button type="submit" size="sm" disabled={isSendingEmail} className="h-7 text-xs bg-[var(--accent-active-bg)] text-[var(--accent-active-text)] hover:opacity-90 px-4">
                   {isSendingEmail ? 'Sending...' : 'Send'}
                 </Button>
               </div>
@@ -271,7 +425,7 @@ function PlaceCard({ place, isNew }: { place: PlaceResult; isNew: boolean }) {
         )}
 
         {place.description && (
-          <p className="mt-3 text-xs text-white/50 leading-relaxed line-clamp-2">
+          <p className="mt-3 text-xs text-[var(--text-subtle)] leading-relaxed line-clamp-2">
             {place.description}
           </p>
         )}
@@ -282,22 +436,22 @@ function PlaceCard({ place, isNew }: { place: PlaceResult; isNew: boolean }) {
           <Button
             onClick={() => setExpanded((v) => !v)}
             variant="ghost"
-            className="w-full px-5 py-2 h-auto flex items-center justify-between text-xs text-white/35 hover:text-white/60 border-t border-white/[0.05] hover:bg-white/[0.02] rounded-none transition-all font-normal"
+            className="w-full px-5 py-2 h-auto flex items-center justify-between text-xs text-[var(--text-subtle)] hover:text-[var(--text-main)] border-t border-[var(--card-border)] hover:bg-[var(--btn-secondary-bg)] rounded-none transition-all font-normal"
           >
             <span>{expanded ? 'Show less' : 'More details'}</span>
             <span className={`transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}>▾</span>
           </Button>
 
           {expanded && (
-            <div className="px-5 pb-5 space-y-4 border-t border-white/[0.04] pt-4">
+            <div className="px-5 pb-5 space-y-4 border-t border-[var(--card-border)] pt-4">
               {place.weeklyHours && Object.keys(place.weeklyHours).length > 0 && (
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider text-white/30 mb-2 font-bold">Hours</p>
+                  <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-2 font-bold">Hours</p>
                   <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                     {Object.entries(place.weeklyHours).map(([day, hrs]) => (
                       <div key={day} className="flex justify-between gap-2 text-xs">
-                        <span className="text-white/50 font-medium">{day}</span>
-                        <span className="text-white/35 text-right">{hrs}</span>
+                        <span className="text-[var(--text-subtle)] font-medium">{day}</span>
+                        <span className="text-[var(--text-muted)] text-right">{hrs}</span>
                       </div>
                     ))}
                   </div>
@@ -306,10 +460,10 @@ function PlaceCard({ place, isNew }: { place: PlaceResult; isNew: boolean }) {
 
               {(place.amenities?.length ?? 0) > 0 && (
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider text-white/30 mb-2 font-bold">Amenities</p>
+                  <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-2 font-bold">Amenities</p>
                   <div className="flex flex-wrap gap-1.5">
                     {place.amenities.map((a, i) => (
-                      <Badge key={i} variant="outline" className="text-[10px] bg-white/[0.04] border border-white/[0.07] text-white/50 px-2 py-0.5 rounded-full font-normal">
+                      <Badge key={i} variant="outline" className="text-[10px] bg-[var(--btn-secondary-bg)] border-[var(--card-border)] text-[var(--text-subtle)] px-2 py-0.5 rounded-full font-normal">
                         {a}
                       </Badge>
                     ))}
@@ -319,8 +473,8 @@ function PlaceCard({ place, isNew }: { place: PlaceResult; isNew: boolean }) {
 
               {place.lat !== null && place.lng !== null && (
                 <div className="flex items-center gap-3">
-                  <p className="text-[10px] uppercase tracking-wider text-white/30 font-bold">Coordinates</p>
-                  <p className="text-xs text-white/40 font-mono">
+                  <p className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-bold">Coordinates</p>
+                  <p className="text-xs text-[var(--text-subtle)] font-mono">
                     {place.lat.toFixed(6)}, {place.lng.toFixed(6)}
                   </p>
                 </div>
@@ -328,17 +482,17 @@ function PlaceCard({ place, isNew }: { place: PlaceResult; isNew: boolean }) {
 
               <div className="flex flex-wrap gap-2">
                 {place.hasPopularTimes && (
-                  <Badge variant="outline" className="text-[10px] text-purple-400 bg-purple-400/10 border border-purple-400/20 px-2 py-0.5 rounded-full font-normal">
+                  <Badge variant="outline" className="text-[10px] text-purple-600 dark:text-purple-400 bg-purple-500/10 border-purple-500/20 px-2 py-0.5 rounded-full font-normal">
                     📊 Popular times
                   </Badge>
                 )}
                 {place.photosCount !== null && (
-                  <Badge variant="outline" className="text-[10px] text-white/35 bg-white/[0.04] border border-white/[0.07] px-2 py-0.5 rounded-full font-normal">
+                  <Badge variant="outline" className="text-[10px] text-[var(--text-muted)] bg-[var(--btn-secondary-bg)] border-[var(--card-border)] px-2 py-0.5 rounded-full font-normal">
                     🖼 {place.photosCount.toLocaleString()} photos
                   </Badge>
                 )}
                 {place.placeId && (
-                  <Badge variant="outline" className="text-[10px] text-white/25 bg-white/[0.03] border border-white/[0.05] px-2 py-0.5 rounded-full font-mono font-normal">
+                  <Badge variant="outline" className="text-[10px] text-[var(--text-muted)] bg-[var(--btn-secondary-bg)] border-[var(--card-border)] px-2 py-0.5 rounded-full font-mono font-normal">
                     ID: {place.placeId.slice(0, 24)}…
                   </Badge>
                 )}
@@ -349,12 +503,12 @@ function PlaceCard({ place, isNew }: { place: PlaceResult; isNew: boolean }) {
       )}
 
       {place.mapsUrl && (
-        <div className="px-5 py-3 border-t border-white/[0.04] flex justify-end">
+        <div className="px-5 py-3 border-t border-[var(--card-border)] flex justify-end">
           <a
             href={place.mapsUrl}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1.5 text-xs text-[#0061FF] hover:text-[#00E5FF] transition-colors font-medium"
+            className="inline-flex items-center gap-1.5 text-xs text-[var(--accent-active-text)] hover:opacity-80 transition-colors font-medium"
           >
             Open in Maps ↗
           </a>
@@ -717,10 +871,7 @@ function PaginatedPanel() {
 
 type GsSubMode = 'stream' | 'paginated';
 
-interface PlaceEntry {
-  place: PlaceResult;
-  isNew: boolean;
-}
+
 
 function GoogleSearchPanel() {
   const [subMode, setSubMode] = useState<GsSubMode>('stream');
@@ -1179,11 +1330,14 @@ export default function PlacesPanel() {
               {entries.length} place{entries.length !== 1 ? 's' : ''}
               {streaming && <span className="ml-2 text-[#0061FF] animate-pulse">● live</span>}
             </span>
-            {done && !streaming && (
-              <Badge variant="outline" className="text-xs text-emerald-400/70 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full font-normal">
-                ✓ Complete
-              </Badge>
-            )}
+            <div className="flex items-center gap-3">
+              <BulkActions entries={entries} streaming={streaming} />
+              {done && !streaming && (
+                <Badge variant="outline" className="text-xs text-emerald-400/70 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full font-normal">
+                  ✓ Complete
+                </Badge>
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

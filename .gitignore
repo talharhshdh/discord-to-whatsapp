@@ -20,6 +20,7 @@ src/libs/test-cookie-search.js
 npm-debug.log*
 
 # Docker
+dashboard/.env.local
 
 
 # IDE
