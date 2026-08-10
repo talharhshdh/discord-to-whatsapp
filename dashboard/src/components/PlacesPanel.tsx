@@ -49,6 +49,55 @@ function StatusBadge({ openNow }: { openNow: boolean | null }) {
 
 function PlaceCard({ place, isNew }: { place: PlaceResult; isNew: boolean }) {
   const [expanded, setExpanded] = useState(false);
+  
+  // Scraper State
+  const [isScraping, setIsScraping] = useState(false);
+  const [scrapeResult, setScrapeResult] = useState<any>(null);
+
+  // Email State
+  const [emailFormVisible, setEmailFormVisible] = useState(false);
+  const [emailTarget, setEmailTarget] = useState('');
+  const [emailSubject, setEmailSubject] = useState('Reaching out from Talha Codes');
+  const [emailText, setEmailText] = useState('Hello Team,\n\nWe would love to connect and see how our services can benefit your organization.\n\nBest regards,\nTalha');
+  const [emailHtml, setEmailHtml] = useState('');
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [emailStatus, setEmailStatus] = useState<{type: 'success'|'error', msg: string} | null>(null);
+
+  const handleScrape = async () => {
+    if (!place.website) return;
+    setIsScraping(true);
+    try {
+      const res = await api.scrapeContacts(place.website, 5, 5, '30s');
+      setScrapeResult(res);
+    } catch (e: any) {
+      alert("Error scraping contacts: " + e.message);
+    } finally {
+      setIsScraping(false);
+    }
+  };
+
+  const openEmailForm = (email: string) => {
+    setEmailTarget(email);
+    setEmailFormVisible(true);
+    setEmailStatus(null);
+  };
+
+  const handleSendEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSendingEmail(true);
+    setEmailStatus(null);
+    try {
+      const res = await api.sendEmail(emailTarget, emailSubject, emailText, emailHtml);
+      if (res.success) {
+        setEmailStatus({ type: 'success', msg: 'Email sent successfully!' });
+        setTimeout(() => setEmailFormVisible(false), 2000);
+      }
+    } catch (e: any) {
+      setEmailStatus({ type: 'error', msg: e.message || 'Failed to send email' });
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
 
   return (
     <Card
@@ -121,9 +170,105 @@ function PlaceCard({ place, isNew }: { place: PlaceResult; isNew: boolean }) {
               >
                 {place.website.replace(/^https?:\/\//, '')}
               </a>
+              <Button 
+                size="sm" 
+                variant="outline" 
+                className="h-6 text-[10px] px-2 ml-2 bg-[#0061FF]/10 border-[#0061FF]/20 text-[#0061FF] hover:bg-[#0061FF] hover:text-white"
+                onClick={handleScrape}
+                disabled={isScraping}
+              >
+                {isScraping ? 'Scraping...' : 'Scrape Contacts'}
+              </Button>
             </div>
           )}
         </div>
+
+        {scrapeResult && (
+          <div className="mt-4 p-3 bg-white/[0.02] border border-white/[0.05] rounded-lg">
+            <p className="text-[10px] uppercase tracking-wider text-white/30 font-bold mb-2">Scraped Contacts</p>
+            
+            {scrapeResult.emails?.length > 0 ? (
+              <div className="space-y-2 mb-2">
+                {scrapeResult.emails.map((email: string, i: number) => (
+                  <div key={i} className="flex items-center justify-between gap-2 bg-white/[0.03] p-1.5 rounded border border-white/[0.05]">
+                    <a href={`mailto:${email}`} className="text-xs text-[#00E5FF] hover:underline truncate">
+                      {email}
+                    </a>
+                    <Button 
+                      size="sm" 
+                      variant="ghost" 
+                      className="h-6 px-2 text-[10px] bg-[#0061FF]/10 text-[#0061FF] hover:bg-[#0061FF] hover:text-white"
+                      onClick={() => openEmailForm(email)}
+                    >
+                      Send Custom Email
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-white/40 mb-2">No emails found.</p>
+            )}
+
+            {scrapeResult.phones?.length > 0 && (
+              <div className="flex flex-wrap gap-1 mb-2">
+                {scrapeResult.phones.map((p: string, i: number) => (
+                  <Badge key={i} variant="outline" className="text-[10px] bg-white/[0.05] border-white/[0.1] text-white/70">
+                    📞 {p}
+                  </Badge>
+                ))}
+              </div>
+            )}
+            
+            {scrapeResult.socials && Object.keys(scrapeResult.socials).length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {Object.entries(scrapeResult.socials).map(([platform, url]) => (
+                  <a key={platform} href={url as string} target="_blank" rel="noreferrer" className="text-[10px] px-2 py-0.5 rounded-full bg-white/[0.05] border border-white/[0.1] text-white/70 hover:text-white transition-colors capitalize">
+                    {platform} ↗
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {emailFormVisible && (
+          <div className="mt-3 p-3 bg-[#0061FF]/5 border border-[#0061FF]/20 rounded-lg shadow-lg">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-bold text-white">Send Email to <span className="text-[#00E5FF]">{emailTarget}</span></p>
+              <Button size="sm" variant="ghost" className="h-5 w-5 p-0 text-white/40 hover:text-white" onClick={() => setEmailFormVisible(false)}>✕</Button>
+            </div>
+            <form onSubmit={handleSendEmail} className="space-y-2">
+              <Input 
+                placeholder="Subject" 
+                value={emailSubject} 
+                onChange={e => setEmailSubject(e.target.value)}
+                required
+                className="h-8 text-xs bg-black/40 border-white/[0.1]"
+              />
+              <textarea 
+                placeholder="Plain Text Body" 
+                value={emailText} 
+                onChange={e => setEmailText(e.target.value)}
+                className="w-full h-20 p-2 text-xs bg-black/40 border border-white/[0.1] rounded-md text-white focus:outline-none focus:border-[#0061FF]"
+              />
+              <textarea 
+                placeholder="HTML Body (Optional)" 
+                value={emailHtml} 
+                onChange={e => setEmailHtml(e.target.value)}
+                className="w-full h-12 p-2 text-xs bg-black/40 border border-white/[0.1] rounded-md text-white font-mono focus:outline-none focus:border-[#0061FF]"
+              />
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-[10px]">
+                  {emailStatus?.type === 'success' && <span className="text-emerald-400">{emailStatus.msg}</span>}
+                  {emailStatus?.type === 'error' && <span className="text-red-400">{emailStatus.msg}</span>}
+                </span>
+                <Button type="submit" size="sm" disabled={isSendingEmail} className="h-7 text-xs bg-[#0061FF] text-white hover:bg-[#0061FF]/90 px-4">
+                  {isSendingEmail ? 'Sending...' : 'Send'}
+                </Button>
+              </div>
+            </form>
+          </div>
+        )}
 
         {place.description && (
           <p className="mt-3 text-xs text-white/50 leading-relaxed line-clamp-2">

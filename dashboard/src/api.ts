@@ -560,6 +560,8 @@ export const api = {
     post<{ success: boolean; jobsCount: number; jobs: any[] }>('/api/scrape/indeed', { query, location, pages }),
   scrapeContacts: (url: string, maxPages = 50, workers = 10, timeout = '30s') =>
     post<any>('/api/scrape/contacts', { url, maxPages, workers, timeout }),
+  sendEmail: (to: string, subject: string, text?: string, html?: string) =>
+    post<{ success: boolean; messageId?: string }>('/api/email/send', { to, subject, text, html }),
   getAutomatedJobs: () =>
     authFetch(`${BASE}/api/jobs/automated`).then(r => {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);

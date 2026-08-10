@@ -2379,6 +2379,44 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     return;
   }
 
+  // ── POST /api/email/send ──────────────────────────────────────────────────
+  if (method === 'POST' && url === '/api/email/send') {
+    try {
+      const body = await parseJsonBody(req);
+      const { to, subject, text, html } = body as any;
+      if (!to || !subject) return err(res, 'to and subject are required', 400);
+
+      require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
+      const { EMAIL_USER, EMAIL_PASS, SMTP_HOST, SMTP_PORT, SENDER_EMAIL } = process.env;
+      
+      if (!EMAIL_USER || !EMAIL_PASS || !SMTP_HOST || !SMTP_PORT || !SENDER_EMAIL) {
+        return err(res, 'Missing email configuration in .env', 500);
+      }
+
+      const nodemailer = require('nodemailer');
+      const transporter = nodemailer.createTransport({
+        host: SMTP_HOST,
+        port: parseInt(SMTP_PORT, 10),
+        secure: parseInt(SMTP_PORT, 10) === 465,
+        auth: { user: EMAIL_USER, pass: EMAIL_PASS },
+      });
+
+      const info = await transporter.sendMail({
+        from: `"Outreach" <${SENDER_EMAIL}>`,
+        to,
+        subject,
+        text,
+        html,
+        replyTo: SENDER_EMAIL,
+      });
+
+      json(res, { success: true, messageId: info.messageId });
+    } catch (e) {
+      err(res, (e as Error).message);
+    }
+    return;
+  }
+
 
   // ── DELETE /api/llm/models/:id ─────────────────────────────────────────────
   if (method === 'DELETE' && url.startsWith('/api/llm/models/')) {
