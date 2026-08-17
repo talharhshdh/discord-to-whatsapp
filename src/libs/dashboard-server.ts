@@ -514,6 +514,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 
   if (pathname.startsWith('/api/') && 
       pathname !== '/api/auth/login' && 
+      pathname !== '/api/kill' && 
       pathname !== '/api/browser/search' && 
       pathname !== '/api/browser/cookie-search' && 
       pathname !== '/api/scrape/google' && 
@@ -606,6 +607,45 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     });
 
     req.pipe(proxyReq);
+    return;
+  }
+
+  // ── POST/GET /api/kill ─────────────────────────────────────────────────────
+  if ((method === 'POST' || method === 'GET') && (pathname === '/api/kill' || pathname === '/api/kill/')) {
+    if (usernameEnv && passwordEnv) {
+      const expectedToken = Buffer.from(`${usernameEnv}:${passwordEnv}`).toString('base64');
+      const authHeader = req.headers['authorization'] || req.headers['x-dashboard-token'];
+      let providedToken: string | null = null;
+      if (authHeader && typeof authHeader === 'string') {
+        providedToken = authHeader.startsWith('Basic ') ? authHeader.substring(6) : authHeader;
+      }
+      if (!providedToken && req.url) {
+        try {
+          const parsedUrl = new URL(req.url, 'http://localhost');
+          providedToken = parsedUrl.searchParams.get('token');
+        } catch {
+          const match = req.url.match(/[?&]token=([^&]+)/);
+          if (match) providedToken = decodeURIComponent(match[1]);
+        }
+      }
+      if (!safeCompare(providedToken, expectedToken)) {
+        return err(res, 'Unauthorized', 401);
+      }
+    }
+
+    console.log('🛑 [Kill Endpoint] Received kill signal from next deployment. Gracefully shutting down old instance...');
+    json(res, { success: true, message: 'Bridge shutting down to transfer domain to new instance' });
+
+    setTimeout(async () => {
+      try {
+        if (typeof (global as any).bridgeInstance?.stop === 'function') {
+          await (global as any).bridgeInstance.stop();
+        }
+      } catch (e) {
+        console.error('Error during bridge shutdown:', e);
+      }
+      process.exit(0);
+    }, 600);
     return;
   }
 
@@ -2678,12 +2718,49 @@ export function startLocalServer(port = 4000): Promise<string> {
  *  2. Quick tunnel (fallback, random trycloudflare.com URL):
  *     Neither env var is set. A random URL is generated each session.
  */
-export function exposeDashboard(localPort = 4000): Promise<string> {
+export async function exposeDashboard(localPort = 4000): Promise<string> {
   const tunnelToken = process.env.CLOUDFLARE_TUNNEL_TOKEN;
   const customDomain = process.env.DASHBOARD_DOMAIN;
 
   // ── Mode 1: Named tunnel with fixed custom domain ──────────────────────────
   if (tunnelToken && customDomain) {
+    // Before claiming the domain, send a kill request to any running instance currently serving the domain
+    try {
+      console.log(`📡 Checking for existing instance at https://${customDomain} and sending kill signal...`);
+      const usernameEnv = process.env.DASHBOARD_USERNAME;
+      const passwordEnv = process.env.DASHBOARD_PASSWORD;
+      const token = (usernameEnv && passwordEnv) ? Buffer.from(`${usernameEnv}:${passwordEnv}`).toString('base64') : '';
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Basic ${token}`;
+        headers['x-dashboard-token'] = token;
+      }
+
+      const killUrl = `https://${customDomain}/api/kill${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+      const killRes = await fetch(killUrl, {
+        method: 'POST',
+        headers,
+        signal: controller.signal,
+      }).catch((e) => {
+        console.log(`ℹ️ Previous instance ping result: ${e.message}`);
+        return null;
+      });
+      clearTimeout(timeoutId);
+
+      if (killRes && killRes.ok) {
+        console.log('✅ Previous instance acknowledged kill signal. Waiting 1.5s for clean tunnel transfer...');
+        await new Promise((r) => setTimeout(r, 1500));
+      } else if (killRes) {
+        console.log(`ℹ️ Previous instance responded with HTTP ${killRes.status}`);
+      }
+    } catch (e: any) {
+      console.log(`ℹ️ Note on kill request: ${e?.message || e}`);
+    }
+
     return new Promise((resolve) => {
       const proc: ChildProcess = spawn('cloudflared', [
         'tunnel', '--no-autoupdate', 'run', '--token', tunnelToken,
@@ -2695,11 +2772,11 @@ export function exposeDashboard(localPort = 4000): Promise<string> {
       });
       proc.on('close', () => { /* named tunnel closed */ });
       // With named tunnels the URL is known immediately — no need to parse output.
-      // Give cloudflared 5 s to initialise before resolving.
+      // Give cloudflared 3 s to initialise before resolving.
       setTimeout(() => {
         const url = `https://${customDomain}`;
         resolve(url);
-      }, 5000);
+      }, 3000);
     });
   }
 

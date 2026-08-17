@@ -2004,6 +2004,11 @@ class DiscordWhatsAppBridge {
 
   public async stop(): Promise<void> {
     lol('🛑 Shutting down bridge...');
+    try {
+      this.saveProcessedMessageIds();
+    } catch (e) {
+      console.error('Error saving processed message IDs on stop:', e);
+    }
     if (this.googleSearchKeeperInterval) {
       clearInterval(this.googleSearchKeeperInterval);
       this.googleSearchKeeperInterval = null;
@@ -2020,6 +2025,7 @@ class DiscordWhatsAppBridge {
 
 // Start the bridge
 const bridge = new DiscordWhatsAppBridge();
+(global as any).bridgeInstance = bridge;
 
 // Handle graceful shutdown
 process.on('SIGINT', async () => {
