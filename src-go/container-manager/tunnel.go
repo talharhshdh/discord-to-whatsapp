@@ -36,6 +36,55 @@ type TunnelResult struct {
 	CloudflaredURL string
 }
 
+func cleanCustomDomainAndHostname(input string) (string, string) {
+	input = strings.TrimSpace(input)
+	input = strings.Trim(input, "\"'`")
+	// Remove protocol
+	clean := strings.TrimPrefix(input, "https://")
+	clean = strings.TrimPrefix(clean, "http://")
+	// Remove trailing paths / queries / ports
+	if idx := strings.Index(clean, "/"); idx != -1 {
+		clean = clean[:idx]
+	}
+	if idx := strings.Index(clean, "?"); idx != -1 {
+		clean = clean[:idx]
+	}
+	if idx := strings.Index(clean, ":"); idx != -1 {
+		clean = clean[:idx]
+	}
+	hostname := strings.ToLower(strings.TrimSpace(strings.Trim(clean, "./")))
+	if hostname == "" {
+		hostname = "localhost"
+	}
+	targetURL := "https://" + hostname
+	return targetURL, hostname
+}
+
+func extractTunnelIDFromToken(token string) string {
+	token = strings.TrimSpace(strings.Trim(token, "\"'`"))
+	if token == "" {
+		return ""
+	}
+	// Try standard base64 and URL-safe base64 decoders
+	var decoders = []*base64.Encoding{
+		base64.StdEncoding,
+		base64.RawStdEncoding,
+		base64.URLEncoding,
+		base64.RawURLEncoding,
+	}
+	for _, enc := range decoders {
+		if decodedBytes, err := enc.DecodeString(token); err == nil {
+			var decoded map[string]interface{}
+			if err := json.Unmarshal(decodedBytes, &decoded); err == nil {
+				if t, ok := decoded["t"].(string); ok && t != "" {
+					return t
+				}
+			}
+		}
+	}
+	return ""
+}
+
 func callCloudflareAPI(method, urlStr string, body []byte, apiToken string) (map[string]interface{}, error) {
 	var bodyReader *bytes.Buffer
 	if body != nil {
@@ -101,22 +150,29 @@ func provisionTunnel(opts TunnelOptions) (TunnelResult, error) {
 	}
 
 	if opts.DomainMode == "custom" {
-		res.CloudflaredURL = opts.CustomDomain
-		if !strings.HasPrefix(res.CloudflaredURL, "http") {
-			res.CloudflaredURL = "https://" + res.CloudflaredURL
+		if strings.TrimSpace(opts.CustomDomain) == "" {
+			return res, errors.New("custom domain is required when domain mode is custom")
 		}
-		hostnameOnly := strings.TrimPrefix(strings.TrimPrefix(res.CloudflaredURL, "https://"), "http://")
+
+		targetURL, hostnameOnly := cleanCustomDomainAndHostname(opts.CustomDomain)
+		res.CloudflaredURL = targetURL
+		log.Printf("[Cloudflare Tunnel] Custom domain configured: %s (hostname: %s)", targetURL, hostnameOnly)
 
 		accountID := getSanitizedEnv("CLOUDFLARE_ACCOUNT_ID")
 		zoneID := getSanitizedEnv("CLOUDFLARE_ZONE_ID")
 		apiToken := getSanitizedEnv("CLOUDFLARE_API_TOKEN")
 
-		res.TunnelToken = opts.OldTunnelToken
-		res.TunnelID = opts.OldTunnelID
+		res.TunnelToken = strings.TrimSpace(opts.OldTunnelToken)
+		res.TunnelID = strings.TrimSpace(opts.OldTunnelID)
 
-		if !opts.ReuseTunnel || res.TunnelToken == "" {
+		if res.TunnelID == "" && res.TunnelToken != "" {
+			res.TunnelID = extractTunnelIDFromToken(res.TunnelToken)
+		}
+
+		// If no tunnel token is provided (or not reusing a token), auto-configure a new Cloudflare Named Tunnel
+		if res.TunnelToken == "" {
 			if accountID == "" || zoneID == "" || apiToken == "" {
-				return res, errors.New("missing Cloudflare Credentials (CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_ZONE_ID, CLOUDFLARE_API_TOKEN)")
+				return res, errors.New("missing Cloudflare Credentials (CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_ZONE_ID, CLOUDFLARE_API_TOKEN) in environment to auto-configure custom domain")
 			}
 
 			log.Printf("[Cloudflare Tunnel] Auto-configuring Cloudflare Tunnel for %s...", opts.ServiceName)
@@ -125,7 +181,15 @@ func provisionTunnel(opts TunnelOptions) (TunnelResult, error) {
 				return res, fmt.Errorf("failed to generate secure random bytes: %w", err)
 			}
 			tSecretBase64 := base64.StdEncoding.EncodeToString(tSecretBytes)
-			tunnelName := fmt.Sprintf("tunnel-%s-%s-%s", opts.CleanName, opts.SessionHash, generateHash())
+
+			cleanName := regexp.MustCompile(`[^a-zA-Z0-9_-]`).ReplaceAllString(opts.CleanName, "_")
+			if cleanName == "" {
+				cleanName = "custom-app"
+			}
+			tunnelName := fmt.Sprintf("tunnel-%s-%s", cleanName, opts.SessionHash)
+			if len(tunnelName) > 120 {
+				tunnelName = tunnelName[:120]
+			}
 
 			// 1. Create Tunnel
 			tBody, _ := json.Marshal(map[string]string{
@@ -143,12 +207,13 @@ func provisionTunnel(opts TunnelOptions) (TunnelResult, error) {
 			if res.TunnelID == "" {
 				return res, errors.New("cloudflare tunnel ID not returned in response")
 			}
+			log.Printf("[Cloudflare Tunnel] Created Cloudflare Tunnel: %s", res.TunnelID)
 
-			// 2. Configure Ingress Rules
+			// 2. Configure Ingress Rules (Matching Node custom-container.ts: http://localhost:<port>)
 			ingressBody, _ := json.Marshal(map[string]interface{}{
 				"config": map[string]interface{}{
 					"ingress": []map[string]interface{}{
-						{"hostname": hostnameOnly, "service": fmt.Sprintf("http://127.0.0.1:%d", opts.HostPort)},
+						{"hostname": hostnameOnly, "service": fmt.Sprintf("http://localhost:%d", opts.HostPort)},
 						{"service": "http_status:404"},
 					},
 				},
@@ -160,18 +225,18 @@ func provisionTunnel(opts TunnelOptions) (TunnelResult, error) {
 				_ = deleteCloudflareTunnelOnly(res.TunnelID, accountID, apiToken)
 				return res, fmt.Errorf("failed to configure ingress rules: %w", err)
 			}
+			log.Printf("[Cloudflare Tunnel] Cloudflare Ingress Rules configured for %s -> localhost:%d", hostnameOnly, opts.HostPort)
 
 			// 3. Create or Update DNS CNAME Mapping
+			// Search for any existing DNS record with this hostname (without restricting type=CNAME)
 			var dnsRecordID = ""
-			dnsListUrl := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/dns_records?name=%s&type=CNAME", zoneID, hostnameOnly)
+			dnsListUrl := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/dns_records?name=%s", zoneID, hostnameOnly)
 			dnsListRes, err := callCloudflareAPI("GET", dnsListUrl, nil, apiToken)
-			if err != nil {
-				_ = deleteCloudflareTunnelOnly(res.TunnelID, accountID, apiToken)
-				return res, fmt.Errorf("failed to list DNS records: %w", err)
-			}
-			if results, ok := dnsListRes["result"].([]interface{}); ok && len(results) > 0 {
-				if record, ok := results[0].(map[string]interface{}); ok {
-					dnsRecordID, _ = record["id"].(string)
+			if err == nil {
+				if results, ok := dnsListRes["result"].([]interface{}); ok && len(results) > 0 {
+					if record, ok := results[0].(map[string]interface{}); ok {
+						dnsRecordID, _ = record["id"].(string)
+					}
 				}
 			}
 
@@ -193,8 +258,10 @@ func provisionTunnel(opts TunnelOptions) (TunnelResult, error) {
 			})
 			_, err = callCloudflareAPI(dnsMethod, dnsUrl, dnsBody, apiToken)
 			if err != nil {
-				_ = deleteCloudflareTunnelOnly(res.TunnelID, accountID, apiToken)
-				return res, fmt.Errorf("failed to set DNS CNAME record: %w", err)
+				// Log DNS warning instead of fatally destroying the tunnel, matching custom-container.ts behavior
+				log.Printf("[Cloudflare Tunnel] Warning: DNS record creation/update returned: %v (tunnel is active)", err)
+			} else {
+				log.Printf("[Cloudflare Tunnel] DNS Record mapped %s -> %s.cfargotunnel.com", hostnameOnly, res.TunnelID)
 			}
 
 			// Token base64
@@ -202,23 +269,13 @@ func provisionTunnel(opts TunnelOptions) (TunnelResult, error) {
 			tokenJson, _ := json.Marshal(tokenPayload)
 			res.TunnelToken = base64.StdEncoding.EncodeToString(tokenJson)
 		} else {
-			if res.TunnelID == "" && res.TunnelToken != "" {
-				if decodedBytes, err := base64.StdEncoding.DecodeString(res.TunnelToken); err == nil {
-					var decoded map[string]interface{}
-					if err := json.Unmarshal(decodedBytes, &decoded); err == nil {
-						if t, ok := decoded["t"].(string); ok {
-							res.TunnelID = t
-						}
-					}
-				}
-			}
-
+			// Tunnel token is already present (reused or provided)
 			if res.TunnelID != "" && accountID != "" && apiToken != "" {
-				log.Printf("[Cloudflare Tunnel] Updating Ingress Rules for existing Cloudflare Tunnel %s...", res.TunnelID)
+				log.Printf("[Cloudflare Tunnel] Updating Ingress Rules for existing Cloudflare Tunnel %s to point to port %d...", res.TunnelID, opts.HostPort)
 				ingressBody, _ := json.Marshal(map[string]interface{}{
 					"config": map[string]interface{}{
 						"ingress": []map[string]interface{}{
-							{"hostname": hostnameOnly, "service": fmt.Sprintf("http://127.0.0.1:%d", opts.HostPort)},
+							{"hostname": hostnameOnly, "service": fmt.Sprintf("http://localhost:%d", opts.HostPort)},
 							{"service": "http_status:404"},
 						},
 					},
@@ -226,15 +283,19 @@ func provisionTunnel(opts TunnelOptions) (TunnelResult, error) {
 				urlStr := fmt.Sprintf("https://api.cloudflare.com/client/v4/accounts/%s/cfd_tunnel/%s/configurations", accountID, res.TunnelID)
 				_, err := callCloudflareAPI("PUT", urlStr, ingressBody, apiToken)
 				if err != nil {
-					return res, fmt.Errorf("failed to update ingress rules: %w", err)
+					log.Printf("[Cloudflare Tunnel] Warning: Failed to update ingress rules on reused tunnel: %v", err)
+				} else {
+					log.Printf("[Cloudflare Tunnel] Ingress Rules updated on reused tunnel.")
 				}
 			}
 		}
 
 		if res.TunnelToken != "" {
+			log.Printf("[Cloudflare Tunnel] Starting Cloudflare Named Tunnel for %s...", targetURL)
 			tCmd := exec.Command("cloudflared", "tunnel", "--no-autoupdate", "run", "--token", res.TunnelToken)
 			if err := tCmd.Start(); err == nil {
 				res.TunnelPid = tCmd.Process.Pid
+				log.Printf("[Cloudflare Tunnel] Tunnel process started with PID %d", res.TunnelPid)
 				return res, nil
 			} else {
 				return res, fmt.Errorf("failed to start cloudflared tunnel command: %w", err)
@@ -244,7 +305,7 @@ func provisionTunnel(opts TunnelOptions) (TunnelResult, error) {
 	}
 
 	if opts.DomainMode == "quick" {
-		tCmd := exec.Command("cloudflared", "tunnel", "--url", fmt.Sprintf("http://127.0.0.1:%d", opts.HostPort))
+		tCmd := exec.Command("cloudflared", "tunnel", "--url", fmt.Sprintf("http://localhost:%d", opts.HostPort))
 		stderr, err := tCmd.StderrPipe()
 		if err != nil {
 			return res, fmt.Errorf("failed to open stderr pipe for cloudflared: %w", err)
@@ -263,7 +324,7 @@ func provisionTunnel(opts TunnelOptions) (TunnelResult, error) {
 			var accumulated string
 			re := regexp.MustCompile(`https://[-0-9a-z]*\.trycloudflare\.com`)
 			urlSent := false
-			
+
 			for {
 				n, err := stderr.Read(buf)
 				if n > 0 {
@@ -334,8 +395,7 @@ func cleanupCloudflareResources(meta SessionMetadata) {
 	}
 
 	if meta.CustomDomain != "" && zoneID != "" && apiToken != "" {
-		hostname := strings.TrimPrefix(meta.CustomDomain, "https://")
-		hostname = strings.TrimPrefix(hostname, "http://")
+		_, hostname := cleanCustomDomainAndHostname(meta.CustomDomain)
 		log.Printf("[Cloudflare Cleanup] Cleaning up DNS CNAME record for %s...", hostname)
 
 		url := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/dns_records?name=%s&type=CNAME", zoneID, hostname)

@@ -138,17 +138,23 @@ func loadEnv(path string) {
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
+		line = strings.TrimPrefix(line, "\uFEFF") // strip UTF-8 BOM if present
+		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
+		}
+		if strings.HasPrefix(line, "export ") {
+			line = strings.TrimSpace(strings.TrimPrefix(line, "export "))
 		}
 		parts := strings.SplitN(line, "=", 2)
 		if len(parts) != 2 {
 			continue
 		}
 		key := strings.TrimSpace(parts[0])
-		val := strings.TrimSpace(parts[1])
-		val = strings.Trim(val, `'"`)
-		os.Setenv(key, val)
+		val := sanitizeEnvValue(parts[1])
+		if key != "" {
+			os.Setenv(key, val)
+		}
 	}
 }
 

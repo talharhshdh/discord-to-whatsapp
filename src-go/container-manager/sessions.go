@@ -262,7 +262,22 @@ func generateHash() string {
 	return fmt.Sprintf("%x", b)
 }
 
+func sanitizeEnvValue(val string) string {
+	val = strings.TrimSpace(val)
+	val = strings.TrimPrefix(val, "export ")
+	val = strings.TrimSpace(val)
+	if !strings.HasPrefix(val, "\"") && !strings.HasPrefix(val, "'") && !strings.HasPrefix(val, "`") {
+		if idx := strings.Index(val, "#"); idx != -1 {
+			val = strings.TrimSpace(val[:idx])
+		}
+	}
+	val = strings.Trim(val, "\"'`")
+	val = strings.TrimSuffix(val, ";")
+	val = strings.Trim(val, "\"'`")
+	return strings.TrimSpace(val)
+}
+
 func getSanitizedEnv(key string) string {
 	raw := os.Getenv(key)
-	return strings.TrimSpace(strings.Trim(raw, `'"'`))
+	return sanitizeEnvValue(raw)
 }
