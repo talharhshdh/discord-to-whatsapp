@@ -13,7 +13,34 @@
  *  if (result) { sendBuffer(result.buffer, result.type, result.caption) }
  */
 
-import { queryInstagramGraphQLViaProxy } from './browser-pool';
+// In-memory cache for resolved media URLs to make duplicate downloads instant
+const mediaUrlCache = new Map<string, { mediaUrl: string; expiresAt: number }>();
+
+function getCachedMediaUrl(url: string): string | null {
+  const cached = mediaUrlCache.get(url);
+  if (!cached) return null;
+  if (Date.now() > cached.expiresAt) {
+    mediaUrlCache.delete(url);
+    return null;
+  }
+  return cached.mediaUrl;
+}
+
+function setCachedMediaUrl(url: string, mediaUrl: string, ttlMs = 3600000): void {
+  if (mediaUrlCache.size > 500) {
+    const firstKey = mediaUrlCache.keys().next().value;
+    if (firstKey) mediaUrlCache.delete(firstKey);
+  }
+  mediaUrlCache.set(url, { mediaUrl, expiresAt: Date.now() + ttlMs });
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, name = 'operation'): Promise<T> {
+  let timer: NodeJS.Timeout;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${name} timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timer));
+}
 
 // Primary downloader (ab-downloader)
 const {
@@ -438,129 +465,73 @@ function resolveMediaType(
 // ---------------------------------------------------------------------------
 
 async function downloadInstagram(url: string, onProgress?: ProgressCallback): Promise<DownloadResult> {
-  void onProgress?.('🔍 Fetching Instagram link...').catch(() => { /* non-fatal */ });
+  if (onProgress) {
+    Promise.resolve(onProgress('🔍 Fetching Instagram link...')).catch(() => { /* non-fatal */ });
+  }
 
   try {
-    const match = url.match(/\/reels?\/([A-Za-z0-9_\-]+)/) || url.match(/\/p\/([A-Za-z0-9_\-]+)/) || url.match(/^([A-Za-z0-9_\-]+)$/);
-    const shortcode = match ? match[1] : null;
+    let mediaUrl = getCachedMediaUrl(url);
 
-    const headers = {
-      "accept": "*/*",
-      "accept-language": "en-GB,en;q=0.9,en-US;q=0.8",
-      "content-type": "application/x-www-form-urlencoded",
-      "priority": "u=1, i",
-      "sec-ch-prefers-color-scheme": "dark",
-      "sec-ch-ua": "\"Microsoft Edge\";v=\"149\", \"Chromium\";v=\"149\", \"Not)A;Brand\";v=\"24\"",
-      "sec-ch-ua-full-version-list": "\"Microsoft Edge\";v=\"149.0.4022.69\", \"Chromium\";v=\"149.0.7827.115\", \"Not)A;Brand\";v=\"24.0.0.0\"",
-      "sec-ch-ua-mobile": "?0",
-      "sec-ch-ua-model": "\"\"",
-      "sec-ch-ua-platform": "\"Windows\"",
-      "sec-ch-ua-platform-version": "\"19.0.0\"",
-      "sec-fetch-dest": "empty",
-      "sec-fetch-mode": "cors",
-      "sec-fetch-site": "same-origin",
-      "x-asbd-id": "359341",
-      "x-bloks-version-id": "6a1a99aad521621204ad31915fc0c45ea5ef62c4d409c123a63ab00c26644d3c",
-      "x-csrftoken": "RuRfo4YVVLe36Fmubi4lCPGNAjPgpNnz",
-      "x-fb-friendly-name": "PolarisClipsTabDesktopPaginationQuery",
-      "x-fb-lsd": "7w-X0yZTFUrItDbwsrmuuT",
-      "x-ig-app-id": "936619743392459",
-      "x-ig-max-touch-points": "0",
-      "x-root-field-name": "xdt_api__v1__clips__home__connection_v2",
-      "cookie": "datr=tQ9AaN0k1nJ5-s7vKlZS9UYS; ps_l=1; ps_n=1; mid=aXjHJAALAAHZ4omyd0ebSy9JGEB2; ds_user_id=74746116933; csrftoken=RuRfo4YVVLe36Fmubi4lCPGNAjPgpNnz; ig_did=5906265C-E189-4CD5-9F76-2B5B4FF3D41A; dpr=1.25; sessionid=74746116933%3A68S1uRjPm1RDUb%3A6%3AAYgwhey3C_lUF0OsrB7GTp-3zIjNkCW3cYJltrw6zRE; wd=1213x948; rur=\"RVA\\05474746116933\\0541813401870:01ff261438d2b5600ba440b7482549c17940ec379859b0469563a9c6bb99ef8b32c7f43b\"",
-      "Referer": `https://www.instagram.com/reels/${shortcode}/`
-    };
+    if (!mediaUrl) {
+      const mediaUrlFromProvider = async (provider: () => Promise<unknown>, name: string): Promise<string> => {
+        const data = await withTimeout(provider(), 6000, name);
+        const u = pickBestUrl(data) ?? pickBtchUrl(data);
+        if (!u) throw new Error(`${name} returned no media`);
+        return u;
+      };
 
-    const variables = {
-      after: "GhaG2fmbk9Kk7mwm8Lzb99tnFAI0AikIGAAaCBgNczoxOWVkZjdiNmYzOBQBGgYZDBaG2fmbk9Kk7mwA",
-      before: null,
-      data: {
-        container_module: "clips_tab_desktop_page",
-        seen_reels: JSON.stringify([]),
-        chaining_media_id: shortcode,
-        should_refetch_chaining_media: false
-      },
-      first: 10,
-      last: null,
-      __relay_internal__pv__PolarisReelsRecoDebugOverlayEnabledrelayprovider: false,
-      __relay_internal__pv__PolarisAIGMMediaWebLabelEnabledrelayprovider: false
-    };
+      const fastDirectApi = async (): Promise<string> => {
+        return withTimeout(
+          fetch(`https://backend1.tioo.eu.org/igdl?url=${encodeURIComponent(url)}`, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+              'Accept': 'application/json',
+            },
+            signal: AbortSignal.timeout(5000),
+          }).then(async res => {
+            if (!res.ok) throw new Error(`Fast API HTTP ${res.status}`);
+            const data = await res.json();
+            const u = pickBestUrl(data) ?? pickBtchUrl(data);
+            if (!u) throw new Error('Fast API returned no media URL');
+            return u;
+          }),
+          5000,
+          'fast-api'
+        );
+      };
 
-    const postData = {
-      av: "17841474788003264",
-      __d: "www",
-      __user: "0",
-      __a: "1",
-      __req: "b",
-      __hs: "20623.HYP:instagram_web_pkg.2.1...0",
-      dpr: "1",
-      __ccg: "GOOD",
-      __rev: "1041789422",
-      __s: "v3jela:aclzj4:8kbcq7",
-      __hsi: "7653055630017428357",
-      __dyn: "7xeUjG1mxu1syUbFp41twpUnwgU7SbzEdF8aUco2qwJw5ux609vCwjE1EE2Cw8G11wBw5Zx62G3i1ywOwv89k2C0O86a0D82IzXwae4UaEW2G0AEco5G0zEnwhE2Lw62wLyES1Twoob82ZwrUdUbGwmk0KU6O1FwlA1HQp1yU426V8aUuwm8jw4kyVrx60luawOwi84q2i0jK3mew",
-      __csr: "gP136MrYIYRvincxONlgFlKKWcTmLZCKArLVWVnJm-CZ4yCP8F5TJlFCDhKKAKaV5VpoF5z98OECmJd5p9UJ29qCAOk5p8yfuQ-Qui4d2XAKCcmbWCyUoypF8W2KUtwBxB1m6VEbVe4odovAGUhDBSmu8WU9Erx9126k4EK9xO8-3KdBix5oK48mGm4U8E8EtBz806Oq0bTw1Z-00OaUuw2pE3MCwe103LU2Iwfi0qKbBolw1BK3CiE0XMi0Ho6a0zO02eEjwFgaU3vw2cA0nS5VRg62rYw-05e85px201jow0ghU668g",
-      __hsdp: "gMxps46yYGOqbEy7F8khXGilXp4EykwNWntpFmSUByUZdosKWwmp3pBAx62sAwvBo7l4x2i0geExo8827wbK1Xx60RUK7F8O0xEoK12wZxGQ9w810zxq2y0hqcwwy80DS6o0BC480VO2a0cSg0jywlU11U1A-0qO2u0i-04bo1hA0Wo3XwywAzF80ByE",
-      __hblp: "0Hwb-9wgVbxWq5onxO0yVu5pHz8gzoa65awFwhofE4qfzE88bo5C1fGfwywRwuUSUe8d84W6EK7F8O2q22227ooK12wZxGQ9AK1Tg8UmwEwbSUaUa8O228xK0mG14xa0DEpw5oxy0UpogwtU1ME1oo8E0Pp033o1D8dU5ufwtU7-2i0ctwDw4Lxm0C80B20iS2S0hx0bW2G2a0S88E98Wi0ui1PG",
-      __sjsp: "mxZEmn2ExWbOHGjuJ8uAxh7KunXp4EykwNWntpFmSUByU-hosyE6N6x61lo",
-      __comet_req: "7",
-      fb_dtsg: "NAfyJ0MR6wMhUV5EOMWYEfXYPIEPOVqgdP82tpXYLCjKMRO8JExhhlQ:17865379441060568:1778309334",
-      jazoest: "26163",
-      lsd: "7w-X0yZTFUrItDbwsrmuuT",
-      __spin_r: "1041789422",
-      __spin_b: "trunk",
-      __spin_t: "1781865868",
-      __crn: "comet.igweb.PolarisClipsTabDesktopProfiledContentRoute",
-      fb_api_caller_class: "RelayModern",
-      fb_api_req_friendly_name: "PolarisClipsTabDesktopPaginationQuery",
-      server_timestamps: "true",
-      variables: JSON.stringify(variables),
-      doc_id: "36825039943776829"
-    };
+      const ytdlpResolver = async (): Promise<string> => {
+        return withTimeout(
+          (async () => {
+            const youtubedl = require('youtube-dl-exec');
+            const output = await youtubedl(url, {
+              dumpSingleJson: true,
+              noWarnings: true,
+              preferFreeFormats: true,
+            });
+            const direct = output.url || output.formats?.find((f: any) => f.ext === 'mp4')?.url || output.formats?.[0]?.url;
+            if (typeof direct === 'string' && direct.startsWith('http')) return direct;
+            throw new Error('yt-dlp returned no direct URL');
+          })(),
+          8000,
+          'yt-dlp'
+        );
+      };
 
-    const body = new URLSearchParams(postData).toString();
+      const resolvers: Promise<string>[] = [
+        fastDirectApi(),
+        mediaUrlFromProvider(() => igdl(url), 'ab.igdl'),
+        mediaUrlFromProvider(() => btch['igdl'](url), 'btch.igdl'),
+        ytdlpResolver(),
+      ];
 
-    const mediaUrlFromGraphQL = async (jsonPromise: Promise<any>): Promise<string> => {
-      const json = await jsonPromise;
-      const edges = json?.data?.xdt_api__v1__clips__home__connection_v2?.edges || [];
-      const videoUrl = edges[0]?.node?.media?.video_versions?.[0]?.url;
-      if (typeof videoUrl !== 'string') throw new Error('Instagram GraphQL returned no video');
-      return videoUrl;
-    };
-
-    const mediaUrlFromProvider = async (provider: () => Promise<unknown>): Promise<string> => {
-      const data = await provider();
-      const mediaUrl = pickBestUrl(data) ?? pickBtchUrl(data);
-      if (!mediaUrl) throw new Error('Instagram provider returned no media');
-      return mediaUrl;
-    };
-
-    // These resolvers are independent. Racing them avoids waiting for a slow remote browser
-    // before trying the much lighter provider APIs.
-    const resolvers: Promise<string>[] = [
-      mediaUrlFromProvider(() => igdl(url)),
-      mediaUrlFromProvider(() => btch['igdl'](url)),
-    ];
-
-    if (shortcode) {
-      const directGraphQL = fetch('https://www.instagram.com/graphql/query', {
-        method: 'POST',
-        headers,
-        body,
-        signal: AbortSignal.timeout(10000),
-      }).then(async res => {
-        if (!res.ok) throw new Error(`Instagram GraphQL HTTP ${res.status}`);
-        return res.json();
-      });
-      resolvers.push(
-        mediaUrlFromGraphQL(directGraphQL),
-        mediaUrlFromGraphQL(queryInstagramGraphQLViaProxy(postData, headers)),
-      );
+      mediaUrl = await Promise.any(resolvers);
+      setCachedMediaUrl(url, mediaUrl);
     }
 
-    const mediaUrl = await Promise.any(resolvers);
-
-    void onProgress?.('📥 Downloading media...').catch(() => { /* non-fatal */ });
+    if (onProgress) {
+      Promise.resolve(onProgress('📥 Downloading media...')).catch(() => { /* non-fatal */ });
+    }
     const { buffer, contentType } = await fetchBuffer(mediaUrl);
     const { mediaType, mimetype } = resolveMediaType(contentType, mediaUrl, 'video/mp4');
     const ext = mimeToExt(mimetype);
