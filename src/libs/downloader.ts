@@ -213,6 +213,22 @@ async function fetchBuffer(url: string): Promise<{ buffer: Buffer; contentType: 
  *  GDrive    : Object {result:{downloadUrl}}       → result.downloadUrl
  *  Pinterest : Object {result:{image, images}}     → result.images.orig.url
  */
+function unwrapDirectCdnUrl(url: string): string {
+  if (!url || !url.includes('token=')) return url;
+  try {
+    const tokenPart = url.split('token=')[1].split('&')[0];
+    const b64 = tokenPart.split('.')[1];
+    if (b64) {
+      const decoded = Buffer.from(b64, 'base64').toString('latin1');
+      const match = decoded.match(/"url"\s*:\s*"([^"]+)"/);
+      if (match && match[1].startsWith('http')) {
+        return match[1];
+      }
+    }
+  } catch { /* fallback to original */ }
+  return url;
+}
+
 function pickBestUrl(raw: unknown): string | null {
   if (!raw) return null;
 
@@ -223,7 +239,7 @@ function pickBestUrl(raw: unknown): string | null {
         item['url'], item['download'],
         ...(Array.isArray(item['urls']) ? item['urls'] : []),
       ].filter((u): u is string => typeof u === 'string' && u.startsWith('http'));
-      if (candidates.length) return candidates[0];
+      if (candidates.length) return unwrapDirectCdnUrl(candidates[0]);
     }
     return null;
   }
@@ -398,11 +414,12 @@ function pickBtchUrl(raw: unknown): string | null {
     const links = aioData['links'] as Record<string, unknown> | undefined;
     if (links && Array.isArray(links['video'])) {
       const v = (links['video'] as Record<string, unknown>[])[0];
-      if (v && typeof v['url'] === 'string') return v['url'];
+      if (v && typeof v['url'] === 'string') return unwrapDirectCdnUrl(v['url']);
     }
   }
 
-  return findHttpUrl(obj);
+  const found = findHttpUrl(obj);
+  return found ? unwrapDirectCdnUrl(found) : null;
 }
 
 /**
