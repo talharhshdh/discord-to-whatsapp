@@ -60,7 +60,7 @@ export async function startVSCode(options: VSCodeOptions = {}): Promise<{ url?: 
           await new Promise(r => setTimeout(r, 1000));
           attempts++;
 
-          const jobRes = await fetch(`${GO_MANAGER_URL}/api/go/containers/jobs?jobId=${jobId}`).catch(() => null);
+          const jobRes = await fetch(`${GO_MANAGER_URL}/api/go/containers/jobs?id=${jobId}`).catch(() => null);
           if (jobRes && jobRes.ok) {
             const jobData = await jobRes.json() as any;
             if (jobData.status === 'done') {

@@ -118,6 +118,9 @@ func handleGetJobStatus(w http.ResponseWriter, r *http.Request) {
 
 	id := r.URL.Query().Get("id")
 	if id == "" {
+		id = r.URL.Query().Get("jobId")
+	}
+	if id == "" {
 		writeError(w, http.StatusBadRequest, "Missing id parameter")
 		return
 	}
