@@ -13,6 +13,28 @@ function getSanitizedEnv(key: string): string {
 
 let nextPort = 15000;
 
+async function waitForHealthyUrl(targetUrl: string, timeoutMs = 35000): Promise<boolean> {
+  const startTime = Date.now();
+  console.log(`[Health Check] Polling ${targetUrl} every 1s until healthy status...`);
+  let attempt = 0;
+  while (Date.now() - startTime < timeoutMs) {
+    attempt++;
+    try {
+      const res = await fetch(targetUrl, { signal: AbortSignal.timeout(2000) });
+      if (res.status < 500 && res.status !== 530) {
+        console.log(`[Health Check] ✅ Target ${targetUrl} is healthy with HTTP status ${res.status} (attempt ${attempt})`);
+        return true;
+      }
+      console.log(`[Health Check] Attempt ${attempt}: Target ${targetUrl} returned status ${res.status}, waiting 1s...`);
+    } catch (e: any) {
+      console.log(`[Health Check] Attempt ${attempt}: Target ${targetUrl} ping failed (${e.message}), retrying in 1s...`);
+    }
+    await new Promise(r => setTimeout(r, 1000));
+  }
+  console.warn(`[Health Check] ⚠️ Timeout waiting for ${targetUrl} to become healthy. Continuing.`);
+  return false;
+}
+
 export async function cleanupCloudflareResources(meta: any, sessionId?: string): Promise<void> {
   if (!meta) return;
   const { tunnelPid, tunnelId, customDomain } = meta;
@@ -392,6 +414,9 @@ export async function startCustomContainer(
         },
       });
 
+      // Poll endpoint every 1s until healthy status is returned
+      await waitForHealthyUrl(targetUrl);
+
       return { url: targetUrl, containerName };
     }
 
@@ -402,7 +427,7 @@ export async function startCustomContainer(
     return new Promise((resolve) => {
       let cloudflareUrl = '';
 
-      tunnelProcess.stderr?.on('data', (data) => {
+      tunnelProcess.stderr?.on('data', async (data) => {
         const output = data.toString();
         const match = output.match(/https:\/\/[-0-9a-z]*\.trycloudflare\.com/);
         if (match && !cloudflareUrl) {
@@ -427,9 +452,8 @@ export async function startCustomContainer(
             },
           });
 
-          setTimeout(() => {
-            resolve({ url: cloudflareUrl, containerName });
-          }, 3000);
+          await waitForHealthyUrl(cloudflareUrl);
+          resolve({ url: cloudflareUrl, containerName });
         }
       });
 

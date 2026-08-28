@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -330,6 +331,7 @@ func provisionTunnel(opts TunnelOptions) (TunnelResult, error) {
 			if err := tCmd.Start(); err == nil {
 				res.TunnelPid = tCmd.Process.Pid
 				log.Printf("[Cloudflare Tunnel] Tunnel process started with PID %d", res.TunnelPid)
+				waitForHealthyStatus(targetURL, opts.HostPort, 35*time.Second)
 				return res, nil
 			} else {
 				return res, fmt.Errorf("failed to start cloudflared tunnel command: %w", err)
@@ -382,6 +384,7 @@ func provisionTunnel(opts TunnelOptions) (TunnelResult, error) {
 		select {
 		case cUrl := <-urlChan:
 			res.CloudflaredURL = cUrl
+			waitForHealthyStatus(cUrl, opts.HostPort, 35*time.Second)
 			return res, nil
 		case <-errChan:
 			tCmd.Process.Kill()
@@ -413,8 +416,8 @@ func deleteCloudflareTunnelOnly(tunnelID, accountID, apiToken string) error {
 func cleanupCloudflareResources(meta SessionMetadata) {
 	if meta.TunnelPid > 0 {
 		if proc, err := os.FindProcess(meta.TunnelPid); err == nil {
+			log.Printf("[Cloudflare Cleanup] Killing tunnel process PID %d...", meta.TunnelPid)
 			_ = proc.Kill()
-			log.Printf("[Cloudflare Cleanup] Killed tunnel process PID %d", meta.TunnelPid)
 		}
 	}
 
@@ -474,6 +477,75 @@ func waitForPort(port int, timeout time.Duration) bool {
 			return true
 		}
 		time.Sleep(100 * time.Millisecond)
+	}
+	return false
+}
+
+// waitForHealthyStatus polls the given target URL every 1 second until a healthy HTTP status (< 500 and != 530) is returned.
+func waitForHealthyStatus(targetURL string, hostPort int, timeout time.Duration) bool {
+	return waitForHealthyStatusWithJob("", targetURL, hostPort, timeout)
+}
+
+// waitForHealthyStatusWithJob polls targetURL every 1 second and appends real-time progress logs to the job.
+func waitForHealthyStatusWithJob(jobID, targetURL string, hostPort int, timeout time.Duration) bool {
+	if hostPort > 0 {
+		log.Printf("[Health Check] Checking local port %d...", hostPort)
+		if !waitForPort(hostPort, 15*time.Second) {
+			log.Printf("[Health Check] Local port %d is not yet accepting connections, continuing to check URL...", hostPort)
+		}
+	}
+
+	if targetURL == "" || !strings.HasPrefix(targetURL, "http") {
+		return true
+	}
+
+	log.Printf("[Health Check] Testing %s with 1s delay loop until healthy status is returned (timeout %v)...", targetURL, timeout)
+	if jobID != "" {
+		addJobLog(jobID, fmt.Sprintf("[Health Check] Testing %s (1s delay loop) until healthy...", targetURL))
+	}
+
+	client := &http.Client{
+		Timeout: 2 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
+
+	deadline := time.Now().Add(timeout)
+	attempt := 0
+
+	for time.Now().Before(deadline) {
+		attempt++
+		req, err := http.NewRequest("GET", targetURL, nil)
+		if err == nil {
+			req.Header.Set("User-Agent", "Go-Container-Manager-HealthCheck/1.0")
+			resp, err := client.Do(req)
+			if err == nil {
+				statusCode := resp.StatusCode
+				resp.Body.Close()
+
+				// Status < 500 and not 530 (Cloudflare Error 1033) means tunnel + upstream app is responsive
+				if statusCode < 500 && statusCode != 530 {
+					log.Printf("[Health Check] ✅ Target %s is healthy! (HTTP Status %d after attempt %d)", targetURL, statusCode, attempt)
+					if jobID != "" {
+						addJobLog(jobID, fmt.Sprintf("[Health Check] ✅ Target %s is verified healthy (HTTP %d)", targetURL, statusCode))
+					}
+					return true
+				}
+				log.Printf("[Health Check] Attempt %d: %s returned status %d (not ready yet), retrying in 1s...", attempt, targetURL, statusCode)
+				if jobID != "" && attempt%3 == 0 {
+					addJobLog(jobID, fmt.Sprintf("[Health Check] Attempt %d: Waiting for healthy status on %s (current status: %d)...", attempt, targetURL, statusCode))
+				}
+			} else {
+				log.Printf("[Health Check] Attempt %d: Request to %s failed (%v), retrying in 1s...", attempt, targetURL, err)
+			}
+		}
+		time.Sleep(1 * time.Second)
+	}
+
+	log.Printf("[Health Check] ⚠️ Warning: Endpoint %s did not become healthy within %v. Proceeding.", targetURL, timeout)
+	if jobID != "" {
+		addJobLog(jobID, fmt.Sprintf("[Health Check] ⚠️ Warning: Timeout waiting for %s to return healthy status. Proceeding.", targetURL))
 	}
 	return false
 }

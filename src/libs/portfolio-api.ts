@@ -486,7 +486,9 @@ export async function handlePortfolioRequest(req: IncomingMessage, res: ServerRe
           type,
           image: body.image,
           port: body.port,
+          command: body.command ? (Array.isArray(body.command) ? body.command : [body.command]) : undefined,
           env: body.env,
+          customDomain,
           ttlMinutes
         })
       }).catch(() => null);
@@ -495,8 +497,57 @@ export async function handlePortfolioRequest(req: IncomingMessage, res: ServerRe
         return err(res, 'Go Container Manager is offline or failed to initialize demo container', 502), true;
       }
 
-      const goDemoData = await goDemoRes.json();
-      json(res, { success: true, ...goDemoData });
+      const startData = await goDemoRes.json() as { jobId: string; sessionId: string; expiresAt?: string };
+      const jobId = startData.jobId;
+      const sessionId = startData.sessionId;
+
+      // Poll for job completion (Go manager handles 1s delay health verification)
+      let finished = false;
+      let attempts = 0;
+      while (!finished && attempts < 60) {
+        await new Promise(r => setTimeout(r, 1000));
+        attempts++;
+
+        const jobRes = await fetch(`${GO_MANAGER_URL}/api/go/containers/jobs?jobId=${jobId}`).catch(() => null);
+        if (jobRes && jobRes.ok) {
+          const jobData = await jobRes.json() as any;
+          if (jobData.status === 'done') {
+            finished = true;
+            break;
+          } else if (jobData.status === 'failed') {
+            return err(res, `Demo container deployment failed: ${jobData.error || 'Unknown error'}`, 500), true;
+          }
+        }
+      }
+
+      if (!finished) {
+        return err(res, 'Timed out waiting for Demo container to initialize and become healthy', 504), true;
+      }
+
+      // Fetch verified session details from Go manager
+      const sessRes = await fetch(`${GO_MANAGER_URL}/api/go/containers/sessions`).catch(() => null);
+      let sessionUrl = '';
+      if (sessRes && sessRes.ok) {
+        const sessions = await sessRes.json() as any[];
+        const found = sessions.find(s => s.id === sessionId);
+        if (found) {
+          sessionUrl = found.url || '';
+        }
+      }
+
+      if (!sessionUrl) {
+        const hash = sessionId.replace(/^docker-/, '');
+        const portfolioDomain = process.env.PORTFOLIO_DOMAIN || 'talhacodes.site';
+        sessionUrl = customDomain ? `https://${customDomain}` : `https://demo-${hash}.${portfolioDomain}`;
+      }
+
+      json(res, {
+        success: true,
+        sessionId,
+        url: sessionUrl,
+        expiresAt: startData.expiresAt,
+        type
+      });
       return true;
     }
 

@@ -29,12 +29,27 @@ dashboard/.env.local
 *.swp
 *.swo
 
-# Backups
-backup.zip
+# Executables and Go binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.bin
+src-go/*/*.exe
+src-go/container-manager/container-manager
+src-go/contact-scraper/contact-scraper
+src-go/create-cv/create-cv
+src-go/create-cv/cv-server
+src-go/create-cv/test-build
+src-go/browser-cdp-connection/browser-cdp-connection
 
-# Generated CV files and binaries
+# Dashboard build artifacts
+dashboard/node_modules/
+dashboard/dist/
+
+# Generated CV files
 /applications/
 /src-go/create-cv/storage/*.pdf
-/src-go/create-cv/cv-server
-/src-go/create-cv/test-build
+
 

@@ -474,6 +474,9 @@ func handleStartContainer(w http.ResponseWriter, r *http.Request) {
 			targetURL = tRes.CloudflaredURL
 			activeTunnelToken = tRes.TunnelToken
 			activeTunnelID = tRes.TunnelID
+
+			updateJobPhase(jobID, "tunneling", fmt.Sprintf("Testing endpoint health for %s (1s delay loop)...", targetURL))
+			waitForHealthyStatusWithJob(jobID, targetURL, hostPort, 45*time.Second)
 		}
 
 		sess := Session{
@@ -891,6 +894,8 @@ func handleDeployCompose(w http.ResponseWriter, r *http.Request) {
 				if mainURL == "" {
 					mainURL = tRes.CloudflaredURL
 				}
+
+				waitForHealthyStatusWithJob(jobID, tRes.CloudflaredURL, hostPort, 45*time.Second)
 
 				serviceSessionMetas[svcName] = ServiceSessionMetadata{
 					ServiceName:    svcName,

@@ -77,7 +77,7 @@ You can authenticate requests using any of the following three methods:
    ```
 3. **URL Query Parameter:**
    ```http
-   https://services.talhacodes.site/api/portfolio/places/stream?query=plumbers&key=your_secret_api_key_here
+   https://services.ufone-claim.site/api/portfolio/places/stream?query=plumbers&key=your_secret_api_key_here
    ```
 
 > [!NOTE]
@@ -92,7 +92,7 @@ Returns the list of all available backend services with schema metadata, tech st
 
 #### Request Example
 ```bash
-curl -X GET "https://services.talhacodes.site/api/portfolio/tools"
+curl -X GET "https://services.ufone-claim.site/api/portfolio/tools"
 ```
 
 #### Response (`200 OK`)
@@ -135,7 +135,7 @@ curl -X GET "https://services.talhacodes.site/api/portfolio/tools"
 Returns architectural design proposals and systems-engineering project roadmaps (e.g. Bitcask LSM Storage Engine, Raft-consensus Redis clone).
 
 ```bash
-curl -X GET "https://services.talhacodes.site/api/portfolio/suggestions"
+curl -X GET "https://services.ufone-claim.site/api/portfolio/suggestions"
 ```
 
 ---
@@ -145,11 +145,12 @@ curl -X GET "https://services.talhacodes.site/api/portfolio/suggestions"
 #### `POST /api/portfolio/download`
 Downloads video/audio streams from TikTok, Instagram Reels, YouTube, Twitter/X, Reddit, Facebook, Pinterest, SoundCloud, and Spotify.
 
-#### Request Body
-```json
-{
-  "url": "https://www.instagram.com/reel/C-xyz123/"
-}
+#### Curl Example
+```bash
+curl -X POST "https://services.ufone-claim.site/api/portfolio/download" \
+  -H "Content-Type: application/json" \
+  -H "X-Portfolio-Key: $PORTFOLIO_API_KEY" \
+  -d '{"url": "https://www.instagram.com/reel/C-xyz123/"}'
 ```
 
 #### Response (`200 OK`)
@@ -171,11 +172,12 @@ Downloads video/audio streams from TikTok, Instagram Reels, YouTube, Twitter/X, 
 #### `POST /api/portfolio/youtube/info`
 Extracts high-resolution video streams, thumbnails, audio formats, and duration metadata without rate-limiting.
 
-#### Request Body
-```json
-{
-  "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-}
+#### Curl Example
+```bash
+curl -X POST "https://services.ufone-claim.site/api/portfolio/youtube/info" \
+  -H "Content-Type: application/json" \
+  -H "X-Portfolio-Key: $PORTFOLIO_API_KEY" \
+  -d '{"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}'
 ```
 
 #### Response (`200 OK`)
@@ -202,12 +204,12 @@ Extracts high-resolution video streams, thumbnails, audio formats, and duration 
 #### `POST /api/portfolio/search/duck`
 CDP-based headless search that bypasses Cloudflare/CAPTCHA bot-protection and returns organic search results alongside AI summaries.
 
-#### Request Body
-```json
-{
-  "query": "Kubernetes vs Docker Swarm 2026",
-  "pageNumber": 1
-}
+#### Curl Example
+```bash
+curl -X POST "https://services.ufone-claim.site/api/portfolio/search/duck" \
+  -H "Content-Type: application/json" \
+  -H "X-Portfolio-Key: $PORTFOLIO_API_KEY" \
+  -d '{"query": "Kubernetes vs Docker Swarm 2026", "pageNumber": 1}'
 ```
 
 #### Response (`200 OK`)
@@ -234,10 +236,10 @@ CDP-based headless search that bypasses Cloudflare/CAPTCHA bot-protection and re
 #### `GET /api/portfolio/places/stream` *(Real-time Server-Sent Events)*
 Streams business leads in real-time as the headless browser scrolls Google Maps.
 
-```http
-GET /api/portfolio/places/stream?query=dentists+in+new+york&limit=20 HTTP/1.1
-Host: services.talhacodes.site
-X-Portfolio-Key: your_key
+#### Curl Example
+```bash
+curl -N "https://services.ufone-claim.site/api/portfolio/places/stream?query=dentists+in+new+york&limit=20" \
+  -H "X-Portfolio-Key: $PORTFOLIO_API_KEY"
 ```
 
 **SSE Event Format:**
@@ -248,12 +250,11 @@ data: {"type":"done","total":20,"reachedEnd":false}
 ```
 
 #### `POST /api/portfolio/places` *(Batch)*
-```json
-{
-  "query": "software companies in Austin TX",
-  "pageNumber": 1,
-  "deepScrape": false
-}
+```bash
+curl -X POST "https://services.ufone-claim.site/api/portfolio/places" \
+  -H "Content-Type: application/json" \
+  -H "X-Portfolio-Key: $PORTFOLIO_API_KEY" \
+  -d '{"query": "software companies in Austin TX", "pageNumber": 1, "deepScrape": false}'
 ```
 
 ---
@@ -459,7 +460,7 @@ export function LiveVSCodeDemo() {
   const startSandbox = async () => {
     setLoading(true);
     try {
-      const res = await fetch('https://services.talhacodes.site/api/portfolio/demo/start', {
+      const res = await fetch('https://services.ufone-claim.site/api/portfolio/demo/start', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -481,7 +482,7 @@ export function LiveVSCodeDemo() {
   useEffect(() => {
     if (!session) return;
     const interval = setInterval(async () => {
-      const res = await fetch(`https://services.talhacodes.site/api/portfolio/demo/status?sessionId=${session.sessionId}`, {
+      const res = await fetch(`https://services.ufone-claim.site/api/portfolio/demo/status?sessionId=${session.sessionId}`, {
         headers: { 'X-Portfolio-Key': process.env.NEXT_PUBLIC_PORTFOLIO_API_KEY || '' }
       });
       const data = await res.json();
