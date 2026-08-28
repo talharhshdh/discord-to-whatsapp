@@ -56,8 +56,11 @@ type SessionMetadata struct {
 	RestartPolicy  string                            `json:"restartPolicy,omitempty"`
 	Command        []string                          `json:"command,omitempty"`
 	Args           []string                          `json:"args,omitempty"`
-	YAML           string                            `json:"yaml,omitempty"`
+	YAML            string                            `json:"yaml,omitempty"`
 	ServiceSettings map[string]ServiceSetting         `json:"serviceSettings,omitempty"`
+	TTLMinutes      int                               `json:"ttlMinutes,omitempty"`
+	ExpiresAt       *time.Time                        `json:"expiresAt,omitempty"`
+	IsDemo          bool                              `json:"isDemo,omitempty"`
 }
 
 type Session struct {
@@ -84,30 +87,34 @@ type SanitizedServiceSessionMetadata struct {
 }
 
 type SanitizedSessionMetadata struct {
-	Port           int                                        `json:"port,omitempty"`
-	HostPort       int                                        `json:"hostPort,omitempty"`
-	ContainerName  string                                     `json:"containerName,omitempty"`
-	TargetURL      string                                     `json:"targetUrl,omitempty"`
-	Image          string                                     `json:"image,omitempty"`
-	Env            map[string]string                          `json:"env,omitempty"`
-	DomainMode     string                                     `json:"domainMode,omitempty"`
-	CustomDomain   string                                     `json:"customDomain,omitempty"`
-	CloudflaredURL string                                     `json:"cloudflaredUrl,omitempty"`
-	ComposeFile    string                                     `json:"composeFile,omitempty"`
-	Services       map[string]SanitizedServiceSessionMetadata `json:"services,omitempty"`
-	Status         string                                     `json:"status,omitempty"`
-	ExitCode       int                                        `json:"exitCode,omitempty"`
-	Health         string                                     `json:"health,omitempty"`
-	TunnelStatus   string                                     `json:"tunnelStatus,omitempty"`
-	Ports          []PortMapping                              `json:"ports,omitempty"`
-	Volumes        []VolumeMount                              `json:"volumes,omitempty"`
-	MemoryLimitMB  int                                        `json:"memoryLimitMB,omitempty"`
-	Cpus           float64                                    `json:"cpus,omitempty"`
-	RestartPolicy  string                                     `json:"restartPolicy,omitempty"`
-	Command        []string                                   `json:"command,omitempty"`
-	Args           []string                                   `json:"args,omitempty"`
-	YAML           string                                     `json:"yaml,omitempty"`
-	ServiceSettings map[string]ServiceSetting                 `json:"serviceSettings,omitempty"`
+	Port             int                                        `json:"port,omitempty"`
+	HostPort         int                                        `json:"hostPort,omitempty"`
+	ContainerName    string                                     `json:"containerName,omitempty"`
+	TargetURL        string                                     `json:"targetUrl,omitempty"`
+	Image            string                                     `json:"image,omitempty"`
+	Env              map[string]string                          `json:"env,omitempty"`
+	DomainMode       string                                     `json:"domainMode,omitempty"`
+	CustomDomain     string                                     `json:"customDomain,omitempty"`
+	CloudflaredURL   string                                     `json:"cloudflaredUrl,omitempty"`
+	ComposeFile      string                                     `json:"composeFile,omitempty"`
+	Services         map[string]SanitizedServiceSessionMetadata `json:"services,omitempty"`
+	Status           string                                     `json:"status,omitempty"`
+	ExitCode         int                                        `json:"exitCode,omitempty"`
+	Health           string                                     `json:"health,omitempty"`
+	TunnelStatus     string                                     `json:"tunnelStatus,omitempty"`
+	Ports            []PortMapping                              `json:"ports,omitempty"`
+	Volumes          []VolumeMount                              `json:"volumes,omitempty"`
+	MemoryLimitMB    int                                        `json:"memoryLimitMB,omitempty"`
+	Cpus             float64                                    `json:"cpus,omitempty"`
+	RestartPolicy    string                                     `json:"restartPolicy,omitempty"`
+	Command          []string                                   `json:"command,omitempty"`
+	Args             []string                                   `json:"args,omitempty"`
+	YAML             string                                     `json:"yaml,omitempty"`
+	ServiceSettings  map[string]ServiceSetting                  `json:"serviceSettings,omitempty"`
+	TTLMinutes       int                                        `json:"ttlMinutes,omitempty"`
+	ExpiresAt        *time.Time                                 `json:"expiresAt,omitempty"`
+	IsDemo           bool                                       `json:"isDemo,omitempty"`
+	RemainingSeconds int                                        `json:"remainingSeconds,omitempty"`
 }
 
 type SanitizedSession struct {

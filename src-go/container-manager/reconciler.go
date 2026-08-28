@@ -24,8 +24,8 @@ type ComposePsService struct {
 }
 
 func startReconciler() {
-	log.Println("[Reconciler] Starting background status reconciler...")
-	ticker := time.NewTicker(30 * time.Second)
+	log.Println("[Reconciler] Starting background status and TTL reconciler...")
+	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
 	// Initial run
@@ -61,6 +61,28 @@ func reconcileState() {
 	var stateChanged = false
 
 	for sID, s := range sessions {
+		// 0. Check TTL Expiration (Auto-teardown for demo sessions)
+		if s.Metadata.ExpiresAt != nil && time.Now().After(*s.Metadata.ExpiresAt) {
+			log.Printf("[Reconciler TTL] Session %s has expired (TTL reached at %s). Terminating and releasing resources...", s.ID, s.Metadata.ExpiresAt.Format(time.RFC3339))
+			if s.Type == "docker-compose" {
+				_ = dockerComposeDown(s.Metadata.ComposeFile)
+				for _, svc := range s.Metadata.Services {
+					svcMeta := SessionMetadata{
+						TunnelPid:    svc.TunnelPid,
+						TunnelID:     svc.TunnelID,
+						CustomDomain: svc.CustomDomain,
+					}
+					cleanupCloudflareResources(svcMeta)
+				}
+			} else {
+				_ = dockerStopAndRemove(s.Metadata.ContainerName)
+				cleanupCloudflareResources(s.Metadata)
+			}
+			delete(sessions, sID)
+			stateChanged = true
+			continue
+		}
+
 		if s.Type == "docker-container" {
 			// 1. Reconcile Container State
 			cmd := exec.Command("docker", "inspect", "--format", "{{.State.Status}} {{.State.ExitCode}} {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}", s.Metadata.ContainerName)

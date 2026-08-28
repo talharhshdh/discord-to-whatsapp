@@ -31,6 +31,9 @@ export interface Session {
     webhookSecret?: string;
     tunnelToken?: string;
     tunnelId?: string;
+    isContainerized?: boolean;
+    expiresAt?: string;
+    isDemo?: boolean;
   };
 }
 

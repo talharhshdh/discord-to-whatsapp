@@ -1,104 +1,106 @@
-import { exec, spawn } from 'child_process';
-import util from 'util';
 import crypto from 'crypto';
 import { sessionManager } from './session-manager';
 
-const execAsync = util.promisify(exec);
-
-let nextPort = 8080;
-
-interface TerminalInstance {
-  terminalProcess: any;
-  tunnelProcess: any;
-  port: number;
-  username: string;
+export interface TerminalOptions {
+  isDemo?: boolean;
+  ttlMinutes?: number;
+  customDomain?: string;
 }
 
-const terminalInstances = new Map<string, TerminalInstance>();
+const GO_MANAGER_URL = 'http://127.0.0.1:18080';
 
-export async function startTerminal(): Promise<{ url?: string; username?: string; password?: string; error?: string }> {
+export async function startTerminal(options: TerminalOptions = {}): Promise<{ url?: string; username?: string; password?: string; sessionId?: string; error?: string }> {
   try {
-    const sessionId = `terminal-${crypto.randomBytes(4).toString('hex')}`;
-    const port = nextPort++;
-    const username = `dev_${crypto.randomBytes(3).toString('hex')}`;
+    const hash = crypto.randomBytes(4).toString('hex');
+    const sessionId = `docker-${hash}`;
+    const username = `guest_${crypto.randomBytes(2).toString('hex')}`;
     const password = crypto.randomBytes(6).toString('hex');
 
-
-    // Create the random user
-    await execAsync(`sudo useradd -m -s /bin/bash ${username}`);
-    await execAsync(`echo "${username}:${password}" | sudo chpasswd`);
-    await execAsync(`sudo usermod -aG sudo ${username}`);
-
-    // Install ttyd if not present
+    // 1. Check if Go Container Manager is available
     try {
-      await execAsync('which ttyd');
-    } catch {
-      await execAsync('sudo apt-get update && sudo apt-get install -y ttyd');
+      const healthRes = await fetch(`${GO_MANAGER_URL}/api/go/containers/health`).catch(() => null);
+      if (healthRes && healthRes.ok) {
+        console.log('🐳 Spawning sandboxed Web Terminal inside isolated Docker container via Go Container Manager...');
+        
+        const payload = {
+          name: 'terminal',
+          template: 'terminal',
+          image: 'tsl0922/ttyd:alpine',
+          port: 7681,
+          command: ['ttyd', '-W', '-p', '7681', 'sh'],
+          domainMode: 'custom',
+          customDomain: options.customDomain || '',
+          ttlMinutes: options.ttlMinutes || (options.isDemo ? 5 : 0),
+          isDemo: !!options.isDemo,
+          sessionId: hash
+        };
+
+        const startRes = await fetch(`${GO_MANAGER_URL}/api/go/containers/start`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (!startRes.ok) {
+          const errData = await startRes.json().catch(() => ({ error: 'Failed to start terminal container' })) as any;
+          return { error: `Go container manager failed: ${errData.error || startRes.statusText}` };
+        }
+
+        const startData = await startRes.json() as { jobId: string; sessionId: string };
+        const jobId = startData.jobId;
+
+        // Poll for job completion
+        let finished = false;
+        let attempts = 0;
+        while (!finished && attempts < 60) {
+          await new Promise(r => setTimeout(r, 1000));
+          attempts++;
+
+          const jobRes = await fetch(`${GO_MANAGER_URL}/api/go/containers/jobs?jobId=${jobId}`).catch(() => null);
+          if (jobRes && jobRes.ok) {
+            const jobData = await jobRes.json() as any;
+            if (jobData.status === 'done') {
+              finished = true;
+              break;
+            } else if (jobData.status === 'failed') {
+              return { error: `Terminal container deployment failed: ${jobData.error || 'Unknown error'}` };
+            }
+          }
+        }
+
+        if (!finished) {
+          return { error: 'Timed out waiting for Terminal container to initialize' };
+        }
+
+        // Fetch session details
+        const sessRes = await fetch(`${GO_MANAGER_URL}/api/go/containers/sessions`);
+        const sessions = await sessRes.json() as any[];
+        const found = sessions.find(s => s.id === sessionId || s.id === `docker-${hash}`);
+        const baseDomain = options.isDemo ? (process.env.PORTFOLIO_DOMAIN || 'talhacodes.site') : (process.env.MAIN_DOMAIN || 'ufone-claim.site');
+        const defaultSubdomain = options.isDemo ? `demo-${hash}.${baseDomain}` : `term-${hash}.${baseDomain}`;
+        const url = found?.url || (options.customDomain ? `https://${options.customDomain}` : `https://${defaultSubdomain}`);
+
+        sessionManager.addSession({
+          id: sessionId,
+          type: 'terminal',
+          url,
+          username,
+          password,
+          startedAt: new Date(),
+          metadata: {
+            isContainerized: true,
+            expiresAt: found?.metadata?.expiresAt,
+            isDemo: options.isDemo,
+          },
+        });
+
+        return { url, username, password, sessionId };
+      }
+    } catch (e: any) {
+      console.warn('⚠️ Go Container Manager unreachable:', e.message);
     }
 
-    const terminalProcess = spawn('sudo', ['ttyd', '-W', '-p', port.toString(), 'login']);
-
-    terminalProcess.on('error', (err) => {
-      console.error(`❌ ttyd spawn error for ${username}:`, err);
-    });
-
-    const tunnelProcess = spawn('cloudflared', ['tunnel', '--url', `http://localhost:${port}`]);
-
-    // Track the instance processes
-    terminalInstances.set(sessionId, { terminalProcess, tunnelProcess, port, username });
-
-    return new Promise((resolve) => {
-      let cloudflareUrl = '';
-
-      tunnelProcess.stderr?.on('data', (data) => {
-        const output = data.toString();
-        const match = output.match(/https:\/\/[-0-9a-z]*\.trycloudflare\.com/);
-        if (match && !cloudflareUrl) {
-          cloudflareUrl = match[0];
-
-          // Register session with cloudflared URL
-          sessionManager.addSession({
-            id: sessionId,
-            type: 'terminal',
-            url: cloudflareUrl,
-            username,
-            password,
-            startedAt: new Date(),
-            metadata: {
-              port,
-              cloudflaredUrl: cloudflareUrl,
-            },
-          });
-
-          setTimeout(() => {
-            resolve({ url: cloudflareUrl, username, password });
-          }, 5000);
-        }
-      });
-
-      tunnelProcess.on('close', (code) => {
-        sessionManager.removeSession(sessionId);
-        terminalInstances.delete(sessionId);
-        try {
-          terminalProcess.kill('SIGTERM');
-        } catch {}
-      });
-
-      terminalProcess.on('close', (code) => {
-        sessionManager.removeSession(sessionId);
-        terminalInstances.delete(sessionId);
-        try {
-          tunnelProcess.kill('SIGTERM');
-        } catch {}
-      });
-
-      setTimeout(() => {
-        if (!cloudflareUrl) {
-          resolve({ error: 'Timed out waiting for Cloudflare Tunnel URL.' });
-        }
-      }, 15000);
-    });
-
+    return { error: 'Go Container Manager is offline. Ensure container-manager is running on port 18080.' };
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
     return { error: `Failed to set up terminal: ${errMsg}` };
@@ -107,46 +109,27 @@ export async function startTerminal(): Promise<{ url?: string; username?: string
 
 export async function stopTerminal(sessionId: string): Promise<{ success: boolean; message: string }> {
   try {
-    const instance = terminalInstances.get(sessionId);
-    if (!instance) {
-      sessionManager.removeSession(sessionId);
-      return { success: true, message: 'Terminal session removed from session manager' };
-    }
+    const cleanId = sessionId.startsWith('docker-') ? sessionId : `docker-${sessionId}`;
+    
+    // Stop via Go Container Manager
+    const stopRes = await fetch(`${GO_MANAGER_URL}/api/go/containers/stop`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId: cleanId, force: true })
+    }).catch(() => null);
 
-    try {
-      instance.terminalProcess.kill('SIGTERM');
-    } catch (e) {
-      console.error(`Failed to kill terminalProcess:`, e);
-    }
-    try {
-      instance.tunnelProcess.kill('SIGTERM');
-    } catch (e) {
-      console.error(`Failed to kill tunnelProcess:`, e);
-    }
-
-    // Clean up created user in background
-    try {
-      const { exec } = require('child_process');
-      const util = require('util');
-      const execAsync = util.promisify(exec);
-      await execAsync(`sudo pkill -u ${instance.username}`);
-      await execAsync(`sudo userdel -r ${instance.username}`);
-    } catch (e) {
-      console.error(`Failed to delete user ${instance.username}:`, e);
-    }
-
-    terminalInstances.delete(sessionId);
     sessionManager.removeSession(sessionId);
+    sessionManager.removeSession(cleanId);
 
     // Unregister URL if registered
     try {
       const { unregisterUrl } = require('./dashboard-server');
       unregisterUrl('terminal');
     } catch (e) {
-      console.error('Failed to unregister URL:', e);
+      // ignore
     }
 
-    return { success: true, message: 'Terminal session stopped successfully' };
+    return { success: true, message: 'Terminal container stopped successfully' };
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
     return { success: false, message: `Failed to stop terminal: ${errMsg}` };

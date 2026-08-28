@@ -138,6 +138,39 @@ func callCloudflareAPI(method, urlStr string, body []byte, apiToken string) (map
 	return res, nil
 }
 
+func getZoneIDForHostname(hostname, envZoneID, apiToken string) string {
+	if strings.HasSuffix(hostname, "talhacodes.site") {
+		return "bdab676dc795f7321758573495898fd0"
+	}
+	if strings.HasSuffix(hostname, "ufone-claim.site") {
+		return "743f86bdacd1b4fa23620db280c6d05f"
+	}
+	if strings.HasSuffix(hostname, "curealog.com") {
+		return "165dddfd4040f04cc80f26cfac5db101"
+	}
+	if envZoneID != "" {
+		return envZoneID
+	}
+	if apiToken != "" {
+		parts := strings.Split(hostname, ".")
+		if len(parts) >= 2 {
+			rootDomain := strings.Join(parts[len(parts)-2:], ".")
+			url := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones?name=%s", rootDomain)
+			res, err := callCloudflareAPI("GET", url, nil, apiToken)
+			if err == nil {
+				if results, ok := res["result"].([]interface{}); ok && len(results) > 0 {
+					if rec, ok := results[0].(map[string]interface{}); ok {
+						if id, ok := rec["id"].(string); ok && id != "" {
+							return id
+						}
+					}
+				}
+			}
+		}
+	}
+	return envZoneID
+}
+
 func provisionTunnel(opts TunnelOptions) (TunnelResult, error) {
 	var res TunnelResult
 
@@ -159,8 +192,9 @@ func provisionTunnel(opts TunnelOptions) (TunnelResult, error) {
 		log.Printf("[Cloudflare Tunnel] Custom domain configured: %s (hostname: %s)", targetURL, hostnameOnly)
 
 		accountID := getSanitizedEnv("CLOUDFLARE_ACCOUNT_ID")
-		zoneID := getSanitizedEnv("CLOUDFLARE_ZONE_ID")
+		envZoneID := getSanitizedEnv("CLOUDFLARE_ZONE_ID")
 		apiToken := getSanitizedEnv("CLOUDFLARE_API_TOKEN")
+		zoneID := getZoneIDForHostname(hostnameOnly, envZoneID, apiToken)
 
 		res.TunnelToken = strings.TrimSpace(opts.OldTunnelToken)
 		res.TunnelID = strings.TrimSpace(opts.OldTunnelID)
@@ -385,7 +419,7 @@ func cleanupCloudflareResources(meta SessionMetadata) {
 	}
 
 	accountID := getSanitizedEnv("CLOUDFLARE_ACCOUNT_ID")
-	zoneID := getSanitizedEnv("CLOUDFLARE_ZONE_ID")
+	envZoneID := getSanitizedEnv("CLOUDFLARE_ZONE_ID")
 	apiToken := getSanitizedEnv("CLOUDFLARE_API_TOKEN")
 
 	if meta.TunnelID != "" && accountID != "" && apiToken != "" {
@@ -394,9 +428,13 @@ func cleanupCloudflareResources(meta SessionMetadata) {
 		_ = deleteCloudflareTunnelOnly(meta.TunnelID, accountID, apiToken)
 	}
 
-	if meta.CustomDomain != "" && zoneID != "" && apiToken != "" {
+	if meta.CustomDomain != "" && apiToken != "" {
 		_, hostname := cleanCustomDomainAndHostname(meta.CustomDomain)
-		log.Printf("[Cloudflare Cleanup] Cleaning up DNS CNAME record for %s...", hostname)
+		zoneID := getZoneIDForHostname(hostname, envZoneID, apiToken)
+		if zoneID == "" {
+			return
+		}
+		log.Printf("[Cloudflare Cleanup] Cleaning up DNS CNAME record for %s (zone: %s)...", hostname, zoneID)
 
 		url := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/dns_records?name=%s&type=CNAME", zoneID, hostname)
 		req, _ := http.NewRequest("GET", url, nil)

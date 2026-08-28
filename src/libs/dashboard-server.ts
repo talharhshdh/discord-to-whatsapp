@@ -50,6 +50,7 @@ import { startCustomContainer, restoreDockerContainers, stopCustomContainer } fr
 import { runJobsScraper } from './jobs-scraper-service';
 import { getJobsFromR2, getJobsStatusFromR2, saveJobsStatusToR2, getReceivedEmailsFromR2, saveReceivedEmailsToR2, ReceivedEmail } from './r2-jobs-store';
 import { generateAndPostBlog, generateCommunityBlog } from './blog-generator-service';
+import { handlePortfolioRequest } from './portfolio-api';
 
 const Corrosion = require('corrosion');
 const webProxy = new Corrosion({
@@ -523,7 +524,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       pathname !== '/api/browsers/webhook' &&
       pathname !== '/api/media/download' &&
       pathname !== '/api/webhook/inbound-email' &&
-      !pathname.startsWith('/api/webhook/docker/')) {
+      !pathname.startsWith('/api/webhook/docker/') &&
+      !pathname.startsWith('/api/portfolio')) {
     if (usernameEnv && passwordEnv) {
       const expectedToken = Buffer.from(`${usernameEnv}:${passwordEnv}`).toString('base64');
       let providedToken: string | null = null;
@@ -569,6 +571,12 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         return;
       }
     }
+  }
+
+  // ── Dispatch Portfolio API Request ──────────────────────────────────────────
+  if (pathname.startsWith('/api/portfolio')) {
+    const handled = await handlePortfolioRequest(req, res);
+    if (handled) return;
   }
 
   // ── Proxy Go Container Manager ──────────────────────────────────────────────

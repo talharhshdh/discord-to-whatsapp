@@ -47,7 +47,7 @@ export default function YoutubePanel() {
 
   // Job states
   const [activeJob, setActiveJob] = useState<YtDownloadJob | null>(null);
-  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Cookie export state
   const [cookieExporting, setCookieExporting] = useState(false);

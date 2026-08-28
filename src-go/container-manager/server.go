@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -35,6 +36,9 @@ type StartRequest struct {
 	RegistryAuth      *RegistryAuth     `json:"registryAuth"`
 	Command           []string          `json:"command"`
 	Args              []string          `json:"args"`
+	TTLMinutes        int               `json:"ttlMinutes,omitempty"`
+	IsDemo            bool              `json:"isDemo,omitempty"`
+	Template          string            `json:"template,omitempty"`
 }
 
 type StopRequest struct {
@@ -90,33 +94,46 @@ func handleGetSessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	now := time.Now()
 	sessionsMu.RLock()
 	list := make([]SanitizedSession, 0, len(sessions))
 	for _, s := range sessions {
+		var remainingSecs = 0
+		if s.Metadata.ExpiresAt != nil {
+			rem := int(s.Metadata.ExpiresAt.Sub(now).Seconds())
+			if rem > 0 {
+				remainingSecs = rem
+			}
+		}
+
 		sanitizedMeta := SanitizedSessionMetadata{
-			Port:           s.Metadata.Port,
-			HostPort:       s.Metadata.HostPort,
-			ContainerName:  s.Metadata.ContainerName,
-			TargetURL:      s.Metadata.TargetURL,
-			Image:          s.Metadata.Image,
-			Env:            s.Metadata.Env,
-			DomainMode:     s.Metadata.DomainMode,
-			CustomDomain:   s.Metadata.CustomDomain,
-			CloudflaredURL: s.Metadata.CloudflaredURL,
-			ComposeFile:    s.Metadata.ComposeFile,
-			Status:         s.Metadata.Status,
-			ExitCode:       s.Metadata.ExitCode,
-			Health:         s.Metadata.Health,
-			TunnelStatus:   s.Metadata.TunnelStatus,
-			Ports:          s.Metadata.Ports,
-			Volumes:        s.Metadata.Volumes,
-			MemoryLimitMB:  s.Metadata.MemoryLimitMB,
-			Cpus:           s.Metadata.Cpus,
-			RestartPolicy:  s.Metadata.RestartPolicy,
-			Command:        s.Metadata.Command,
-			Args:           s.Metadata.Args,
-			YAML:           s.Metadata.YAML,
-			ServiceSettings: s.Metadata.ServiceSettings,
+			Port:             s.Metadata.Port,
+			HostPort:         s.Metadata.HostPort,
+			ContainerName:    s.Metadata.ContainerName,
+			TargetURL:        s.Metadata.TargetURL,
+			Image:            s.Metadata.Image,
+			Env:              s.Metadata.Env,
+			DomainMode:       s.Metadata.DomainMode,
+			CustomDomain:     s.Metadata.CustomDomain,
+			CloudflaredURL:   s.Metadata.CloudflaredURL,
+			ComposeFile:      s.Metadata.ComposeFile,
+			Status:           s.Metadata.Status,
+			ExitCode:         s.Metadata.ExitCode,
+			Health:           s.Metadata.Health,
+			TunnelStatus:     s.Metadata.TunnelStatus,
+			Ports:            s.Metadata.Ports,
+			Volumes:          s.Metadata.Volumes,
+			MemoryLimitMB:    s.Metadata.MemoryLimitMB,
+			Cpus:             s.Metadata.Cpus,
+			RestartPolicy:    s.Metadata.RestartPolicy,
+			Command:          s.Metadata.Command,
+			Args:             s.Metadata.Args,
+			YAML:             s.Metadata.YAML,
+			ServiceSettings:  s.Metadata.ServiceSettings,
+			TTLMinutes:       s.Metadata.TTLMinutes,
+			ExpiresAt:        s.Metadata.ExpiresAt,
+			IsDemo:           s.Metadata.IsDemo,
+			RemainingSeconds: remainingSecs,
 		}
 
 		if s.Metadata.Services != nil {
@@ -163,6 +180,69 @@ func handleStartContainer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Apply built-in templates if specified
+	if req.Template == "vscode" {
+		if req.Image == "" {
+			req.Image = "codercom/code-server:latest"
+		}
+		if req.Port <= 0 {
+			req.Port = 8080
+		}
+		if req.Env == nil {
+			req.Env = make(map[string]string)
+		}
+		if _, ok := req.Env["PASSWORD"]; !ok {
+			req.Env["PASSWORD"] = generateHash()
+		}
+		if req.MemoryLimitMB <= 0 {
+			req.MemoryLimitMB = 1024
+		}
+		if req.Cpus <= 0 {
+			req.Cpus = 1.0
+		}
+		if req.Name == "" {
+			req.Name = "vscode"
+		}
+		if len(req.Args) == 0 {
+			req.Args = []string{"--auth", "password", "--bind-addr", "0.0.0.0:8080"}
+		}
+	} else if req.Template == "terminal" {
+		if req.Image == "" {
+			req.Image = "tsl0922/ttyd:alpine"
+		}
+		if req.Port <= 0 {
+			req.Port = 7681
+		}
+		if req.MemoryLimitMB <= 0 {
+			req.MemoryLimitMB = 512
+		}
+		if req.Cpus <= 0 {
+			req.Cpus = 0.5
+		}
+		if req.Name == "" {
+			req.Name = "terminal"
+		}
+		if len(req.Command) == 0 && len(req.Args) == 0 {
+			req.Command = []string{"ttyd", "-W", "-p", "7681", "sh"}
+		}
+	} else if req.Template == "browser" {
+		if req.Image == "" {
+			req.Image = "lscr.io/linuxserver/chromium:latest"
+		}
+		if req.Port <= 0 {
+			req.Port = 3000
+		}
+		if req.MemoryLimitMB <= 0 {
+			req.MemoryLimitMB = 1536
+		}
+		if req.Cpus <= 0 {
+			req.Cpus = 1.5
+		}
+		if req.Name == "" {
+			req.Name = "browser"
+		}
+	}
+
 	// Validate inputs
 	if req.Image == "" || strings.HasPrefix(req.Image, "-") {
 		writeError(w, http.StatusBadRequest, "Invalid image name")
@@ -171,6 +251,17 @@ func handleStartContainer(w http.ResponseWriter, r *http.Request) {
 	if req.Port <= 0 || req.Port > 65535 {
 		writeError(w, http.StatusBadRequest, "Invalid container port")
 		return
+	}
+
+	// Demo TTL handling (5 minutes default for demo sessions)
+	ttlMinutes := req.TTLMinutes
+	if req.IsDemo && ttlMinutes <= 0 {
+		ttlMinutes = 5
+	}
+	var expiresAt *time.Time
+	if ttlMinutes > 0 {
+		exp := time.Now().Add(time.Duration(ttlMinutes) * time.Minute)
+		expiresAt = &exp
 	}
 
 	// 1. Verify Docker is running
@@ -186,6 +277,24 @@ func handleStartContainer(w http.ResponseWriter, r *http.Request) {
 		hash = strings.TrimPrefix(hash, "docker-")
 	}
 	sessionID := "docker-" + hash
+
+	// Domain determination:
+	// For demo containers, use PORTFOLIO_DOMAIN (defaulting to talhacodes.site).
+	// For regular containers, use MAIN_DOMAIN (e.g. ufone-claim.site).
+	if req.DomainMode == "custom" && strings.TrimSpace(req.CustomDomain) == "" {
+		if req.IsDemo {
+			portfolioDomain := getSanitizedEnv("PORTFOLIO_DOMAIN")
+			if portfolioDomain == "" {
+				portfolioDomain = "talhacodes.site"
+			}
+			req.CustomDomain = fmt.Sprintf("demo-%s.%s", hash, portfolioDomain)
+		} else {
+			mainDomain := getSanitizedEnv("MAIN_DOMAIN")
+			if mainDomain != "" {
+				req.CustomDomain = fmt.Sprintf("sub-%s.%s", hash, mainDomain)
+			}
+		}
+	}
 
 	// Clean up old instance first if updating
 	sessionsMu.Lock()
@@ -276,6 +385,9 @@ func handleStartContainer(w http.ResponseWriter, r *http.Request) {
 					Args:          req.Args,
 					DomainMode:    req.DomainMode,
 					CustomDomain:  req.CustomDomain,
+					TTLMinutes:    ttlMinutes,
+					ExpiresAt:     expiresAt,
+					IsDemo:        req.IsDemo,
 				}
 			}
 			appendDeployment(record)
@@ -310,6 +422,10 @@ func handleStartContainer(w http.ResponseWriter, r *http.Request) {
 
 		// Starting phase
 		updateJobPhase(jobID, "starting", "Starting container instance...")
+		restartPolicy := req.RestartPolicy
+		if req.IsDemo {
+			restartPolicy = "no"
+		}
 		runOpts := RunOptions{
 			Image:         req.Image,
 			ContainerName: containerName,
@@ -320,7 +436,7 @@ func handleStartContainer(w http.ResponseWriter, r *http.Request) {
 			Volumes:       req.Volumes,
 			MemoryLimitMB: req.MemoryLimitMB,
 			Cpus:          req.Cpus,
-			RestartPolicy: req.RestartPolicy,
+			RestartPolicy: restartPolicy,
 			RegistryAuth:  req.RegistryAuth,
 			Command:       req.Command,
 			Args:          req.Args,
@@ -382,11 +498,14 @@ func handleStartContainer(w http.ResponseWriter, r *http.Request) {
 				Volumes:        req.Volumes,
 				MemoryLimitMB:  req.MemoryLimitMB,
 				Cpus:           req.Cpus,
-				RestartPolicy:  req.RestartPolicy,
+				RestartPolicy:  restartPolicy,
 				Command:        req.Command,
 				Args:           req.Args,
 				Status:         "running",
 				TunnelStatus:   "up",
+				TTLMinutes:     ttlMinutes,
+				ExpiresAt:      expiresAt,
+				IsDemo:         req.IsDemo,
 			},
 		}
 
@@ -398,8 +517,10 @@ func handleStartContainer(w http.ResponseWriter, r *http.Request) {
 		completeJob(jobID, containerName)
 	}()
 
-	writeJSON(w, http.StatusAccepted, map[string]string{
-		"jobId": jobID,
+	writeJSON(w, http.StatusAccepted, map[string]interface{}{
+		"jobId":     jobID,
+		"sessionId": sessionID,
+		"expiresAt": expiresAt,
 	})
 }
 
@@ -1008,4 +1129,74 @@ func handleStatsContainer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, statsList)
+}
+
+type DemoStartRequest struct {
+	Type       string            `json:"type"` // "vscode" | "terminal" | "browser" | "custom"
+	Image      string            `json:"image,omitempty"`
+	Port       int               `json:"port,omitempty"`
+	Env        map[string]string `json:"env,omitempty"`
+	TTLMinutes int               `json:"ttlMinutes,omitempty"`
+}
+
+func handleStartDemo(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		writeError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		return
+	}
+
+	var req DemoStartRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body: "+err.Error())
+		return
+	}
+
+	ttl := req.TTLMinutes
+	if ttl <= 0 || ttl > 30 {
+		ttl = 5 // enforce 5 minutes default
+	}
+
+	targetType := strings.ToLower(strings.TrimSpace(req.Type))
+	if targetType == "" {
+		targetType = "terminal"
+	}
+
+	startReq := StartRequest{
+		DomainMode: "custom",
+		IsDemo:     true,
+		TTLMinutes: ttl,
+		Env:        req.Env,
+	}
+
+	switch targetType {
+	case "vscode":
+		startReq.Template = "vscode"
+		startReq.Name = "demo-vscode"
+	case "terminal":
+		startReq.Template = "terminal"
+		startReq.Name = "demo-term"
+	case "browser":
+		startReq.Template = "browser"
+		startReq.Name = "demo-browser"
+	case "custom":
+		startReq.Image = req.Image
+		startReq.Port = req.Port
+		startReq.Name = "demo-custom"
+		if startReq.Image == "" {
+			writeError(w, http.StatusBadRequest, "Image is required for custom demo container")
+			return
+		}
+		if startReq.Port <= 0 {
+			writeError(w, http.StatusBadRequest, "Port is required for custom demo container")
+			return
+		}
+	default:
+		writeError(w, http.StatusBadRequest, "Unknown demo type: "+targetType+". Supported: vscode, terminal, browser, custom")
+		return
+	}
+
+	// Re-encode and pass to handleStartContainer
+	bodyBytes, _ := json.Marshal(startReq)
+	r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+	handleStartContainer(w, r)
 }

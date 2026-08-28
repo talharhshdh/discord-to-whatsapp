@@ -237,7 +237,7 @@ volumes:
   useEffect(() => {
     if (!activeJobId) return;
 
-    let timer: NodeJS.Timeout;
+    let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
       try {
         const status = await api.getGoJobStatus(activeJobId);

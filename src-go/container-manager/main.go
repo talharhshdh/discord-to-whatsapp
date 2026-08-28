@@ -42,6 +42,7 @@ func main() {
 	// 5. Setup HTTP routes with CORS middleware
 	http.HandleFunc("/api/go/containers/sessions", corsMiddleware(handleGetSessions))
 	http.HandleFunc("/api/go/containers/start", corsMiddleware(handleStartContainer))
+	http.HandleFunc("/api/go/containers/demo/start", corsMiddleware(handleStartDemo))
 	http.HandleFunc("/api/go/containers/stop", corsMiddleware(handleStopContainer))
 	http.HandleFunc("/api/go/containers/compose/parse", corsMiddleware(handleParseCompose))
 	http.HandleFunc("/api/go/containers/compose/deploy", corsMiddleware(handleDeployCompose))
