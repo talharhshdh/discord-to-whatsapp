@@ -39,6 +39,7 @@ type StartRequest struct {
 	TTLMinutes        int               `json:"ttlMinutes,omitempty"`
 	IsDemo            bool              `json:"isDemo,omitempty"`
 	Template          string            `json:"template,omitempty"`
+	Sync              bool              `json:"sync,omitempty"`
 }
 
 type StopRequest struct {
@@ -345,9 +346,12 @@ func handleStartContainer(w http.ResponseWriter, r *http.Request) {
 	// Create async Job
 	jobID := createJob()
 
-	go func() {
+	runDeploy := func(jobID string) (Session, error) {
 		hostPort := req.HostPort
 		defer func() {
+			if jobID == "" {
+				return
+			}
 			job, exists := getJob(jobID)
 			if !exists {
 				return
@@ -399,12 +403,13 @@ func handleStartContainer(w http.ResponseWriter, r *http.Request) {
 			hostPort, err = allocatePort()
 			if err != nil {
 				failJob(jobID, "Failed to allocate host port: "+err.Error())
-				return
+				return Session{}, fmt.Errorf("failed to allocate host port: %w", err)
 			}
 		} else {
 			if isPortConflict(hostPort) {
-				failJob(jobID, fmt.Sprintf("Host port %d is already in use", hostPort))
-				return
+				err = fmt.Errorf("Host port %d is already in use", hostPort)
+				failJob(jobID, err.Error())
+				return Session{}, err
 			}
 		}
 
@@ -443,7 +448,7 @@ func handleStartContainer(w http.ResponseWriter, r *http.Request) {
 		}
 		if err := dockerRunWithJob(runOpts, jobID); err != nil {
 			failJob(jobID, err.Error())
-			return
+			return Session{}, err
 		}
 
 		var tunnelPid int
@@ -467,7 +472,7 @@ func handleStartContainer(w http.ResponseWriter, r *http.Request) {
 				// Clean up container since tunnel failed
 				_ = dockerStopAndRemove(containerName)
 				failJob(jobID, "Failed to provision Cloudflare tunnel: "+err.Error())
-				return
+				return Session{}, err
 			}
 
 			tunnelPid = tRes.TunnelPid
@@ -518,6 +523,33 @@ func handleStartContainer(w http.ResponseWriter, r *http.Request) {
 		saveSessions()
 
 		completeJob(jobID, containerName)
+		return sess, nil
+	}
+
+	if req.Sync {
+		sess, err := runDeploy(jobID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		password := ""
+		if req.Env != nil {
+			password = req.Env["PASSWORD"]
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"success":   true,
+			"sessionId": sess.ID,
+			"url":       sess.URL,
+			"password":  password,
+			"expiresAt": expiresAt,
+			"type":      req.Template,
+			"jobId":     jobID,
+		})
+		return
+	}
+
+	go func() {
+		_, _ = runDeploy(jobID)
 	}()
 
 	writeJSON(w, http.StatusAccepted, map[string]interface{}{
@@ -1137,11 +1169,14 @@ func handleStatsContainer(w http.ResponseWriter, r *http.Request) {
 }
 
 type DemoStartRequest struct {
-	Type       string            `json:"type"` // "vscode" | "terminal" | "browser" | "custom"
-	Image      string            `json:"image,omitempty"`
-	Port       int               `json:"port,omitempty"`
-	Env        map[string]string `json:"env,omitempty"`
-	TTLMinutes int               `json:"ttlMinutes,omitempty"`
+	Type         string            `json:"type"` // "vscode" | "terminal" | "browser" | "custom"
+	Image        string            `json:"image,omitempty"`
+	Port         int               `json:"port,omitempty"`
+	Env          map[string]string `json:"env,omitempty"`
+	TTLMinutes   int               `json:"ttlMinutes,omitempty"`
+	CustomDomain string            `json:"customDomain,omitempty"`
+	Command      []string          `json:"command,omitempty"`
+	Sync         *bool             `json:"sync,omitempty"`
 }
 
 func handleStartDemo(w http.ResponseWriter, r *http.Request) {
@@ -1166,11 +1201,19 @@ func handleStartDemo(w http.ResponseWriter, r *http.Request) {
 		targetType = "terminal"
 	}
 
+	isSync := true
+	if req.Sync != nil {
+		isSync = *req.Sync
+	}
+
 	startReq := StartRequest{
-		DomainMode: "custom",
-		IsDemo:     true,
-		TTLMinutes: ttl,
-		Env:        req.Env,
+		DomainMode:   "custom",
+		CustomDomain: req.CustomDomain,
+		Command:      req.Command,
+		IsDemo:       true,
+		TTLMinutes:   ttl,
+		Env:          req.Env,
+		Sync:         isSync,
 	}
 
 	switch targetType {

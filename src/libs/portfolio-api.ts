@@ -464,21 +464,9 @@ export async function handlePortfolioRequest(req: IncomingMessage, res: ServerRe
       const ttlMinutes = Math.min(Math.max(Number(body.ttlMinutes) || 5, 1), 30); // 1-30 min, default 5
       const customDomain = body.customDomain as string | undefined;
 
-      console.log(`[Portfolio API] Launching 5-minute demo container: type=${type}, ttl=${ttlMinutes}m`);
+      console.log(`[Portfolio API] Launching demo container in 1 synchronous API call: type=${type}, ttl=${ttlMinutes}m`);
 
-      if (type === 'vscode') {
-        const result = await startVSCode({ isDemo: true, ttlMinutes, customDomain });
-        json(res, { success: !result.error, ...result });
-        return true;
-      }
-
-      if (type === 'terminal') {
-        const result = await startTerminal({ isDemo: true, ttlMinutes, customDomain });
-        json(res, { success: !result.error, ...result });
-        return true;
-      }
-
-      // Delegate other container types directly to Go container manager demo endpoint
+      // Delegate directly to Go container manager demo endpoint (synchronous execution)
       const goDemoRes = await fetch(`${GO_MANAGER_URL}/api/go/containers/demo/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -489,65 +477,24 @@ export async function handlePortfolioRequest(req: IncomingMessage, res: ServerRe
           command: body.command ? (Array.isArray(body.command) ? body.command : [body.command]) : undefined,
           env: body.env,
           customDomain,
-          ttlMinutes
+          ttlMinutes,
+          sync: true
         })
-      }).catch(() => null);
-
-      if (!goDemoRes || !goDemoRes.ok) {
-        return err(res, 'Go Container Manager is offline or failed to initialize demo container', 502), true;
-      }
-
-      const startData = await goDemoRes.json() as { jobId: string; sessionId: string; expiresAt?: string };
-      const jobId = startData.jobId;
-      const sessionId = startData.sessionId;
-
-      // Poll for job completion (Go manager handles 1s delay health verification)
-      let finished = false;
-      let attempts = 0;
-      while (!finished && attempts < 60) {
-        await new Promise(r => setTimeout(r, 1000));
-        attempts++;
-
-        const jobRes = await fetch(`${GO_MANAGER_URL}/api/go/containers/jobs?id=${jobId}`).catch(() => null);
-        if (jobRes && jobRes.ok) {
-          const jobData = await jobRes.json() as any;
-          if (jobData.status === 'done') {
-            finished = true;
-            break;
-          } else if (jobData.status === 'failed') {
-            return err(res, `Demo container deployment failed: ${jobData.error || 'Unknown error'}`, 500), true;
-          }
-        }
-      }
-
-      if (!finished) {
-        return err(res, 'Timed out waiting for Demo container to initialize and become healthy', 504), true;
-      }
-
-      // Fetch verified session details from Go manager
-      const sessRes = await fetch(`${GO_MANAGER_URL}/api/go/containers/sessions`).catch(() => null);
-      let sessionUrl = '';
-      if (sessRes && sessRes.ok) {
-        const sessions = await sessRes.json() as any[];
-        const found = sessions.find(s => s.id === sessionId);
-        if (found) {
-          sessionUrl = found.url || '';
-        }
-      }
-
-      if (!sessionUrl) {
-        const hash = sessionId.replace(/^docker-/, '');
-        const portfolioDomain = process.env.PORTFOLIO_DOMAIN || 'talhacodes.site';
-        sessionUrl = customDomain ? `https://${customDomain}` : `https://demo-${hash}.${portfolioDomain}`;
-      }
-
-      json(res, {
-        success: true,
-        sessionId,
-        url: sessionUrl,
-        expiresAt: startData.expiresAt,
-        type
+      }).catch((e) => {
+        console.error('[Portfolio API] Go manager error:', e);
+        return null;
       });
+
+      if (!goDemoRes) {
+        return err(res, 'Go Container Manager is offline or unreachable', 502), true;
+      }
+
+      const goDemoData = await goDemoRes.json() as any;
+      if (!goDemoRes.ok || !goDemoData.success) {
+        return err(res, goDemoData.error || 'Failed to initialize demo container', goDemoRes.status >= 400 ? goDemoRes.status : 500), true;
+      }
+
+      json(res, goDemoData);
       return true;
     }
 
