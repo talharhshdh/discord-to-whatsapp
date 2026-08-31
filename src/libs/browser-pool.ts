@@ -28,7 +28,9 @@ import * as cheerio from 'cheerio';
 
 export interface RemoteBrowser {
   workerId: string;
-  cdpUrl: string;          // https://xxx.trycloudflare.com  (proxies CDP :9222)
+  cdpUrl: string;          // https://xxx.trycloudflare.com  (proxies Puppeteer CDP :9222)
+  sbCdpUrl?: string;       // https://xxx.trycloudflare.com  (proxies SeleniumBase UC CDP :9223)
+  seleniumCdpUrl?: string; // Alias for SeleniumBase CDP
   apiUrl?: string;         // https://xxx.trycloudflare.com  (proxies Python API :8000)
   registeredAt: number;    // Date.now() ms
   lastHeartbeat: number;   // Date.now() ms — updated on every heartbeat
@@ -45,6 +47,8 @@ export interface WebhookPayload {
   event: WebhookEvent;
   workerId: string;
   cdpUrl: string;
+  sbCdpUrl?: string;
+  seleniumCdpUrl?: string;
   apiUrl?: string;
   runId?: string;
   timestamp: string;       // ISO-8601
@@ -79,12 +83,25 @@ class BrowserPool {
   // ── Lifecycle ──────────────────────────────────────────────────────────
 
   /** Register a new remote browser (or update existing — idempotent upsert). */
-  register(workerId: string, cdpUrl: string, runId?: string, skipWarmup = false, apiUrl?: string): void {
+  register(
+    workerId: string,
+    cdpUrl: string,
+    runId?: string,
+    skipWarmup = false,
+    apiUrl?: string,
+    sbCdpUrl?: string,
+    seleniumCdpUrl?: string
+  ): void {
     const now = Date.now();
     const existing = this.browsers.get(workerId);
+    const resolvedSbCdpUrl = sbCdpUrl || seleniumCdpUrl;
     let browserEntry: RemoteBrowser;
     if (existing) {
       existing.cdpUrl = cdpUrl;
+      if (resolvedSbCdpUrl) {
+        existing.sbCdpUrl = resolvedSbCdpUrl;
+        existing.seleniumCdpUrl = resolvedSbCdpUrl;
+      }
       existing.apiUrl = apiUrl;
       existing.lastHeartbeat = now;
       existing.status = 'active';
@@ -94,6 +111,8 @@ class BrowserPool {
       browserEntry = {
         workerId,
         cdpUrl,
+        sbCdpUrl: resolvedSbCdpUrl,
+        seleniumCdpUrl: resolvedSbCdpUrl,
         apiUrl,
         registeredAt: now,
         lastHeartbeat: now,

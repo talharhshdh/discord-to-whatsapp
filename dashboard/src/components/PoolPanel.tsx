@@ -183,7 +183,7 @@ export default function PoolPanel() {
               <thead>
                 <tr className="border-b border-white/[0.06] bg-white/[0.02]">
                   <th className="text-[10px] uppercase font-black tracking-wider text-white/40 px-6 py-4">Worker ID</th>
-                  <th className="text-[10px] uppercase font-black tracking-wider text-white/40 px-6 py-4">CDP WebSocket / Tunnel URL</th>
+                  <th className="text-[10px] uppercase font-black tracking-wider text-white/40 px-6 py-4">CDP Endpoints (Puppeteer & SeleniumBase)</th>
                   <th className="text-[10px] uppercase font-black tracking-wider text-white/40 px-6 py-4">Status</th>
                   <th className="text-[10px] uppercase font-black tracking-wider text-white/40 px-6 py-4">Puppeteer CDP Connection</th>
                   <th className="text-[10px] uppercase font-black tracking-wider text-white/40 px-6 py-4">Heartbeat</th>
@@ -200,20 +200,43 @@ export default function PoolPanel() {
                       {b.workerId}
                     </td>
 
-                    {/* CDP Tunnel URL */}
-                    <td className="px-6 py-4 max-w-xs">
+                    {/* CDP Tunnel URLs (Puppeteer & SeleniumBase) */}
+                    <td className="px-6 py-4 max-w-sm space-y-2">
+                      {/* Puppeteer CDP */}
                       <div className="flex items-center gap-2 bg-black/20 border border-white/10 rounded-lg px-2.5 py-1.5">
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20">
+                          Puppeteer
+                        </span>
                         <a href={`${b.cdpUrl}/json/version`} target="_blank" rel="noopener noreferrer"
                            className="flex-1 text-teal-400 hover:underline text-xs font-mono truncate select-all">
                           {b.cdpUrl}
                         </a>
                         <Button variant="ghost" onClick={() => copyText(b.cdpUrl)}
                                 className="text-[10px] text-white/30 hover:text-white transition-colors h-auto p-1"
-                                title="Copy CDP URL">📋</Button>
+                                title="Copy Puppeteer CDP URL">📋</Button>
                         <a href={`${b.cdpUrl}/json/version`} target="_blank" rel="noopener noreferrer"
                            className="text-[10px] text-white/30 hover:text-white transition-colors px-1"
                            title="Check CDP Status page">↗</a>
                       </div>
+
+                      {/* SeleniumBase UC CDP */}
+                      {(b.sbCdpUrl || b.seleniumCdpUrl) && (
+                        <div className="flex items-center gap-2 bg-black/20 border border-purple-500/20 rounded-lg px-2.5 py-1.5">
+                          <span className="text-[9px] font-bold uppercase tracking-wider text-purple-400 bg-purple-500/10 px-1.5 py-0.5 rounded border border-purple-500/20">
+                            SeleniumBase
+                          </span>
+                          <a href={`${b.sbCdpUrl || b.seleniumCdpUrl}/json/version`} target="_blank" rel="noopener noreferrer"
+                             className="flex-1 text-purple-300 hover:underline text-xs font-mono truncate select-all">
+                            {b.sbCdpUrl || b.seleniumCdpUrl}
+                          </a>
+                          <Button variant="ghost" onClick={() => copyText((b.sbCdpUrl || b.seleniumCdpUrl)!)}
+                                  className="text-[10px] text-white/30 hover:text-white transition-colors h-auto p-1"
+                                  title="Copy SeleniumBase CDP URL">📋</Button>
+                          <a href={`${b.sbCdpUrl || b.seleniumCdpUrl}/json/version`} target="_blank" rel="noopener noreferrer"
+                             className="text-[10px] text-white/30 hover:text-white transition-colors px-1"
+                             title="Check SeleniumBase CDP Status">↗</a>
+                        </div>
+                      )}
                     </td>
 
                     {/* Status Badge */}

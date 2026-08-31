@@ -28,12 +28,17 @@ HEARTBEAT_INTERVAL="${HEARTBEAT_INTERVAL:-60}"
 WEBHOOK_SECRET="${WEBHOOK_SECRET:-${DASHBOARD_PASSWORD:-}}"
 WEBHOOK_URL="https://${DASHBOARD_DOMAIN}/api/browsers/webhook?secret=${WEBHOOK_SECRET}"
 CDP_PORT=9222
+SB_CDP_PORT="${SB_CDP_PORT:-9223}"
 TUNNEL_URL=""
+TUNNEL_SB_CDP_URL=""
 CHROME_PID=""
+SB_CDP_PID=""
 TUNNEL_PID=""
+TUNNEL_SB_CDP_PID=""
 TUNNEL_API_URL=""
 API_PID=""
 TUNNEL_API_PID=""
+XVFB_PID=""
 
 # ---------------------------------------------------------------------------
 # Cleanup handler
@@ -43,12 +48,12 @@ cleanup() {
   echo "🧹 Cleaning up worker processes (Exit code: $EXIT_CODE)..."
 
   # Best-effort deregister
-  if [ -n "$TUNNEL_URL" ]; then
+  if [ -n "$TUNNEL_URL" ] || [ -n "$TUNNEL_SB_CDP_URL" ]; then
     for attempt in 1 2 3; do
       HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
         -X POST "$WEBHOOK_URL" \
         -H "Content-Type: application/json" \
-        -d "{\"event\":\"deregister\",\"workerId\":\"${WORKER_ID}\",\"cdpUrl\":\"${TUNNEL_URL}\",\"apiUrl\":\"${TUNNEL_API_URL}\",\"runId\":\"${GITHUB_RUN_ID:-}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
+        -d "{\"event\":\"deregister\",\"workerId\":\"${WORKER_ID}\",\"cdpUrl\":\"${TUNNEL_URL}\",\"sbCdpUrl\":\"${TUNNEL_SB_CDP_URL}\",\"seleniumCdpUrl\":\"${TUNNEL_SB_CDP_URL}\",\"apiUrl\":\"${TUNNEL_API_URL}\",\"runId\":\"${GITHUB_RUN_ID:-}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
         2>/dev/null || echo "000")
       if [ "$HTTP_CODE" = "200" ]; then
         break
@@ -58,22 +63,34 @@ cleanup() {
   fi
 
   # Kill child processes
+  [ -n "$TUNNEL_SB_CDP_PID" ] && kill "$TUNNEL_SB_CDP_PID" 2>/dev/null || true
+  [ -n "$SB_CDP_PID" ] && kill "$SB_CDP_PID" 2>/dev/null || true
   [ -n "$TUNNEL_API_PID" ] && kill "$TUNNEL_API_PID" 2>/dev/null || true
   [ -n "$API_PID" ] && kill "$API_PID" 2>/dev/null || true
   [ -n "$TUNNEL_PID" ] && kill "$TUNNEL_PID" 2>/dev/null || true
   [ -n "$CHROME_PID" ] && kill "$CHROME_PID" 2>/dev/null || true
+  [ -n "$XVFB_PID" ] && kill "$XVFB_PID" 2>/dev/null || true
 
   exit $EXIT_CODE
 }
 trap cleanup EXIT SIGTERM SIGINT
 
 # ---------------------------------------------------------------------------
-# 1. Start Chrome with CDP
+# 0. Start Xvfb virtual display if on Linux (required for SeleniumBase UC stealth)
+# ---------------------------------------------------------------------------
+if [ "$(uname -s)" = "Linux" ] && [ -z "${DISPLAY:-}" ]; then
+  echo "🖥️ Starting Xvfb virtual display on :99..."
+  Xvfb :99 -screen 0 1920x1080x24 -ac +extension GLX +render -noreset > /tmp/xvfb.log 2>&1 &
+  XVFB_PID=$!
+  export DISPLAY=:99
+  sleep 1
+fi
+
+# ---------------------------------------------------------------------------
+# 1. Start Chrome with CDP (Puppeteer browser on :9222)
 # ---------------------------------------------------------------------------
 echo "🚀 Starting Chrome headless with CDP on :${CDP_PORT}..."
 
-# Chrome is already installed via setup-chrome action in the workflow.
-# We need a user data dir so Chrome doesn't complain.
 mkdir -p /tmp/chrome-user-data
 
 google-chrome-stable \
@@ -96,21 +113,42 @@ CHROME_PID=$!
 echo "Chrome started (PID: $CHROME_PID)"
 
 # Wait for CDP to become available
-echo "⏳ Waiting for CDP to be ready..."
+echo "⏳ Waiting for Puppeteer CDP (:9222) to be ready..."
 for i in $(seq 1 30); do
   if curl -s "http://127.0.0.1:${CDP_PORT}/json/version" > /dev/null 2>&1; then
-    echo "✅ CDP is ready!"
+    echo "✅ Puppeteer CDP is ready!"
     break
   fi
   if [ $i -eq 30 ]; then
-    echo "❌ CDP failed to start within 30 seconds"
+    echo "❌ Puppeteer CDP failed to start within 30 seconds"
     exit 1
   fi
   sleep 1
 done
 
 # ---------------------------------------------------------------------------
-# 1b. Start FastAPI server
+# 1b. Start SeleniumBase UC CDP Worker (Stealth browser on :9223)
+# ---------------------------------------------------------------------------
+echo "🚀 Starting SeleniumBase UC CDP worker on :${SB_CDP_PORT}..."
+export SB_CDP_PORT
+python3 worker_browser/sb_cdp_worker.py > /tmp/sb_cdp_worker.log 2>&1 &
+SB_CDP_PID=$!
+
+echo "⏳ Waiting for SeleniumBase CDP (:${SB_CDP_PORT}) to be ready..."
+for i in $(seq 1 35); do
+  if curl -s "http://127.0.0.1:${SB_CDP_PORT}/json/version" > /dev/null 2>&1; then
+    echo "✅ SeleniumBase CDP is ready!"
+    break
+  fi
+  if [ $i -eq 35 ]; then
+    echo "⚠️ SeleniumBase CDP did not respond on :${SB_CDP_PORT} within 35s. Log tail:"
+    tail -n 20 /tmp/sb_cdp_worker.log 2>/dev/null || true
+  fi
+  sleep 1
+done
+
+# ---------------------------------------------------------------------------
+# 1c. Start FastAPI server (:8000)
 # ---------------------------------------------------------------------------
 echo "🚀 Starting Python FastAPI server on :8000..."
 python3 worker_browser/worker_api.py > /tmp/worker_api.log 2>&1 &
@@ -133,11 +171,9 @@ done
 # ---------------------------------------------------------------------------
 # 2. Start cloudflared tunnels
 # ---------------------------------------------------------------------------
-echo "🌐 Starting cloudflared tunnel for CDP port ${CDP_PORT}..."
+echo "🌐 Starting cloudflared tunnel for Puppeteer CDP port ${CDP_PORT}..."
 
 TUNNEL_LOG="/tmp/cloudflared-tunnel.log"
-# The --http-host-header flag is CRITICAL. It rewrites the Host header from xxx.trycloudflare.com 
-# to localhost. Without this, Chrome rejects the CDP request with a 500 error for security reasons.
 cloudflared tunnel --url "http://127.0.0.1:${CDP_PORT}" --http-host-header "localhost" > "$TUNNEL_LOG" 2>&1 &
 TUNNEL_PID=$!
 
@@ -148,9 +184,26 @@ for i in $(seq 1 30); do
     break
   fi
   if [ $i -eq 30 ]; then
-    echo "❌ CDP tunnel failed to start within 30 seconds:"
+    echo "❌ Puppeteer CDP tunnel failed to start within 30 seconds:"
     cat "$TUNNEL_LOG" 2>/dev/null || true
     exit 1
+  fi
+  sleep 1
+done
+
+echo "🌐 Starting cloudflared tunnel for SeleniumBase CDP port ${SB_CDP_PORT}..."
+TUNNEL_SB_CDP_LOG="/tmp/cloudflared-sb-cdp-tunnel.log"
+cloudflared tunnel --url "http://127.0.0.1:${SB_CDP_PORT}" --http-host-header "localhost" > "$TUNNEL_SB_CDP_LOG" 2>&1 &
+TUNNEL_SB_CDP_PID=$!
+
+for i in $(seq 1 30); do
+  TUNNEL_SB_CDP_URL=$(grep -oP 'https://[-0-9a-z]+\.trycloudflare\.com' "$TUNNEL_SB_CDP_LOG" 2>/dev/null | head -1 || true)
+  if [ -n "$TUNNEL_SB_CDP_URL" ]; then
+    break
+  fi
+  if [ $i -eq 30 ]; then
+    echo "⚠️ SeleniumBase CDP tunnel failed to start within 30 seconds:"
+    cat "$TUNNEL_SB_CDP_LOG" 2>/dev/null || true
   fi
   sleep 1
 done
@@ -175,8 +228,9 @@ for i in $(seq 1 30); do
 done
 
 # Pre-warm: open about:blank tab so CDP is ready
-echo "🔥 Pre-warming browser tab..."
+echo "🔥 Pre-warming browser tabs..."
 curl -s "http://127.0.0.1:${CDP_PORT}/json/new?about:blank" > /dev/null || true
+curl -s "http://127.0.0.1:${SB_CDP_PORT}/json/new?about:blank" > /dev/null || true
 
 # ---------------------------------------------------------------------------
 # 3. Register with main dashboard
@@ -189,7 +243,7 @@ for attempt in $(seq 1 20); do
   HTTP_CODE=$(curl -s -o /tmp/register-resp.txt -w "%{http_code}" --max-time 15 \
     -X POST "$WEBHOOK_URL" \
     -H "Content-Type: application/json" \
-    -d "{\"event\":\"register\",\"workerId\":\"${WORKER_ID}\",\"cdpUrl\":\"${TUNNEL_URL}\",\"apiUrl\":\"${TUNNEL_API_URL}\",\"runId\":\"${GITHUB_RUN_ID:-}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
+    -d "{\"event\":\"register\",\"workerId\":\"${WORKER_ID}\",\"cdpUrl\":\"${TUNNEL_URL}\",\"sbCdpUrl\":\"${TUNNEL_SB_CDP_URL}\",\"seleniumCdpUrl\":\"${TUNNEL_SB_CDP_URL}\",\"apiUrl\":\"${TUNNEL_API_URL}\",\"runId\":\"${GITHUB_RUN_ID:-}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
     2>/dev/null || echo "000")
 
   if [ "$HTTP_CODE" = "200" ]; then
@@ -199,7 +253,6 @@ for attempt in $(seq 1 20); do
   fi
 
   echo "⚠️ Registration attempt ${attempt} failed with status code ${HTTP_CODE}. Retrying..."
-  # Exponential backoff: 5, 10, 20, 40, 60, 60, ...
   BACKOFF=$(( 5 * (2 ** (attempt - 1)) ))
   [ $BACKOFF -gt 60 ] && BACKOFF=60
   sleep "$BACKOFF"
@@ -227,7 +280,7 @@ while true; do
     break
   fi
 
-  # ── Watchdog 1: Chrome ──────────────────────────────────────────────────
+  # ── Watchdog 1: Chrome (Puppeteer) ──────────────────────────────────────
   if ! kill -0 "$CHROME_PID" 2>/dev/null; then
     echo "⚠️ Chrome process PID $CHROME_PID died! Restarting Chrome..."
     google-chrome-stable \
@@ -248,6 +301,13 @@ while true; do
     CHROME_PID=$!
   fi
 
+  # ── Watchdog 1b: SeleniumBase UC CDP ────────────────────────────────────
+  if ! kill -0 "$SB_CDP_PID" 2>/dev/null; then
+    echo "⚠️ SeleniumBase CDP worker PID $SB_CDP_PID died! Restarting SeleniumBase CDP..."
+    python3 worker_browser/sb_cdp_worker.py > /tmp/sb_cdp_worker.log 2>&1 &
+    SB_CDP_PID=$!
+  fi
+
   # ── Watchdog 2: FastAPI ─────────────────────────────────────────────────
   if ! kill -0 "$API_PID" 2>/dev/null; then
     echo "⚠️ FastAPI server PID $API_PID died! Restarting FastAPI..."
@@ -266,6 +326,23 @@ while true; do
       if [ -n "$NEW_URL" ]; then
         TUNNEL_URL="$NEW_URL"
         echo "✅ New CDP Tunnel URL: $TUNNEL_URL"
+        NEED_REREGISTER=true
+        break
+      fi
+      sleep 1
+    done
+  fi
+
+  # ── Watchdog 3b: SeleniumBase CDP Tunnel ─────────────────────────────────
+  if ! kill -0 "$TUNNEL_SB_CDP_PID" 2>/dev/null; then
+    echo "⚠️ SeleniumBase CDP Tunnel PID $TUNNEL_SB_CDP_PID died! Restarting SB CDP tunnel..."
+    cloudflared tunnel --url "http://127.0.0.1:${SB_CDP_PORT}" --http-host-header "localhost" > "$TUNNEL_SB_CDP_LOG" 2>&1 &
+    TUNNEL_SB_CDP_PID=$!
+    for i in $(seq 1 15); do
+      NEW_SB_URL=$(grep -oP 'https://[-0-9a-z]+\.trycloudflare\.com' "$TUNNEL_SB_CDP_LOG" 2>/dev/null | head -1 || true)
+      if [ -n "$NEW_SB_URL" ]; then
+        TUNNEL_SB_CDP_URL="$NEW_SB_URL"
+        echo "✅ New SeleniumBase CDP Tunnel URL: $TUNNEL_SB_CDP_URL"
         NEED_REREGISTER=true
         break
       fi
@@ -295,7 +372,7 @@ while true; do
     curl -s -o /dev/null --max-time 15 \
       -X POST "$WEBHOOK_URL" \
       -H "Content-Type: application/json" \
-      -d "{\"event\":\"register\",\"workerId\":\"${WORKER_ID}\",\"cdpUrl\":\"${TUNNEL_URL}\",\"apiUrl\":\"${TUNNEL_API_URL}\",\"runId\":\"${GITHUB_RUN_ID:-}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
+      -d "{\"event\":\"register\",\"workerId\":\"${WORKER_ID}\",\"cdpUrl\":\"${TUNNEL_URL}\",\"sbCdpUrl\":\"${TUNNEL_SB_CDP_URL}\",\"seleniumCdpUrl\":\"${TUNNEL_SB_CDP_URL}\",\"apiUrl\":\"${TUNNEL_API_URL}\",\"runId\":\"${GITHUB_RUN_ID:-}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
       2>/dev/null || true
   fi
 
@@ -305,7 +382,7 @@ while true; do
   HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 \
     -X POST "$WEBHOOK_URL" \
     -H "Content-Type: application/json" \
-    -d "{\"event\":\"heartbeat\",\"workerId\":\"${WORKER_ID}\",\"cdpUrl\":\"${TUNNEL_URL}\",\"apiUrl\":\"${TUNNEL_API_URL}\",\"runId\":\"${GITHUB_RUN_ID:-}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
+    -d "{\"event\":\"heartbeat\",\"workerId\":\"${WORKER_ID}\",\"cdpUrl\":\"${TUNNEL_URL}\",\"sbCdpUrl\":\"${TUNNEL_SB_CDP_URL}\",\"seleniumCdpUrl\":\"${TUNNEL_SB_CDP_URL}\",\"apiUrl\":\"${TUNNEL_API_URL}\",\"runId\":\"${GITHUB_RUN_ID:-}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
     2>/dev/null || echo "000")
 
   if [ "$HTTP_CODE" = "200" ]; then
@@ -316,7 +393,7 @@ while true; do
     curl -s -o /dev/null --max-time 15 \
       -X POST "$WEBHOOK_URL" \
       -H "Content-Type: application/json" \
-      -d "{\"event\":\"register\",\"workerId\":\"${WORKER_ID}\",\"cdpUrl\":\"${TUNNEL_URL}\",\"apiUrl\":\"${TUNNEL_API_URL}\",\"runId\":\"${GITHUB_RUN_ID:-}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
+      -d "{\"event\":\"register\",\"workerId\":\"${WORKER_ID}\",\"cdpUrl\":\"${TUNNEL_URL}\",\"sbCdpUrl\":\"${TUNNEL_SB_CDP_URL}\",\"seleniumCdpUrl\":\"${TUNNEL_SB_CDP_URL}\",\"apiUrl\":\"${TUNNEL_API_URL}\",\"runId\":\"${GITHUB_RUN_ID:-}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
       2>/dev/null || true
     CONSECUTIVE_FAILURES=0
   else

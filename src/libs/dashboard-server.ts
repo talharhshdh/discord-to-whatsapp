@@ -704,10 +704,25 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   // ── GET /api/urls ─────────────────────────────────────────────────────────
   if (method === 'GET' && url.startsWith('/api/urls')) {
     const elapsed = Math.floor((Date.now() - SESSION_START_MS) / 1000);
+    const all = browserPool.getAll();
+    const active = browserPool.getActive();
     json(res, {
       sessionStartedAt: new Date(SESSION_START_MS).toISOString(),
       sessionRemainingSeconds: Math.max(0, SESSION_DURATION_S - elapsed),
       tools: urlRegistry,
+      total: all.length,
+      active: active.length,
+      browsers: all.map(b => ({
+        workerId: b.workerId,
+        cdpUrl: b.cdpUrl,
+        sbCdpUrl: b.sbCdpUrl || b.seleniumCdpUrl,
+        seleniumCdpUrl: b.seleniumCdpUrl || b.sbCdpUrl,
+        apiUrl: b.apiUrl,
+        status: b.status,
+        registeredAt: new Date(b.registeredAt).toISOString(),
+        lastHeartbeat: new Date(b.lastHeartbeat).toISOString(),
+        secondsSinceHeartbeat: Math.round((Date.now() - b.lastHeartbeat) / 1000),
+      })),
     });
     return;
   }
@@ -1656,7 +1671,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       }
 
       const body = await parseJsonBody(req) as unknown as WebhookPayload;
-      const { event, workerId, cdpUrl, apiUrl, runId } = body;
+      const { event, workerId, cdpUrl, sbCdpUrl, seleniumCdpUrl, apiUrl, runId } = body;
 
       if (!event || !workerId) {
         return err(res, 'event and workerId are required', 400);
@@ -1665,7 +1680,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       switch (event) {
         case 'register':
           if (!cdpUrl) return err(res, 'cdpUrl is required for register', 400);
-          browserPool.register(workerId, cdpUrl, runId, false, apiUrl);
+          browserPool.register(workerId, cdpUrl, runId, false, apiUrl, sbCdpUrl, seleniumCdpUrl);
           json(res, { ok: true, message: 'Registered', poolSize: browserPool.size });
           break;
 
@@ -1713,6 +1728,8 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       browsers: all.map(b => ({
         workerId: b.workerId,
         cdpUrl: b.cdpUrl,
+        sbCdpUrl: b.sbCdpUrl || b.seleniumCdpUrl,
+        seleniumCdpUrl: b.seleniumCdpUrl || b.sbCdpUrl,
         apiUrl: b.apiUrl,
         status: b.status,
         registeredAt: new Date(b.registeredAt).toISOString(),

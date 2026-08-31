@@ -83,6 +83,8 @@ async function postFormBinary(path: string, form: FormData): Promise<Blob> {
 export interface BrowserPoolItem {
   workerId: string;
   cdpUrl: string;
+  sbCdpUrl?: string;
+  seleniumCdpUrl?: string;
   apiUrl?: string;
   status: 'active' | 'stale' | 'dead';
   registeredAt: string;
