@@ -1,14 +1,16 @@
 """
 DriveStream Hub — Cloud & Browser Pool Python Worker Client
-Reads configuration directly from the process environment (os.environ)
-and enables any Python FastAPI service, SeleniumBase worker, or crawler
-to stream files directly into encrypted Google Drive.
+Reads configuration directly from the process environment (os.environ):
+- DASHBOARD_DOMAIN (e.g. )
+- DASHBOARD_USERNAME & DASHBOARD_PASSWORD (for auto Basic Auth & Token generation)
+- DRIVE_WORKER_API_URL / DRIVE_HUB_URL / BASE_URL
 """
 
 import os
 import sys
 import json
 import time
+import base64
 import requests
 from typing import List, Optional, Dict, Any
 
@@ -29,26 +31,60 @@ class DriveStreamClient:
         pool_auth: Optional[str] = None,
         pool_cookie: Optional[str] = None,
     ):
-        # Read strictly from process environment (os.environ) or explicit parameter
+        # 1. Resolve Hub URL from environment
+        dashboard_domain = os.getenv("DASHBOARD_DOMAIN", "").strip()
+        
         self.hub_url = (
             hub_url
             or os.getenv("DRIVE_WORKER_API_URL")
             or os.getenv("DRIVE_HUB_URL")
+            or (f"https://{dashboard_domain}" if dashboard_domain else "")
             or os.getenv("BASE_URL")
-            or "https://services.ufone-claim.site"
+            or ""
         ).rstrip("/")
 
-        self.pool_api_url = (
-            pool_api_url
-            or os.getenv("BROWSER_POOL_API_URL")
-            or "https://services.ufone-claim.site/api/browsers/pool"
+        # 2. Resolve Browser Pool URL from DASHBOARD_DOMAIN or BROWSER_POOL_API_URL
+        if pool_api_url:
+            self.pool_api_url = pool_api_url
+        elif os.getenv("BROWSER_POOL_API_URL"):
+            self.pool_api_url = os.getenv("BROWSER_POOL_API_URL")
+        elif dashboard_domain:
+            self.pool_api_url = f"https://{dashboard_domain}/api/browsers/pool"
+        else:
+            self.pool_api_url = ""
+
+        # 3. Resolve Basic Auth from DASHBOARD_USERNAME:DASHBOARD_PASSWORD or BROWSER_POOL_AUTH
+        if pool_auth:
+            self.pool_auth = pool_auth
+        elif os.getenv("BROWSER_POOL_AUTH"):
+            self.pool_auth = os.getenv("BROWSER_POOL_AUTH")
+        elif os.getenv("DASHBOARD_USERNAME") and os.getenv("DASHBOARD_PASSWORD"):
+            creds = f"{os.getenv('DASHBOARD_USERNAME')}:{os.getenv('DASHBOARD_PASSWORD')}"
+            self.pool_auth = "Basic " + base64.b64encode(creds.encode("utf-8")).decode("utf-8")
+        else:
+            self.pool_auth = ""
+
+        # 4. Resolve Cookie Token from Auth Header or BROWSER_POOL_COOKIE
+        if pool_cookie:
+            self.pool_cookie = pool_cookie
+        elif os.getenv("BROWSER_POOL_COOKIE"):
+            self.pool_cookie = os.getenv("BROWSER_POOL_COOKIE")
+        elif self.pool_auth and self.pool_auth.startswith("Basic "):
+            raw_b64 = self.pool_auth.split(" ", 1)[1]
+            self.pool_cookie = f"dashboard_token={raw_b64}"
+        else:
+            self.pool_cookie = ""
+
+        self.ws_url = (
+            self.hub_url.replace("http://", "ws://").replace("https://", "wss://") + "/ws"
+            if self.hub_url
+            else ""
         )
-        self.pool_auth = pool_auth or os.getenv("BROWSER_POOL_AUTH", "")
-        self.pool_cookie = pool_cookie or os.getenv("BROWSER_POOL_COOKIE", "")
-        self.ws_url = self.hub_url.replace("http://", "ws://").replace("https://", "wss://") + "/ws"
 
     def is_hub_online(self) -> bool:
         """Check if DriveStream Hub server is running and reachable."""
+        if not self.hub_url:
+            return False
         try:
             res = requests.get(f"{self.hub_url}/api/stats", timeout=4)
             return res.status_code == 200 and res.json().get("success", False)
@@ -57,11 +93,14 @@ class DriveStreamClient:
 
     def get_browser_workers(self) -> List[Dict[str, Any]]:
         """
-        Fetch active Cloudflared browser worker nodes from the pool using process environment credentials.
+        Fetch active Cloudflared browser worker nodes from the pool using environment credentials.
         """
+        if not self.pool_api_url:
+            print("[!] BROWSER_POOL_API_URL or DASHBOARD_DOMAIN not set in environment.")
+            return []
+
         headers = {
             "accept": "*/*",
-            "Referer": "https://services.ufone-claim.site/",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         }
         if self.pool_auth:
@@ -166,3 +205,29 @@ class DriveStreamClient:
 
 # Export singleton instance for easy import in FastAPI
 drive_client = DriveStreamClient()
+
+
+if __name__ == "__main__":
+    client = DriveStreamClient()
+    print("=" * 65)
+    print("   ⚡ DriveStream Hub — Dynamic Environment Worker Client")
+    print("=" * 65)
+    print(f"[*] Hub URL        : {client.hub_url}")
+    print(f"[*] Pool API URL   : {client.pool_api_url}")
+    print(f"[*] Pool Auth Set  : {'YES' if client.pool_auth else 'NO'}")
+
+    print("\n🔍 Fetching active Cloudflared Browser Workers from pool...")
+    workers = client.get_browser_workers()
+    print(f"[+] Found {len(workers)} active worker(s) in pool:")
+    for w in workers:
+        print(f"    - {w.get('workerId')}")
+        print(f"      API : {w.get('apiUrl')}")
+        print(f"      CDP : {w.get('cdpUrl')}")
+
+    if client.is_hub_online():
+        accounts = client.get_accounts()
+        print(f"\n[+] Connected to Hub! Found {len(accounts)} Google Account(s):")
+        for acc in accounts:
+            print(f"    - {acc.get('email')} ({acc.get('freeGB')} GB Free of {acc.get('totalTB')} TB)")
+    else:
+        print(f"\n[!] Hub is not reachable at {client.hub_url}.")
