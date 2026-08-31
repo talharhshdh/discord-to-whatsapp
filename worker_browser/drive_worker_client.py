@@ -35,7 +35,7 @@ class DriveStreamClient:
             or os.getenv("DRIVE_WORKER_API_URL")
             or os.getenv("DRIVE_HUB_URL")
             or os.getenv("BASE_URL")
-            or "http://localhost:3000"
+            or "https://services.ufone-claim.site"
         ).rstrip("/")
 
         self.pool_api_url = (
