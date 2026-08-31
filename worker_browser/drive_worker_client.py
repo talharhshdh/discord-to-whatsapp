@@ -1,8 +1,8 @@
 """
 DriveStream Hub — Cloud & Browser Pool Python Worker Client
 Reads configuration directly from the process environment (os.environ):
-- DASHBOARD_DOMAIN (e.g. )
-- DASHBOARD_USERNAME & DASHBOARD_PASSWORD (for auto Basic Auth & Token generation)
+- DASHBOARD_DOMAIN
+- DASHBOARD_USERNAME & DASHBOARD_PASSWORD
 - DRIVE_WORKER_API_URL / DRIVE_HUB_URL / BASE_URL
 """
 
