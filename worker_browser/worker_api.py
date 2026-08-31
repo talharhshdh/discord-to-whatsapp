@@ -599,57 +599,60 @@ def health():
     return {"status": "ok"}
 
 # ---------------------------------------------------------------------------
-# DriveStream Hub Integration Endpoints
+# Direct Google Drive Streaming Uploader Endpoints (Option A - Real-time SSE/NDJSON)
 # ---------------------------------------------------------------------------
 try:
-    from drive_worker_client import drive_client
+    from fastapi.responses import StreamingResponse
+    from drive_uploader import stream_upload_to_drive
 
-    class DriveUploadRequest(BaseModel):
+    class DirectDriveUploadRequest(BaseModel):
         url: str
-        fileName: Optional[str] = None
-        folderId: Optional[str] = None
-        accountId: Optional[str] = None
+        fileName: str
+        folderId: str
+        accessToken: str
+        encryptionKey: Optional[str] = None
+        chunkSizeMB: Optional[int] = 16
 
-    class DriveBatchUploadRequest(BaseModel):
-        urls: List[str]
-        folderId: Optional[str] = None
-        accountId: Optional[str] = None
-
-    @app.post("/drive/upload")
-    def drive_upload(req: DriveUploadRequest):
-        try:
-            job = drive_client.enqueue_job(
-                url=req.url,
+    @app.post("/drive/upload/stream")
+    def drive_upload_stream(req: DirectDriveUploadRequest):
+        def event_generator():
+            chunk_size = (req.chunkSizeMB or 16) * 1024 * 1024
+            for event in stream_upload_to_drive(
+                source_url=req.url,
                 file_name=req.fileName,
                 folder_id=req.folderId,
-                account_id=req.accountId
-            )
-            return {"success": True, "job": job}
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+                access_token=req.accessToken,
+                encryption_key_hex=req.encryptionKey,
+                chunk_size=chunk_size
+            ):
+                yield json.dumps(event) + "\n"
 
-    @app.post("/drive/upload/batch")
-    def drive_upload_batch(req: DriveBatchUploadRequest):
+        return StreamingResponse(event_generator(), media_type="application/x-ndjson")
+
+    @app.post("/drive/upload/direct")
+    def drive_upload_direct(req: DirectDriveUploadRequest):
         try:
-            jobs = drive_client.enqueue_batch(
-                urls=req.urls,
+            chunk_size = (req.chunkSizeMB or 16) * 1024 * 1024
+            last_event = None
+            for event in stream_upload_to_drive(
+                source_url=req.url,
+                file_name=req.fileName,
                 folder_id=req.folderId,
-                account_id=req.accountId
-            )
-            return {"success": True, "jobs": jobs, "total": len(jobs)}
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
-
-    @app.get("/drive/accounts")
-    def drive_accounts():
-        try:
-            accounts = drive_client.get_accounts()
-            return {"success": True, "accounts": accounts}
+                access_token=req.accessToken,
+                encryption_key_hex=req.encryptionKey,
+                chunk_size=chunk_size
+            ):
+                last_event = event
+                if event.get("status") == "error":
+                    raise HTTPException(status_code=500, detail=event.get("error"))
+            return last_event or {"status": "unknown"}
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
 
 except Exception as e:
-    print(f"[*] DriveStream client integration skipped: {e}")
+    print(f"[*] Direct Drive uploader initialization error: {e}")
 
 
 if __name__ == "__main__":
