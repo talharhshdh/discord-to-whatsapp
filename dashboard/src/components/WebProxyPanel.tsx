@@ -1,18 +1,16 @@
 import React, { useState, useRef } from 'react';
 import { 
   Globe, Search, ArrowLeft, RefreshCw, X, ExternalLink, 
-  BookOpen, Github, MessageSquare, Compass, ShieldCheck 
+  BookOpen, Github, MessageSquare, Compass
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
+import { Card, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 
 interface BookMark {
   name: string;
   url: string;
   icon: React.ReactNode;
-  color: string;
 }
 
 export default function WebProxyPanel() {
@@ -25,32 +23,27 @@ export default function WebProxyPanel() {
     { 
       name: 'Google', 
       url: 'https://www.google.com', 
-      icon: <Globe className="w-5 h-5" />, 
-      color: 'from-blue-500 to-indigo-500' 
+      icon: <Globe className="w-4 h-4" />, 
     },
     { 
       name: 'Wikipedia', 
       url: 'https://www.wikipedia.org', 
-      icon: <BookOpen className="w-5 h-5" />, 
-      color: 'from-gray-500 to-slate-700' 
+      icon: <BookOpen className="w-4 h-4" />, 
     },
     { 
       name: 'GitHub', 
       url: 'https://github.com', 
-      icon: <Github className="w-5 h-5" />, 
-      color: 'from-purple-600 to-indigo-800' 
+      icon: <Github className="w-4 h-4" />, 
     },
     { 
       name: 'Reddit', 
       url: 'https://www.reddit.com', 
-      icon: <MessageSquare className="w-5 h-5" />, 
-      color: 'from-orange-500 to-red-600' 
+      icon: <MessageSquare className="w-4 h-4" />, 
     },
     { 
       name: 'DuckDuckGo', 
       url: 'https://duckduckgo.com', 
-      icon: <Compass className="w-5 h-5" />, 
-      color: 'from-yellow-500 to-amber-600' 
+      icon: <Compass className="w-4 h-4" />, 
     }
   ];
 
@@ -58,7 +51,6 @@ export default function WebProxyPanel() {
     if (!targetUrl.trim()) return;
     let formattedUrl = targetUrl.trim();
 
-    // Intercept Google search links and route to pool scraping via Google Clone Panel
     if (formattedUrl.includes('/search?') || formattedUrl.includes('google.com/search')) {
       try {
         const absoluteUrl = formattedUrl.startsWith('http') ? formattedUrl : `https://google.com${formattedUrl.startsWith('/') ? '' : '/'}${formattedUrl}`;
@@ -82,7 +74,6 @@ export default function WebProxyPanel() {
       }
     }
 
-    // Double check if the rewritten search query matches
     if (formattedUrl.includes('/search?') || formattedUrl.includes('google.com/search')) {
       try {
         const urlObj = new URL(formattedUrl);
@@ -109,70 +100,11 @@ export default function WebProxyPanel() {
 
   const handleIframeLoad = () => {
     setLoading(false);
-    if (iframeRef.current && iframeRef.current.contentWindow) {
-      try {
-        const currentLoc = iframeRef.current.contentWindow.location;
-        const currentPath = currentLoc.pathname + currentLoc.search;
-
-        let targetUrl = '';
-        if (currentPath.startsWith('/api/web-proxy/')) {
-          let encoded = currentPath.substring('/api/web-proxy/'.length);
-          // Strip flags like xhr_/ or similar
-          const flagsMatch = encoded.match(/^([a-z0-9_]+\/)+/i);
-          if (flagsMatch) {
-            encoded = encoded.substring(flagsMatch[0].length);
-          }
-          // Remove trailing slash and leftovers
-          encoded = encoded.split('/')[0].split('?')[0].split('#')[0];
-
-          try {
-            targetUrl = atob(encoded);
-          } catch {
-            const cleanBase64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
-            const pad = cleanBase64.length % 4;
-            const padded = pad ? cleanBase64 + '='.repeat(4 - pad) : cleanBase64;
-            try {
-              targetUrl = atob(padded);
-            } catch (err) {
-              // ignore
-            }
-          }
-        }
-
-        const searchParams = new URLSearchParams(currentLoc.search);
-        const decodedUrl = searchParams.get('url');
-
-        const checkUrl = targetUrl || decodedUrl || '';
-        if (checkUrl && (checkUrl.includes('/search?') || checkUrl.includes('google.com/search'))) {
-          try {
-            const absoluteUrl = checkUrl.startsWith('http') ? checkUrl : `https://google.com${checkUrl.startsWith('/') ? '' : '/'}${checkUrl}`;
-            const urlObj = new URL(absoluteUrl);
-            const query = urlObj.searchParams.get('q');
-            if (query) {
-              window.history.pushState(null, '', `/google?q=${encodeURIComponent(query)}`);
-              window.dispatchEvent(new PopStateEvent('popstate'));
-              return;
-            }
-          } catch (e) {
-            // ignore
-          }
-        }
-
-        if (decodedUrl) {
-          setUrlInput(decodedUrl);
-        } else if (targetUrl) {
-          setUrlInput(targetUrl);
-        }
-      } catch (e) {
-        console.warn('CORS or sandbox prevents reading iframe location:', e);
-      }
-    }
   };
 
   const handleRefresh = () => {
     if (iframeRef.current) {
       setLoading(true);
-      // Reload the iframe
       const currentSrc = iframeRef.current.src;
       iframeRef.current.src = '';
       setTimeout(() => {
@@ -195,38 +127,38 @@ export default function WebProxyPanel() {
   };
 
   return (
-    <Card className="glass rounded-3xl overflow-hidden border border-white/[0.08] flex flex-col h-[78vh] transition-all duration-300 text-sm">
+    <Card className="border border-border bg-card flex flex-col h-[78vh] text-sm font-mono">
       {/* Browser Address Bar / Header */}
-      <div className="bg-[#0A0E17] border-b border-white/[0.06] px-4 py-3 flex items-center gap-3">
-        <div className="flex items-center gap-1.5">
+      <div className="bg-secondary border-b border-border px-3 py-2 flex items-center gap-2">
+        <div className="flex items-center gap-1">
           {activeUrl && (
             <Button 
               onClick={handleHome}
-              variant="ghost"
-              className="p-2 h-auto rounded-xl bg-white/[0.03] hover:bg-white/[0.08] text-white/70 hover:text-white transition-colors"
+              variant="outline"
+              size="xs"
               title="Home"
             >
-              <ArrowLeft className="w-4 h-4" />
+              <ArrowLeft className="w-3.5 h-3.5" />
             </Button>
           )}
           <Button 
             onClick={handleRefresh}
             disabled={!activeUrl}
-            variant="ghost"
-            className="p-2 h-auto rounded-xl bg-white/[0.03] hover:bg-white/[0.08] text-white/70 hover:text-white disabled:opacity-30 transition-colors"
+            variant="outline"
+            size="xs"
             title="Refresh"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
           </Button>
         </div>
 
         <form onSubmit={handleFormSubmit} className="flex-1">
-          <div className="flex items-center bg-[#1E2330] border border-white/[0.08] rounded-xl px-3 py-1.5 focus-within:border-[#0061FF]/40 focus-within:ring-1 focus-within:ring-[#0061FF]/20 transition-all">
-            <Search className="w-4 h-4 text-white/30 mr-2 flex-shrink-0" />
+          <div className="flex items-center bg-background border border-border px-2.5 py-1">
+            <Search className="w-3.5 h-3.5 text-muted-foreground mr-2 flex-shrink-0" />
             <input 
               type="text" 
-              className="flex-1 bg-transparent border-none outline-none text-xs text-[var(--input-text)] placeholder-white/20 p-0 focus:ring-0"
-              placeholder="Enter URL (e.g. google.com) or search term..."
+              className="flex-1 bg-transparent border-none outline-none text-xs text-foreground placeholder-muted-foreground p-0 font-mono"
+              placeholder="Enter URL (e.g. wikipedia.org) or search query..."
               value={urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
             />
@@ -234,7 +166,7 @@ export default function WebProxyPanel() {
               <button 
                 type="button" 
                 onClick={() => setUrlInput('')}
-                className="p-0.5 rounded-full hover:bg-white/10 text-white/40 hover:text-white"
+                className="text-muted-foreground hover:text-foreground text-xs"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -247,70 +179,65 @@ export default function WebProxyPanel() {
             href={getProxyUrl(activeUrl)} 
             target="_blank" 
             rel="noopener noreferrer"
-            className="p-2 rounded-xl bg-[#0061FF]/10 hover:bg-[#0061FF]/20 border border-[#0061FF]/20 text-[#00E5FF] transition-colors text-xs flex items-center gap-1.5 font-semibold"
-            title="Open Raw Proxy Tab"
+            className="px-2.5 py-1 border border-border bg-secondary hover:bg-foreground hover:text-background text-foreground text-xs flex items-center gap-1 font-bold"
+            title="Open Raw View"
           >
-            <span className="hidden sm:inline">Raw View</span>
-            <ExternalLink className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">RAW</span>
+            <ExternalLink className="w-3 h-3" />
           </a>
         )}
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 bg-[#0A0E17] relative overflow-hidden flex flex-col justify-center items-center">
+      <div className="flex-1 bg-background relative overflow-hidden flex flex-col justify-center items-center">
         {!activeUrl ? (
-          /* Landing page */
-          <div className="max-w-xl w-full px-6 py-12 flex flex-col items-center text-center space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-[#0061FF] to-[#00E5FF] flex items-center justify-center text-4xl shadow-xl shadow-[#0061FF]/15 relative">
+          <div className="max-w-xl w-full px-4 py-8 flex flex-col items-center text-center space-y-6">
+            <div className="w-12 h-12 border border-border bg-foreground text-background flex items-center justify-center text-2xl font-bold font-mono">
               🌐
-              <Badge variant="outline" className="absolute -bottom-1.5 -right-1.5 bg-[#00E5FF] text-[#0A0E17] rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider flex items-center gap-0.5 border border-[#0A0E17]">
-                <ShieldCheck className="w-2.5 h-2.5" /> SECURE
-              </Badge>
             </div>
 
             <div>
-              <CardTitle className="text-2xl font-black bg-gradient-to-r from-white via-white to-white/70 bg-clip-text text-transparent tracking-tight">Virtual Browser Proxy</CardTitle>
-              <CardDescription className="text-xs text-white/40 mt-2 leading-relaxed">
-                Anonymous and secure web proxy running directly through your system's runner.
-                Browse websites privately without leaving the dashboard panel.
+              <CardTitle className="text-base font-bold uppercase tracking-wider text-foreground font-mono">
+                Virtual Browser Network Proxy
+              </CardTitle>
+              <CardDescription className="text-xs text-muted-foreground mt-1 font-mono">
+                Isolated sandbox proxy routing traffic through the cloud runner IP.
               </CardDescription>
             </div>
 
             {/* Quick Bookmarks */}
-            <div className="w-full space-y-3">
-              <p className="text-[10px] uppercase font-bold tracking-wider text-white/30 text-left px-1">Suggested Sites</p>
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            <div className="w-full space-y-2">
+              <p className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground text-left px-1">Quick Portals</p>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                 {bookmarks.map((bm) => (
                   <Button
                     key={bm.name}
                     onClick={() => handleGo(bm.url)}
                     variant="outline"
-                    className="flex flex-col items-center justify-center p-3 h-auto rounded-2xl bg-white/[0.02] border border-white/[0.06] hover:bg-white/[0.06] hover:border-white/10 text-white/60 hover:text-white transition-all group font-normal"
+                    size="sm"
+                    className="flex flex-col items-center justify-center p-2.5 h-auto text-xs font-mono"
                   >
-                    <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${bm.color} flex items-center justify-center text-white mb-2 shadow group-hover:scale-105 transition-transform`}>
+                    <div className="mb-1 text-foreground">
                       {bm.icon}
                     </div>
-                    <span className="text-[10px] font-medium">{bm.name}</span>
+                    <span className="text-[10px] uppercase font-bold">{bm.name}</span>
                   </Button>
                 ))}
               </div>
             </div>
 
-            {/* Search Instructions */}
-            <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.04] text-[10px] text-white/30 text-left space-y-1 w-full leading-normal">
-              <p className="font-semibold text-white/50 text-[11px] mb-1.5">💡 Pro Tips:</p>
-              <p>• Type any standard domain like <code className="text-[#00E5FF] font-mono">wikipedia.org</code> and press Enter to visit.</p>
-              <p>• Enter regular keywords to perform a secure search automatically via Google.</p>
-              <p>• Click the <code className="text-[#00E5FF] font-mono">Raw View</code> button inside active browser sessions to open the proxy in its own standalone tab.</p>
+            {/* Usage Tips */}
+            <div className="p-3 border border-border bg-secondary text-[11px] text-muted-foreground text-left space-y-1 w-full font-mono">
+              <p className="font-bold text-foreground uppercase">Instructions:</p>
+              <p>• Type any standard website URL and press Enter to browse privately.</p>
+              <p>• Search terms are automatically parsed and forwarded to search.</p>
             </div>
           </div>
         ) : (
-          /* Active Browser Iframe */
           <div className="w-full h-full flex flex-col relative">
             {loading && (
-              <div className="absolute inset-0 bg-[#0A0E17]/75 backdrop-blur-sm z-10 flex flex-col items-center justify-center gap-3">
-                <div className="w-10 h-10 rounded-full border-2 border-[#0061FF] border-t-transparent animate-spin" />
-                <p className="text-xs text-white/40 tracking-wider font-mono animate-pulse">LOADING VIRTUAL FRAME...</p>
+              <div className="absolute inset-0 bg-background/80 z-10 flex flex-col items-center justify-center gap-2">
+                <p className="text-xs text-muted-foreground tracking-wider font-mono">LOADING VIRTUAL FRAME...</p>
               </div>
             )}
             <iframe 

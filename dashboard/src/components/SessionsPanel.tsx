@@ -1,17 +1,16 @@
 import React, { useState } from 'react';
 import { api, BASE, SessionResult } from '../api';
 import { Button } from '@/components/ui/button';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 
 interface SessionCardProps {
   icon: string;
   title: string;
   description: string;
-  color: string;
   action: () => Promise<SessionResult>;
 }
 
-function SessionCard({ icon, title, description, color, action }: SessionCardProps) {
+function SessionCard({ icon, title, description, action }: SessionCardProps) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<SessionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -24,32 +23,32 @@ function SessionCard({ icon, title, description, color, action }: SessionCardPro
   };
 
   return (
-    <Card className="rounded-2xl flex flex-col justify-between border border-[var(--card-border)] bg-[var(--card-bg)] shadow-md transition-all group hover:shadow-lg p-5">
-      <div className="space-y-4">
+    <Card className="flex flex-col justify-between border border-border bg-card p-4 sm:p-5 transition-all">
+      <div className="space-y-3">
         <div className="flex items-center gap-3">
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl border ${color}`}>
+          <div className="w-9 h-9 border border-border bg-secondary flex items-center justify-center text-lg">
             {icon}
           </div>
           <div>
-            <h3 className="font-bold text-[var(--text-main)] text-sm">{title}</h3>
-            <p className="text-xs text-[var(--text-muted)]">{description}</p>
+            <h3 className="font-bold font-mono uppercase tracking-wider text-foreground text-xs sm:text-sm">{title}</h3>
+            <p className="text-xs text-muted-foreground">{description}</p>
           </div>
         </div>
 
         {error && (
-          <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">
-            ❌ {error}
+          <div className="text-xs text-foreground bg-secondary border border-border px-3 py-2 font-mono">
+            [ERROR] {error}
           </div>
         )}
 
         {result && !result.error && (
-          <div className="bg-[var(--code-bg)] border border-[var(--input-border)] rounded-xl p-4 space-y-2 text-sm">
+          <div className="bg-secondary border border-border p-3 space-y-2 text-xs font-mono">
             <a href={result.url} target="_blank" rel="noopener noreferrer"
-              className="text-teal-500 hover:underline font-mono text-xs break-all block">
+              className="text-foreground underline break-all block font-bold">
               🔗 {result.url}
             </a>
-            {result.username && <p className="text-[var(--text-muted)]">👤 <span className="text-[var(--text-main)] font-mono">{result.username}</span></p>}
-            {result.password && <p className="text-[var(--text-muted)]">🔑 <span className="text-[var(--text-main)] font-mono">{result.password}</span></p>}
+            {result.username && <p className="text-muted-foreground">USER: <span className="text-foreground">{result.username}</span></p>}
+            {result.password && <p className="text-muted-foreground">PASS: <span className="text-foreground">{result.password}</span></p>}
           </div>
         )}
       </div>
@@ -58,9 +57,10 @@ function SessionCard({ icon, title, description, color, action }: SessionCardPro
         onClick={launch}
         disabled={loading}
         variant="outline"
-        className="w-full mt-4 py-2.5 rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] text-[var(--input-text)] text-xs font-semibold uppercase tracking-wider transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+        size="sm"
+        className="w-full mt-4 font-mono text-xs font-bold uppercase tracking-wider"
       >
-        {loading ? '⏳ Launching…' : `Launch ${title}`}
+        {loading ? 'LAUNCHING...' : `LAUNCH ${title.toUpperCase()}`}
       </Button>
     </Card>
   );
@@ -92,58 +92,59 @@ export default function SessionsPanel() {
 
   return (
     <div className="space-y-4">
-      <p className="text-[var(--text-muted)] text-sm">Launch new isolated sessions. Each call creates a fresh Cloudflare tunnel.</p>
+      <div className="border-b border-border pb-2">
+        <p className="text-muted-foreground text-xs font-mono">
+          Launch new isolated sessions. Each call establishes a fresh Cloudflare secure tunnel.
+        </p>
+      </div>
       
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         <SessionCard
-          icon="💻" title="Web Terminal" color="bg-emerald-500/10 border-emerald-500/20 text-emerald-500"
+          icon="💻" title="Web Terminal"
           description="ttyd web terminal with sudo access"
           action={api.startTerminal}
         />
         <SessionCard
-          icon="🔵" title="VSCode" color="bg-indigo-500/10 border-indigo-500/20 text-indigo-500"
+          icon="🔵" title="VSCode"
           description="code-server with password auth"
           action={api.startVSCode}
         />
         <SessionCard
-          icon="🌐" title="Browser" color="bg-amber-500/10 border-amber-500/20 text-amber-500"
+          icon="🌐" title="Browser"
           description="Chromium in a Docker container"
           action={api.startBrowser}
         />
 
         {/* SSH Terminal Card */}
-        <Card className="rounded-2xl flex flex-col justify-between border border-[var(--card-border)] bg-[var(--card-bg)] shadow-md transition-all group hover:shadow-lg p-5">
-          <div className="space-y-4">
+        <Card className="flex flex-col justify-between border border-border bg-card p-4 sm:p-5 transition-all">
+          <div className="space-y-3">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl bg-purple-500/10 border border-purple-500/20 text-purple-500">
+              <div className="w-9 h-9 border border-border bg-secondary flex items-center justify-center text-lg">
                 🔐
               </div>
               <div>
-                <h3 className="font-bold text-[var(--text-main)] text-sm">SSH Terminal</h3>
-                <p className="text-xs text-[var(--text-muted)]">Isolated container with SSH access</p>
+                <h3 className="font-bold font-mono uppercase tracking-wider text-foreground text-xs sm:text-sm">SSH Terminal</h3>
+                <p className="text-xs text-muted-foreground">Isolated container with SSH port access</p>
               </div>
             </div>
 
             {sshError && (
-              <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">
-                ❌ {sshError}
+              <div className="text-xs text-foreground bg-secondary border border-border px-3 py-2 font-mono">
+                [ERROR] {sshError}
               </div>
             )}
 
             {sshResult && !sshResult.error && (
-              <div className="bg-[var(--code-bg)] border border-[var(--input-border)] rounded-xl p-4 space-y-2 text-sm">
-                <p className="text-[var(--text-muted)]">🔌 <span className="text-[var(--text-main)] font-mono">Port: {sshResult.port}</span></p>
-                <p className="text-[var(--text-muted)]">👤 <span className="text-[var(--text-main)] font-mono">{sshResult.username}</span></p>
-                <p className="text-[var(--text-muted)]">🔑 <span className="text-[var(--text-main)] font-mono">{sshResult.password}</span></p>
-                <div className="pt-2 border-t border-[var(--input-border)]">
-                  <p className="text-[var(--text-subtle)] text-xs mb-1">SSH Command:</p>
-                  <code className="text-teal-500 text-xs bg-[var(--input-bg)] border border-[var(--input-border)] px-2 py-1 rounded block break-all">
+              <div className="bg-secondary border border-border p-3 space-y-2 text-xs font-mono">
+                <p className="text-muted-foreground">PORT: <span className="text-foreground">{sshResult.port}</span></p>
+                <p className="text-muted-foreground">USER: <span className="text-foreground">{sshResult.username}</span></p>
+                <p className="text-muted-foreground">PASS: <span className="text-foreground">{sshResult.password}</span></p>
+                <div className="pt-2 border-t border-border">
+                  <p className="text-muted-foreground text-[10px] uppercase font-bold mb-1">Command:</p>
+                  <code className="text-foreground text-[11px] bg-background border border-border p-1.5 block break-all font-mono">
                     {sshResult.sshCommand}
                   </code>
                 </div>
-                <p className="text-[var(--text-subtle)] text-xs pt-2">
-                  💡 Use this command from your local terminal or any SSH client
-                </p>
               </div>
             )}
           </div>
@@ -152,9 +153,10 @@ export default function SessionsPanel() {
             onClick={launchSSH}
             disabled={sshLoading}
             variant="outline"
-            className="w-full mt-4 py-2.5 rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] text-[var(--input-text)] text-xs font-semibold uppercase tracking-wider transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            size="sm"
+            className="w-full mt-4 font-mono text-xs font-bold uppercase tracking-wider"
           >
-            {sshLoading ? '⏳ Launching…' : 'Launch SSH Terminal'}
+            {sshLoading ? 'LAUNCHING...' : 'LAUNCH SSH TERMINAL'}
           </Button>
         </Card>
       </div>

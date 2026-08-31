@@ -1,23 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { api, BASE, LLMModelInfo, LLMChatMessage, LLMStatus } from '../api';
+import { api, BASE, LLMModelInfo, LLMStatus } from '../api';
 import { Button } from '@/components/ui/button';
-import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
+import { Card, CardTitle, CardDescription } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
-
-function CustomBadge({ text, color = 'default' }: { text: string; color?: 'green' | 'blue' | 'purple' | 'orange' | 'default' }) {
-  const cls: Record<string, string> = {
-    green: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25',
-    blue: 'bg-blue-500/15 text-blue-400 border-blue-500/25',
-    purple: 'bg-purple-500/15 text-purple-400 border-purple-500/25',
-    orange: 'bg-orange-500/15 text-orange-400 border-orange-500/25',
-    default: 'bg-white/[0.06] text-white/50 border-white/10',
-  };
+function CustomBadge({ text }: { text: string }) {
   return (
-    <Badge variant="outline" className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-medium border ${cls[color]}`}>
+    <Badge variant="outline" className="text-[10px] font-mono border-border bg-secondary">
       {text}
     </Badge>
   );
@@ -26,26 +16,17 @@ function CustomBadge({ text, color = 'default' }: { text: string; color?: 'green
 function StatusBar({ status }: { status: LLMStatus | null }) {
   if (!status) return null;
   return (
-    <div className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs border ${
-      !status.server_running
-        ? 'bg-red-500/10 border-red-500/20 text-red-400'
-        : status.loaded
-          ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-          : 'bg-white/[0.04] border-white/10 text-white/50'
-    }`}>
-      <span className={`w-2 h-2 rounded-full ${
-        !status.server_running ? 'bg-red-400' : status.loaded ? 'bg-emerald-400 animate-pulse' : 'bg-white/20'
-      }`} />
-      {!status.server_running
-        ? 'LLM server not running'
-        : status.loaded
-          ? `${status.label} loaded — ctx ${status.ctx?.toLocaleString()} tokens`
-          : 'No model loaded'}
+    <div className="flex items-center gap-2 px-3 py-1.5 border border-border bg-secondary text-xs font-mono">
+      <span className="font-bold">
+        {!status.server_running
+          ? '[SERVER STOPPED]'
+          : status.loaded
+            ? `[MODEL: ${status.label?.toUpperCase()}] (${status.ctx?.toLocaleString()} CTX)`
+            : '[NO MODEL LOADED]'}
+      </span>
     </div>
   );
 }
-
-// ── Model Card ─────────────────────────────────────────────────────────────────
 
 function ModelCard({
   model,
@@ -64,66 +45,52 @@ function ModelCard({
 }) {
   const isDownloading = !model.downloaded && (downloading.has(model.id) || model.download_status === 'downloading');
 
-  const tagColor = (tag: string): 'green' | 'blue' | 'purple' | 'orange' | 'default' => {
-    if (['reasoning', 'code'].includes(tag)) return 'purple';
-    if (['multilingual'].includes(tag)) return 'blue';
-    if (['fast', 'tiny', 'edge'].includes(tag)) return 'green';
-    if (['multimodal'].includes(tag)) return 'orange';
-    return 'default';
-  };
-
   return (
-    <Card className={`relative glass rounded-2xl p-4 flex flex-col gap-3 transition-all border ${
-      model.loaded
-        ? 'border-emerald-500/30 shadow-emerald-500/10 shadow-lg'
-        : 'border-white/[0.07] hover:border-white/[0.15]'
-    }`}>
+    <Card className="relative border border-border bg-card p-4 flex flex-col justify-between gap-3">
       {model.loaded && (
-        <Badge variant="outline" className="absolute top-3 right-3 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 text-[10px] font-semibold">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          ACTIVE
+        <Badge variant="outline" className="absolute top-3 right-3 text-[9px] bg-foreground text-background font-bold">
+          [ACTIVE]
         </Badge>
       )}
 
       <div>
-        <div className="flex items-start gap-2 pr-12 xs:pr-16">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#0061FF]/30 to-[#00E5FF]/20 flex items-center justify-center text-sm flex-shrink-0">
+        <div className="flex items-start gap-2 pr-16">
+          <div className="w-7 h-7 border border-border bg-secondary flex items-center justify-center text-sm flex-shrink-0 font-mono">
             🧠
           </div>
           <div className="min-w-0">
-            <CardTitle className="font-semibold text-white text-sm leading-tight truncate">{model.label}</CardTitle>
-            <p className="text-[11px] text-white/40 mt-0.5 leading-relaxed line-clamp-2">{model.description}</p>
+            <CardTitle className="font-bold font-mono text-xs uppercase tracking-wider text-foreground truncate">{model.label}</CardTitle>
+            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{model.description}</p>
           </div>
         </div>
 
         <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">
-          {model.tags.map(t => <CustomBadge key={t} text={t} color={tagColor(t)} />)}
-          <CustomBadge text={`${model.size_gb}GB`} color="default" />
-          <CustomBadge text={`${(model.ctx / 1024).toFixed(model.ctx >= 4096 ? 0 : 1)}K ctx`} color="default" />
+          {model.tags.map(t => <CustomBadge key={t} text={t.toUpperCase()} />)}
+          <CustomBadge text={`${model.size_gb}GB`} />
+          <CustomBadge text={`${(model.ctx / 1024).toFixed(model.ctx >= 4096 ? 0 : 1)}K CTX`} />
         </div>
       </div>
 
-      {/* Download error */}
       {model.download_status === 'error' && model.download_error && (
-        <p className="text-[11px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-2 py-1.5">
-          ❌ {model.download_error}
+        <p className="text-[11px] text-foreground bg-secondary border border-border px-2 py-1 font-mono">
+          [ERROR] {model.download_error}
         </p>
       )}
 
-      {/* Actions */}
-      <div className="flex gap-2 mt-auto">
+      <div className="flex gap-2 mt-auto pt-2 border-t border-border">
         {!model.downloaded && !isDownloading && (
           <Button
             onClick={() => onDownload(model.id)}
             variant="outline"
-            className="flex-1 py-1.5 h-auto rounded-lg bg-[#0061FF]/20 hover:bg-[#0061FF]/35 border border-[#0061FF]/30 text-[#a8a3ff] text-xs font-medium transition-all"
+            size="xs"
+            className="flex-1 font-mono text-[10px] uppercase"
           >
-            ⬇ Download
+            ⬇ DOWNLOAD GGUF
           </Button>
         )}
         {isDownloading && (
-          <div className="flex-1 py-1.5 rounded-lg bg-white/[0.04] border border-white/10 text-white/40 text-xs font-medium text-center">
-            <span className="animate-pulse">⏳ Downloading…</span>
+          <div className="flex-1 py-1 bg-secondary border border-border text-muted-foreground text-[10px] font-mono text-center font-bold">
+            DOWNLOADING...
           </div>
         )}
         {model.downloaded && !model.loaded && !isDownloading && (
@@ -131,14 +98,16 @@ function ModelCard({
             <Button
               onClick={() => onLoad(model.id)}
               variant="outline"
-              className="flex-1 py-1.5 h-auto rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/25 text-emerald-400 text-xs font-medium transition-all"
+              size="xs"
+              className="flex-1 font-mono text-[10px] uppercase font-bold"
             >
-              ▶ Load
+              ▶ LOAD MODEL
             </Button>
             <Button
               onClick={() => onDelete(model.id)}
               variant="outline"
-              className="py-1.5 px-2.5 h-auto rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 text-xs transition-all"
+              size="xs"
+              className="px-2 font-mono text-[10px]"
               title="Delete model file"
             >
               🗑
@@ -149,17 +118,16 @@ function ModelCard({
           <Button
             onClick={onUnload}
             variant="outline"
-            className="flex-1 py-1.5 h-auto rounded-lg bg-white/[0.06] hover:bg-white/[0.1] border border-white/10 text-white/50 text-xs font-medium transition-all"
+            size="xs"
+            className="flex-1 font-mono text-[10px] uppercase"
           >
-            ⏹ Unload
+            ⏹ UNLOAD MODEL
           </Button>
         )}
       </div>
     </Card>
   );
 }
-
-// ── Chat UI ────────────────────────────────────────────────────────────────────
 
 interface ChatEntry {
   role: 'user' | 'assistant';
@@ -284,25 +252,25 @@ function ChatPanel({ modelLabel }: { modelLabel: string }) {
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3 font-mono">
       {/* Settings row */}
-      <div className="flex flex-wrap gap-3 items-center">
-        <div className="flex items-center gap-2 text-xs text-white/50">
-          <label>Max tokens</label>
+      <div className="flex flex-wrap gap-2 items-center text-xs">
+        <div className="flex items-center gap-1.5">
+          <label className="text-[10px] text-muted-foreground uppercase font-bold">Max tokens</label>
           <select
             value={maxTokens}
             onChange={e => setMaxTokens(Number(e.target.value))}
-            className="bg-black/30 border border-white/10 rounded-lg px-2 py-1 text-white text-xs outline-none"
+            className="border border-border bg-secondary px-2 py-0.5 text-xs text-foreground outline-none"
           >
             {[128, 256, 512, 1024, 2048].map(v => <option key={v} value={v}>{v}</option>)}
           </select>
         </div>
-        <div className="flex items-center gap-2 text-xs text-white/50">
-          <label>Temperature</label>
+        <div className="flex items-center gap-1.5">
+          <label className="text-[10px] text-muted-foreground uppercase font-bold">Temperature</label>
           <select
             value={temperature}
             onChange={e => setTemperature(Number(e.target.value))}
-            className="bg-black/30 border border-white/10 rounded-lg px-2 py-1 text-white text-xs outline-none"
+            className="border border-border bg-secondary px-2 py-0.5 text-xs text-foreground outline-none"
           >
             {[0.1, 0.3, 0.5, 0.7, 0.9, 1.0].map(v => <option key={v} value={v}>{v}</option>)}
           </select>
@@ -311,66 +279,47 @@ function ChatPanel({ modelLabel }: { modelLabel: string }) {
           onClick={() => setHistory([])}
           disabled={streaming}
           variant="outline"
-          className="ml-auto text-xs px-2.5 py-1 h-auto rounded-lg bg-white/[0.05] hover:bg-white/[0.1] border border-white/10 text-white/40 transition-all disabled:opacity-30"
+          size="xs"
+          className="ml-auto text-[10px] uppercase font-mono"
         >
-          🗑 Clear
+          CLEAR CHAT
         </Button>
       </div>
 
       {/* System prompt */}
       <div>
-        <label className="text-[11px] text-white/30 block mb-1">System prompt</label>
+        <label className="text-[10px] text-muted-foreground uppercase font-bold block mb-1">System instructions</label>
         <Textarea
           value={systemPrompt}
           onChange={e => setSystemPrompt(e.target.value)}
           rows={2}
-          className="w-full bg-black/30 border border-white/10 rounded-xl px-3 py-2 text-xs text-white/70 placeholder-white/20 outline-none focus:border-white/25 resize-none"
+          className="w-full text-xs font-mono resize-none"
         />
       </div>
 
       {/* Chat history */}
-      <div className="bg-black/20 border border-white/[0.06] rounded-2xl p-4 min-h-[280px] max-h-[420px] overflow-y-auto space-y-4 scrollbar-thin">
+      <div className="bg-secondary border border-border p-3 sm:p-4 min-h-[260px] max-h-[420px] overflow-y-auto space-y-3">
         {history.length === 0 && (
-          <p className="text-white/20 text-sm text-center mt-8">
-            💬 Chat with <span className="text-white/40">{modelLabel}</span>
+          <p className="text-muted-foreground text-xs text-center mt-8">
+            Session ready with {modelLabel}. Type a prompt to begin.
           </p>
         )}
         {history.map((msg, i) => (
-          <div key={i} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            {msg.role === 'assistant' && (
-              <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#0061FF] to-[#00E5FF] flex items-center justify-center text-xs flex-shrink-0 mt-0.5">
-                🤖
-              </div>
-            )}
-            <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+          <div key={i} className={`flex gap-2 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-[85%] p-3 text-xs border ${
               msg.role === 'user'
-                ? 'bg-[#0061FF]/25 border border-[#0061FF]/30 text-white rounded-br-sm'
-                : 'bg-white/[0.05] border border-white/[0.08] text-white/85 rounded-bl-sm'
+                ? 'bg-foreground text-background border-foreground font-medium'
+                : 'bg-background text-foreground border-border'
             }`}>
-              {msg.role === 'assistant' && msg.streaming && !msg.content ? (
-                <span className="flex gap-1 py-0.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <span className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <span className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: '300ms' }} />
-                </span>
-              ) : (
-                <>
-                  <pre className="whitespace-pre-wrap font-sans">{msg.content}</pre>
-                  {msg.streaming && (
-                    <span className="inline-block w-0.5 h-4 bg-white/60 animate-pulse ml-0.5 align-text-bottom" />
-                  )}
-                </>
-              )}
-            </div>
-            {msg.role === 'user' && (
-              <div className="w-6 h-6 rounded-full bg-[#0061FF]/30 border border-[#0061FF]/25 flex items-center justify-center text-xs flex-shrink-0 mt-0.5">
-                👤
+              <div className="text-[9px] uppercase font-bold tracking-wider opacity-60 mb-1">
+                {msg.role === 'user' ? 'USER' : modelLabel}
               </div>
-            )}
+              <pre className="whitespace-pre-wrap font-mono text-xs">{msg.content}</pre>
+            </div>
           </div>
         ))}
         {error && (
-          <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">❌ {error}</p>
+          <p className="text-xs text-foreground bg-secondary border border-border p-2">[ERROR] {error}</p>
         )}
         <div ref={bottomRef} />
       </div>
@@ -383,33 +332,30 @@ function ChatPanel({ modelLabel }: { modelLabel: string }) {
           onKeyDown={handleKey}
           rows={2}
           disabled={streaming}
-          placeholder={streaming ? 'Generating…' : 'Type a message… (Enter to send, Shift+Enter for newline)'}
-          className="flex-1 bg-black/30 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-white/30 outline-none focus:border-white/25 resize-none transition-colors disabled:opacity-50"
+          placeholder={streaming ? 'Generating response...' : 'Type message... (Enter to send)'}
+          className="flex-1 text-xs resize-none"
         />
         {streaming ? (
           <Button
             onClick={stop}
             variant="outline"
-            className="px-4 rounded-xl bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 text-red-400 text-sm font-medium transition-all h-auto"
-            title="Stop generation"
+            className="font-mono text-xs uppercase"
           >
-            ⏹
+            ⏹ STOP
           </Button>
         ) : (
           <Button
             onClick={send}
             disabled={!input.trim()}
-            className="px-4 rounded-xl bg-gradient-to-br from-[#0061FF] to-[#5a54e0] hover:opacity-90 disabled:opacity-40 text-white text-sm font-medium transition-all shadow-lg shadow-[#0061FF]/20 h-auto"
+            className="font-mono text-xs uppercase"
           >
-            ▶
+            SEND ▶
           </Button>
         )}
       </div>
     </div>
   );
 }
-
-// ── Main panel ─────────────────────────────────────────────────────────────────
 
 export default function LLMPanel() {
   const [models, setModels] = useState<LLMModelInfo[]>([]);
@@ -454,7 +400,7 @@ export default function LLMPanel() {
       const r = await api.llmDownload(id);
       flash(r.message);
     } catch (e) {
-      flash(`❌ ${(e as Error).message}`);
+      flash(`[ERROR] ${(e as Error).message}`);
       setDownloading(prev => { const s = new Set(prev); s.delete(id); return s; });
     }
   };
@@ -463,11 +409,11 @@ export default function LLMPanel() {
     setLoadingModel(id);
     try {
       const r = await api.llmLoad(id);
-      flash(`✅ ${r.label} loaded!`);
+      flash(`[SUCCESS] ${r.label} loaded!`);
       setTab('chat');
       await refresh();
     } catch (e) {
-      flash(`❌ ${(e as Error).message}`);
+      flash(`[ERROR] ${(e as Error).message}`);
     } finally {
       setLoadingModel(null);
     }
@@ -479,7 +425,7 @@ export default function LLMPanel() {
       flash('Model unloaded.');
       await refresh();
     } catch (e) {
-      flash(`❌ ${(e as Error).message}`);
+      flash(`[ERROR] ${(e as Error).message}`);
     }
   };
 
@@ -490,7 +436,7 @@ export default function LLMPanel() {
       flash('Model file deleted.');
       await refresh();
     } catch (e) {
-      flash(`❌ ${(e as Error).message}`);
+      flash(`[ERROR] ${(e as Error).message}`);
     }
   };
 
@@ -498,17 +444,17 @@ export default function LLMPanel() {
   const downloadedCount = models.filter(m => m.downloaded).length;
 
   return (
-    <div className="space-y-5 text-sm">
+    <div className="space-y-4 text-sm font-mono">
       {/* Header row */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex-1">
-          <p className="text-white/40 text-sm">
-            Run local LLM models entirely on the GitHub Actions runner — no external API keys required.
+          <p className="text-muted-foreground text-xs">
+            Run local LLM GGUF models directly on the isolated runner CPU instance.
           </p>
         </div>
         <StatusBar status={status} />
-        <Button onClick={refresh} variant="outline" className="px-3 py-1.5 h-auto rounded-full bg-white/[0.04] border border-white/10 text-white/40 hover:text-white/70 text-xs transition-colors">
-          🔄 Refresh
+        <Button onClick={refresh} variant="outline" size="xs" className="font-mono text-xs uppercase">
+          REFRESH
         </Button>
       </div>
 
@@ -519,62 +465,58 @@ export default function LLMPanel() {
           { label: 'Downloaded', value: downloadedCount.toString(), icon: '💾' },
           { label: 'Active Model', value: status?.label ?? 'None', icon: '⚡' },
         ].map(stat => (
-          <Card key={stat.label} className="glass rounded-xl px-4 py-3 border border-white/[0.07] flex items-center sm:block gap-3 sm:gap-0">
-            <div className="text-xl sm:mb-1">{stat.icon}</div>
+          <Card key={stat.label} className="border border-border bg-card p-3 flex items-center gap-3">
+            <div className="text-lg">{stat.icon}</div>
             <div className="flex-1">
-              <CardTitle className="text-white font-bold text-lg">{stat.value}</CardTitle>
-              <CardDescription className="text-white/30 text-xs mt-0.5">{stat.label}</CardDescription>
+              <CardTitle className="text-foreground font-bold text-base">{stat.value}</CardTitle>
+              <CardDescription className="text-muted-foreground text-[10px] uppercase font-bold">{stat.label}</CardDescription>
             </div>
           </Card>
         ))}
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 p-1 bg-black/20 rounded-xl border border-white/[0.06] w-full overflow-x-auto scrollbar-none">
+      <div className="flex border border-border bg-secondary p-0.5">
         {(['models', 'chat'] as const).map(t => (
           <Button
             key={t}
             onClick={() => setTab(t)}
-            variant="outline"
-            className={`flex-shrink-0 px-4 py-1.5 h-auto rounded-lg text-sm font-medium transition-all ${
+            variant="ghost"
+            size="sm"
+            className={`flex-1 font-mono text-xs uppercase ${
               tab === t
-                ? 'bg-[#0061FF]/25 text-white border border-[#0061FF]/30'
-                : 'text-white/40 hover:text-white/70'
+                ? 'bg-foreground text-background font-bold'
+                : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            {t === 'models' ? '📦 Models' : '💬 Chat'}
-            {t === 'chat' && status?.loaded && (
-              <span className="ml-1.5 w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block animate-pulse" />
-            )}
+            {t === 'models' ? '📦 Models Catalogue' : '💬 Interactive Chat'}
           </Button>
         ))}
       </div>
 
-      {/* Flash message */}
       {actionMsg && (
-        <Card className="px-4 py-2.5 rounded-xl bg-white/[0.06] border border-white/10 text-sm text-white/70">
+        <div className="p-2 bg-secondary border border-border text-xs text-foreground font-mono">
           {actionMsg}
-        </Card>
+        </div>
       )}
 
-      {/* Error */}
       {error && (
-        <Card className="px-4 py-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-sm text-red-400">
-          ⚠️ {error}
-        </Card>
+        <div className="p-2 bg-secondary border border-border text-xs text-foreground font-mono">
+          [ERROR] {error}
+        </div>
       )}
 
       {/* Models grid */}
       {tab === 'models' && (
         <>
           {loading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
               {[...Array(6)].map((_, i) => (
-                <Card key={i} className="glass rounded-2xl p-4 h-44 animate-pulse border border-white/[0.07]" />
+                <Card key={i} className="border border-border bg-card p-4 h-36 animate-pulse" />
               ))}
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
               {models.map(m => (
                 <ModelCard
                   key={m.id}
@@ -588,25 +530,23 @@ export default function LLMPanel() {
               ))}
             </div>
           )}
-          <p className="text-xs text-white/20 mt-2">
-            All models use Q4_K_M GGUF quantisation — optimised for 4 CPU / 16 GB RAM. Models are stored in <code className="font-mono">~/.llm_models</code>.
-          </p>
         </>
       )}
 
       {/* Chat panel */}
       {tab === 'chat' && (
-        <Card className="glass rounded-2xl p-5 border border-white/[0.07]">
+        <Card className="border border-border bg-card p-4">
           {!status?.loaded ? (
-            <div className="text-center py-12 space-y-3">
-              <div className="text-4xl">🧠</div>
-              <p className="text-white/40 text-sm">Load a model from the Models tab to start chatting.</p>
+            <div className="text-center py-10 space-y-3">
+              <div className="text-3xl">🧠</div>
+              <p className="text-muted-foreground text-xs">Load a model from the Models tab to start chatting.</p>
               <Button
                 onClick={() => setTab('models')}
                 variant="outline"
-                className="px-4 py-2 h-auto rounded-xl bg-[#0061FF]/20 border border-[#0061FF]/30 text-[#a8a3ff] text-sm hover:bg-[#0061FF]/30 transition-all"
+                size="sm"
+                className="font-mono text-xs uppercase"
               >
-                → Go to Models
+                GO TO MODELS
               </Button>
             </div>
           ) : (

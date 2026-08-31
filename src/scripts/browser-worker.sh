@@ -126,23 +126,69 @@ for i in $(seq 1 30); do
   sleep 1
 done
 
+start_sb_chrome() {
+  mkdir -p /tmp/sb-chrome-data
+  google-chrome-stable \
+    --no-sandbox \
+    --disable-setuid-sandbox \
+    --disable-dev-shm-usage \
+    --remote-debugging-port=${SB_CDP_PORT} \
+    --remote-debugging-address=0.0.0.0 \
+    --remote-allow-origins=* \
+    --user-data-dir=/tmp/sb-chrome-data \
+    --window-size=1400,900 \
+    --window-position=10,10 \
+    --no-first-run \
+    --no-default-browser-check \
+    --no-service-autorun \
+    --disable-auto-reload \
+    --homepage=about:blank \
+    --no-pings \
+    --enable-unsafe-extension-debugging \
+    --wm-window-animations-disabled \
+    --animation-duration-scale=0 \
+    --enable-privacy-sandbox-ads-apis \
+    --safebrowsing-disable-download-protection \
+    --password-store=basic \
+    --deny-permission-prompts \
+    --disable-breakpad \
+    --disable-prompt-on-repost \
+    --disable-application-cache \
+    --disable-password-generation \
+    --disable-save-password-bubble \
+    --disable-single-click-autofill \
+    --disable-ipc-flooding-protection \
+    --disable-background-timer-throttling \
+    --disable-search-engine-choice-screen \
+    --disable-background-networking \
+    --disable-backgrounding-occluded-windows \
+    --disable-client-side-phishing-detection \
+    --disable-device-discovery-notifications \
+    --disable-top-sites \
+    --disable-translate \
+    --dns-prefetch-disable \
+    --disable-renderer-backgrounding \
+    --disable-features=IsolateOrigins,site-per-process,Translate,InsecureDownloadWarnings,DownloadBubble,DownloadBubbleV2,OptimizationTargetPrediction,OptimizationGuideModelDownloading,SidePanelPinning,UserAgentClientHint,PrivacySandboxSettings4,OptimizationHintsFetching,InterestFeedContentSuggestions,ComponentUpdater,NetworkPrediction,DisableLoadExtensionCommandLineSwitch,WebAuthentication,OmniboxUIFeedback,OmniboxPopupShortcut,PasskeyAuth,MediaRouter,DialMediaRouteProvider,WebRtcHideLocalIpsWithMdns \
+    > /tmp/sb_chrome.log 2>&1 &
+  SB_CDP_PID=$!
+}
+
 # ---------------------------------------------------------------------------
 # 1b. Start SeleniumBase UC CDP Worker (Stealth browser on :9223)
 # ---------------------------------------------------------------------------
-echo "🚀 Starting SeleniumBase UC CDP worker on :${SB_CDP_PORT}..."
-export SB_CDP_PORT
-python3 worker_browser/sb_cdp_worker.py > /tmp/sb_cdp_worker.log 2>&1 &
-SB_CDP_PID=$!
+echo "🚀 Starting SeleniumBase UC stealth browser on :${SB_CDP_PORT}..."
+start_sb_chrome
 
 echo "⏳ Waiting for SeleniumBase CDP (:${SB_CDP_PORT}) to be ready..."
-for i in $(seq 1 35); do
+for i in $(seq 1 30); do
   if curl -s "http://127.0.0.1:${SB_CDP_PORT}/json/version" > /dev/null 2>&1; then
     echo "✅ SeleniumBase CDP is ready!"
     break
   fi
-  if [ $i -eq 35 ]; then
-    echo "⚠️ SeleniumBase CDP did not respond on :${SB_CDP_PORT} within 35s. Log tail:"
-    tail -n 20 /tmp/sb_cdp_worker.log 2>/dev/null || true
+  if [ $i -eq 30 ]; then
+    echo "❌ SeleniumBase CDP failed to start within 30 seconds:"
+    cat /tmp/sb_chrome.log 2>/dev/null || true
+    exit 1
   fi
   sleep 1
 done
@@ -181,6 +227,7 @@ TUNNEL_PID=$!
 for i in $(seq 1 30); do
   TUNNEL_URL=$(grep -oP 'https://[-0-9a-z]+\.trycloudflare\.com' "$TUNNEL_LOG" 2>/dev/null | head -1 || true)
   if [ -n "$TUNNEL_URL" ]; then
+    echo "✅ Puppeteer CDP Tunnel URL: $TUNNEL_URL"
     break
   fi
   if [ $i -eq 30 ]; then
@@ -199,11 +246,13 @@ TUNNEL_SB_CDP_PID=$!
 for i in $(seq 1 30); do
   TUNNEL_SB_CDP_URL=$(grep -oP 'https://[-0-9a-z]+\.trycloudflare\.com' "$TUNNEL_SB_CDP_LOG" 2>/dev/null | head -1 || true)
   if [ -n "$TUNNEL_SB_CDP_URL" ]; then
+    echo "✅ SeleniumBase CDP Tunnel URL: $TUNNEL_SB_CDP_URL"
     break
   fi
   if [ $i -eq 30 ]; then
-    echo "⚠️ SeleniumBase CDP tunnel failed to start within 30 seconds:"
+    echo "❌ SeleniumBase CDP tunnel failed to start within 30 seconds:"
     cat "$TUNNEL_SB_CDP_LOG" 2>/dev/null || true
+    exit 1
   fi
   sleep 1
 done
@@ -303,9 +352,8 @@ while true; do
 
   # ── Watchdog 1b: SeleniumBase UC CDP ────────────────────────────────────
   if ! kill -0 "$SB_CDP_PID" 2>/dev/null; then
-    echo "⚠️ SeleniumBase CDP worker PID $SB_CDP_PID died! Restarting SeleniumBase CDP..."
-    python3 worker_browser/sb_cdp_worker.py > /tmp/sb_cdp_worker.log 2>&1 &
-    SB_CDP_PID=$!
+    echo "⚠️ SeleniumBase Chrome process PID $SB_CDP_PID died! Restarting SeleniumBase Chrome..."
+    start_sb_chrome
   fi
 
   # ── Watchdog 2: FastAPI ─────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { api, BrowserPoolPayload, BrowserPoolItem } from '../api';
+import { api, BrowserPoolPayload } from '../api';
 import { Button } from '@/components/ui/button';
-import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
+import { Card, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 
 function copyText(text: string) {
@@ -34,7 +34,7 @@ export default function PoolPanel() {
   }, []);
 
   const handleRestart = async () => {
-    if (window.confirm('Are you sure you want to trigger a fleet restart? This will dispatch a GHA run to spawn fresh workers.')) {
+    if (window.confirm('Trigger fleet restart? This will dispatch a GHA run to spawn fresh workers.')) {
       setRestarting(true);
       setRestartMsg('');
       try {
@@ -43,23 +43,10 @@ export default function PoolPanel() {
         setTimeout(() => setRestartMsg(''), 4000);
         await fetchPool();
       } catch (err: any) {
-        setRestartMsg(`Error: ${err.message}`);
+        setRestartMsg(`[ERROR] ${err.message}`);
       } finally {
         setRestarting(false);
       }
-    }
-  };
-
-  const getStatusColor = (status: BrowserPoolItem['status']) => {
-    switch (status) {
-      case 'active':
-        return 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400';
-      case 'stale':
-        return 'bg-amber-500/10 border-amber-500/20 text-amber-400';
-      case 'dead':
-        return 'bg-rose-500/10 border-rose-500/20 text-rose-400';
-      default:
-        return 'bg-white/5 border-white/10 text-white/40';
     }
   };
 
@@ -74,29 +61,24 @@ export default function PoolPanel() {
 
   if (loading && !data) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 space-y-4">
-        <div className="w-10 h-10 border-4 border-[#0061FF]/20 border-t-[#00E5FF] rounded-full animate-spin" />
-        <p className="text-white/40 text-sm">Loading browser worker pool status...</p>
+      <div className="flex flex-col items-center justify-center py-20 space-y-2 font-mono text-xs text-muted-foreground">
+        <p>Loading browser worker pool status...</p>
       </div>
     );
   }
 
   if (error && !data) {
     return (
-      <Card className=" glass rounded-3xl p-10 text-center space-y-4 max-w-md mx-auto border border-white/[0.08]">
-        <div className="w-12 h-12 mx-auto rounded-full bg-rose-500/10 border border-rose-500/25 flex items-center justify-center text-xl">
-          ⚠️
-        </div>
-        <div>
-          <CardTitle className="text-white font-bold text-base">Failed to load pool status</CardTitle>
-          <CardDescription className="text-white/40 text-xs mt-1">{error}</CardDescription>
-        </div>
+      <Card className="border border-border bg-card p-6 text-center space-y-3 max-w-md mx-auto font-mono">
+        <CardTitle className="text-foreground text-xs uppercase font-bold">Failed to load pool status</CardTitle>
+        <CardDescription className="text-muted-foreground text-xs">{error}</CardDescription>
         <Button
           onClick={() => { setLoading(true); fetchPool(); }}
           variant="outline"
-          className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-semibold rounded-xl transition-all"
+          size="sm"
+          className="font-mono text-xs uppercase"
         >
-          Try Again
+          TRY AGAIN
         </Button>
       </Card>
     );
@@ -106,57 +88,53 @@ export default function PoolPanel() {
   const cachedCount = browsers.filter(b => b.isCached).length;
 
   return (
-    <div className="space-y-6 text-sm">
+    <div className="space-y-4 text-sm font-mono">
       {/* Fleet Stats Overview */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="glass rounded-2xl p-4 flex flex-col justify-between border border-white/[0.08]">
-          <p className="text-[10px] text-white/30 uppercase font-bold tracking-wider">Total Fleet Size</p>
-          <div className="flex items-baseline gap-2 mt-2">
-            <span className="text-3xl font-black text-white">{data?.total ?? 0}</span>
-            <span className="text-xs text-white/30">workers</span>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <Card className="border border-border bg-card p-3 flex flex-col justify-between">
+          <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Total Fleet Size</p>
+          <div className="flex items-baseline gap-2 mt-1">
+            <span className="text-2xl font-bold text-foreground">{data?.total ?? 0}</span>
+            <span className="text-xs text-muted-foreground">workers</span>
           </div>
         </Card>
 
-        <Card className="glass rounded-2xl p-4 flex flex-col justify-between border border-white/[0.08]">
-          <p className="text-[10px] text-white/30 uppercase font-bold tracking-wider">Active Workers</p>
-          <div className="flex items-baseline gap-2 mt-2">
-            <span className="text-3xl font-black text-emerald-400">{data?.active ?? 0}</span>
-            <span className="text-xs text-white/30">online</span>
+        <Card className="border border-border bg-card p-3 flex flex-col justify-between">
+          <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Active Workers</p>
+          <div className="flex items-baseline gap-2 mt-1">
+            <span className="text-2xl font-bold text-foreground">{data?.active ?? 0}</span>
+            <span className="text-xs text-muted-foreground">online</span>
           </div>
         </Card>
 
-        <Card className="glass rounded-2xl p-4 flex flex-col justify-between border border-white/[0.08]">
-          <p className="text-[10px] text-white/30 uppercase font-bold tracking-wider">Pre-warmed CDP Connections</p>
-          <div className="flex items-baseline gap-2 mt-2">
-            <span className="text-3xl font-black text-teal-400">{cachedCount}</span>
-            <span className="text-xs text-white/30">cached</span>
+        <Card className="border border-border bg-card p-3 flex flex-col justify-between">
+          <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Pre-warmed CDP</p>
+          <div className="flex items-baseline gap-2 mt-1">
+            <span className="text-2xl font-bold text-foreground">{cachedCount}</span>
+            <span className="text-xs text-muted-foreground">cached</span>
           </div>
         </Card>
 
-        <Card className="glass rounded-2xl p-4 flex flex-col justify-between border border-white/[0.08]">
-          <p className="text-[10px] text-white/30 uppercase font-bold tracking-wider">Pool Efficiency</p>
-          <div className="flex items-baseline gap-2 mt-2">
-            <span className="text-3xl font-black text-[#0061FF]">
+        <Card className="border border-border bg-card p-3 flex flex-col justify-between">
+          <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider">Pool Efficiency</p>
+          <div className="flex items-baseline gap-2 mt-1">
+            <span className="text-2xl font-bold text-foreground">
               {data?.active ? Math.round((cachedCount / data.active) * 100) : 0}%
             </span>
-            <span className="text-xs text-white/30">pre-warmed</span>
+            <span className="text-xs text-muted-foreground">ready</span>
           </div>
         </Card>
       </div>
 
       {/* Control Actions */}
-      <Card className="flex flex-row items-center justify-between bg-white/[0.02] border border-white/[0.06] rounded-2xl p-4">
+      <Card className="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-card border border-border p-3 gap-3">
         <div>
-          <CardTitle className="text-sm font-semibold text-white">Browser Fleet Manager</CardTitle>
-          <CardDescription className="text-xs text-white/30 mt-0.5">Control, restart, and monitor live distributed worker instances.</CardDescription>
+          <CardTitle className="text-xs uppercase font-bold tracking-wider text-foreground">Browser Fleet Orchestrator</CardTitle>
+          <CardDescription className="text-xs text-muted-foreground mt-0.5">Control, restart, and monitor live distributed worker instances.</CardDescription>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           {restartMsg && (
-            <div className={`px-4 py-2 text-xs rounded-xl border flex items-center ${
-              restartMsg.startsWith('Error') 
-                ? 'bg-rose-500/10 border-rose-500/20 text-rose-400' 
-                : 'bg-teal-500/10 border-teal-500/20 text-teal-400'
-            }`}>
+            <div className="px-3 py-1 text-xs border border-border bg-secondary text-foreground font-mono">
               {restartMsg}
             </div>
           )}
@@ -164,114 +142,101 @@ export default function PoolPanel() {
             onClick={handleRestart}
             disabled={restarting}
             variant="outline"
-            className="px-4 py-2 h-auto bg-gradient-to-r from-red-500/20 to-rose-500/25 border border-red-500/30 hover:opacity-90 disabled:opacity-40 text-red-400 text-xs font-semibold rounded-xl transition-all shadow-lg shadow-red-500/5 flex items-center gap-1.5"
+            size="sm"
+            className="font-mono text-xs uppercase font-bold"
           >
-            ⚡ {restarting ? 'Triggering...' : 'Restart Fleet'}
+            ⚡ {restarting ? 'TRIGGERING...' : 'RESTART FLEET'}
           </Button>
         </div>
       </Card>
 
       {/* Worker List */}
-      <Card className="glass rounded-3xl overflow-hidden border border-white/[0.08]">
+      <Card className="border border-border bg-card overflow-hidden">
         {browsers.length === 0 ? (
-          <div className="p-12 text-center text-white/30 text-sm">
-            No remote browser workers registered. Ensure GHA worker runs are active and heartbeating.
+          <div className="p-8 text-center text-muted-foreground text-xs font-mono">
+            No remote browser workers registered. Ensure worker workflows are running.
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+            <table className="w-full text-left border-collapse text-xs font-mono">
               <thead>
-                <tr className="border-b border-white/[0.06] bg-white/[0.02]">
-                  <th className="text-[10px] uppercase font-black tracking-wider text-white/40 px-6 py-4">Worker ID</th>
-                  <th className="text-[10px] uppercase font-black tracking-wider text-white/40 px-6 py-4">CDP Endpoints (Puppeteer & SeleniumBase)</th>
-                  <th className="text-[10px] uppercase font-black tracking-wider text-white/40 px-6 py-4">Status</th>
-                  <th className="text-[10px] uppercase font-black tracking-wider text-white/40 px-6 py-4">Puppeteer CDP Connection</th>
-                  <th className="text-[10px] uppercase font-black tracking-wider text-white/40 px-6 py-4">Heartbeat</th>
-                  <th className="text-[10px] uppercase font-black tracking-wider text-white/40 px-6 py-4">Age</th>
+                <tr className="border-b border-border bg-secondary">
+                  <th className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground px-4 py-2.5">Worker ID</th>
+                  <th className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground px-4 py-2.5">CDP Endpoints</th>
+                  <th className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground px-4 py-2.5">Status</th>
+                  <th className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground px-4 py-2.5">Pre-Warm</th>
+                  <th className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground px-4 py-2.5">Heartbeat</th>
+                  <th className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground px-4 py-2.5">Age</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/[0.04]">
+              <tbody className="divide-y divide-border">
                 {browsers.map(b => (
-                  <tr key={b.workerId} className="hover:bg-white/[0.01] transition-colors">
+                  <tr key={b.workerId} className="hover:bg-secondary transition-colors">
                     {/* Worker ID */}
-                    <td className="px-6 py-4 font-mono text-xs text-white select-all cursor-pointer hover:text-teal-400 transition-colors"
+                    <td className="px-4 py-3 font-bold text-foreground select-all cursor-pointer"
                         onClick={() => { copyText(b.workerId); }}
                         title="Click to copy Worker ID">
                       {b.workerId}
                     </td>
 
-                    {/* CDP Tunnel URLs (Puppeteer & SeleniumBase) */}
-                    <td className="px-6 py-4 max-w-sm space-y-2">
+                    {/* CDP Tunnel URLs */}
+                    <td className="px-4 py-3 max-w-sm space-y-1.5">
                       {/* Puppeteer CDP */}
-                      <div className="flex items-center gap-2 bg-black/20 border border-white/10 rounded-lg px-2.5 py-1.5">
-                        <span className="text-[9px] font-bold uppercase tracking-wider text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20">
-                          Puppeteer
+                      <div className="flex items-center gap-1.5 bg-secondary border border-border px-2 py-1">
+                        <span className="text-[9px] font-bold uppercase text-muted-foreground">
+                          PUPPETEER
                         </span>
                         <a href={`${b.cdpUrl}/json/version`} target="_blank" rel="noopener noreferrer"
-                           className="flex-1 text-teal-400 hover:underline text-xs font-mono truncate select-all">
+                           className="flex-1 text-foreground underline text-xs truncate select-all">
                           {b.cdpUrl}
                         </a>
-                        <Button variant="ghost" onClick={() => copyText(b.cdpUrl)}
-                                className="text-[10px] text-white/30 hover:text-white transition-colors h-auto p-1"
-                                title="Copy Puppeteer CDP URL">📋</Button>
-                        <a href={`${b.cdpUrl}/json/version`} target="_blank" rel="noopener noreferrer"
-                           className="text-[10px] text-white/30 hover:text-white transition-colors px-1"
-                           title="Check CDP Status page">↗</a>
+                        <Button variant="ghost" size="xs" onClick={() => copyText(b.cdpUrl)}
+                                className="text-[10px] h-auto p-0.5">COPY</Button>
                       </div>
 
                       {/* SeleniumBase UC CDP */}
                       {(b.sbCdpUrl || b.seleniumCdpUrl) && (
-                        <div className="flex items-center gap-2 bg-black/20 border border-purple-500/20 rounded-lg px-2.5 py-1.5">
-                          <span className="text-[9px] font-bold uppercase tracking-wider text-purple-400 bg-purple-500/10 px-1.5 py-0.5 rounded border border-purple-500/20">
-                            SeleniumBase
+                        <div className="flex items-center gap-1.5 bg-secondary border border-border px-2 py-1">
+                          <span className="text-[9px] font-bold uppercase text-muted-foreground">
+                            SELENIUM
                           </span>
                           <a href={`${b.sbCdpUrl || b.seleniumCdpUrl}/json/version`} target="_blank" rel="noopener noreferrer"
-                             className="flex-1 text-purple-300 hover:underline text-xs font-mono truncate select-all">
+                             className="flex-1 text-foreground underline text-xs truncate select-all">
                             {b.sbCdpUrl || b.seleniumCdpUrl}
                           </a>
-                          <Button variant="ghost" onClick={() => copyText((b.sbCdpUrl || b.seleniumCdpUrl)!)}
-                                  className="text-[10px] text-white/30 hover:text-white transition-colors h-auto p-1"
-                                  title="Copy SeleniumBase CDP URL">📋</Button>
-                          <a href={`${b.sbCdpUrl || b.seleniumCdpUrl}/json/version`} target="_blank" rel="noopener noreferrer"
-                             className="text-[10px] text-white/30 hover:text-white transition-colors px-1"
-                             title="Check SeleniumBase CDP Status">↗</a>
+                          <Button variant="ghost" size="xs" onClick={() => copyText((b.sbCdpUrl || b.seleniumCdpUrl)!)}
+                                  className="text-[10px] h-auto p-0.5">COPY</Button>
                         </div>
                       )}
                     </td>
 
                     {/* Status Badge */}
-                    <td className="px-6 py-4">
-                      <Badge variant="outline" className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border capitalize ${getStatusColor(b.status)}`}>
+                    <td className="px-4 py-3">
+                      <Badge variant="outline" className="text-[9px] uppercase font-bold">
                         {b.status}
                       </Badge>
                     </td>
 
                     {/* Connection/Cache Status */}
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-3">
                       {b.isCached ? (
-                        <Badge variant="outline" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                          Cached & Pre-warmed
+                        <Badge variant="outline" className="text-[9px] bg-foreground text-background">
+                          CACHED
                         </Badge>
                       ) : (
-                        <Badge variant="outline" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.04] border border-white/10 text-white/40 text-xs">
-                          <span className="w-1.5 h-1.5 rounded-full bg-white/20" />
-                          Lazy / Disconnected
+                        <Badge variant="outline" className="text-[9px] text-muted-foreground">
+                          DISCONNECTED
                         </Badge>
                       )}
                     </td>
 
                     {/* Heartbeat time */}
-                    <td className="px-6 py-4 text-xs text-white/60">
-                      {b.secondsSinceHeartbeat <= 5 ? (
-                        <span className="text-emerald-400 font-medium">Just now</span>
-                      ) : (
-                        <span>{b.secondsSinceHeartbeat}s ago</span>
-                      )}
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {b.secondsSinceHeartbeat <= 5 ? 'Just now' : `${b.secondsSinceHeartbeat}s ago`}
                     </td>
 
                     {/* Age */}
-                    <td className="px-6 py-4 text-xs text-white/40">
+                    <td className="px-4 py-3 text-muted-foreground">
                       {formatAge(b.registeredAt)}
                     </td>
                   </tr>

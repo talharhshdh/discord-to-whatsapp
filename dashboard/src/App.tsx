@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { api } from './api';
 import { useUrls, useCountdown, NavSection } from './hooks';
 import { Button } from '@/components/ui/button';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Card, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 
@@ -148,7 +148,7 @@ export default function App() {
   const { data, refresh } = useUrls(isAuthenticated);
   const cd = useCountdown(data?.sessionRemainingSeconds ?? 5 * 3600);
 
-  // Update dynamic favicon and page title based on current page/section
+  // Dynamic favicon and page title
   React.useEffect(() => {
     let faviconPath = 'sessions';
     let title = 'Bridge Panel';
@@ -167,10 +167,8 @@ export default function App() {
       }
     }
 
-    // Set document title
     document.title = title;
 
-    // Set dynamic favicon
     let link: HTMLLinkElement | null = document.querySelector("link[rel~='icon']");
     if (!link) {
       link = document.createElement('link');
@@ -216,8 +214,8 @@ export default function App() {
       const current = hash || path;
       const validSections: NavSection[] = [
         'google', 'web-proxy', 'search', 'places', 'pool', 'indeed', 'contacts', 
-        'sessions', 'manager', 'android', 'urls', 'go-containers', 
-        'ai-tools', 'media', 'youtube', 'movies', 'llm', 'tts'
+        'sessions', 'manager', 'code-exec', 'proxy-net', 'android', 'urls', 'go-containers', 
+        'ai-tools', 'media', 'youtube', 'movies', 'llm', 'tts', 'blog-gen'
       ];
       if (validSections.includes(current as NavSection)) {
         setSection(current as NavSection);
@@ -234,43 +232,48 @@ export default function App() {
   const handleNavClick = (id: NavSection) => {
     setSection(id);
     setIsMenuOpen(false);
-    
-    // Update hash for SPA linkability
     window.location.hash = `#/${id}`;
   };
 
   if (!isAuthenticated && section !== 'google') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[var(--bg-main)] relative p-4 font-sans text-white">
+      <div className="min-h-screen flex items-center justify-center bg-background relative p-4 font-sans text-foreground">
         {/* Theme toggle on login screen */}
         <div className="absolute top-4 right-4 z-20">
           <Button
             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
             variant="outline"
-            className="p-2.5 h-auto rounded-lg bg-[var(--btn-secondary-bg)] border border-[var(--card-border)] text-[var(--text-muted)] hover:text-[var(--text-main)] hover:scale-[1.02] active:scale-[0.98] text-xs transition-all flex items-center gap-1.5 font-medium shadow-none"
+            size="sm"
+            className="text-xs"
             title={theme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
           >
             <span>{theme === 'dark' ? '☀️' : '🌙'}</span>
-            <span>{theme === 'dark' ? 'Light' : 'Dark'}</span>
+            <span>{theme === 'dark' ? 'LIGHT' : 'DARK'}</span>
           </Button>
         </div>
 
-        <Card className="relative z-10 w-full max-w-md bg-[var(--bg-sidebar)] border border-white/5 p-8 rounded-lg shadow-none space-y-6">
-          <div className="text-center">
-            <div className="w-16 h-16 mx-auto rounded-xl bg-[#0061FF] flex items-center justify-center text-3xl shadow-none mb-4">
-              🔒
+        <Card className="relative z-10 w-full max-w-md bg-card border border-border p-6 sm:p-8 space-y-6">
+          <div className="text-center space-y-2">
+            <div className="w-12 h-12 mx-auto border border-border bg-foreground text-background flex items-center justify-center text-xl font-bold font-mono">
+              BP
             </div>
-            <CardTitle className="text-lg font-mono font-bold uppercase tracking-wider text-white">Bridge Panel Login</CardTitle>
-            <CardDescription className="text-xs text-white/40 mt-1">Please authenticate to manage Discord/WhatsApp sessions</CardDescription>
+            <CardTitle className="text-sm font-mono font-bold uppercase tracking-wider text-foreground">
+              Bridge Panel Access
+            </CardTitle>
+            <CardDescription className="text-xs text-muted-foreground">
+              Authenticate to manage live sessions and proxy workers
+            </CardDescription>
           </div>
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="space-y-1">
-              <label className="text-[10px] uppercase font-bold tracking-wider text-white/40">Username</label>
+              <label className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground font-mono">
+                Username
+              </label>
               <Input
                 type="text"
                 required
-                className="w-full bg-[#11151F] border border-white/10 rounded-lg px-4 py-2.5 text-sm placeholder-white/20 focus:outline-none focus:border-[#0061FF]/40 text-white"
+                className="w-full"
                 placeholder="Enter username"
                 value={loginUsername}
                 onChange={(e) => setLoginUsername(e.target.value)}
@@ -278,11 +281,13 @@ export default function App() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-[10px] uppercase font-bold tracking-wider text-white/40">Password</label>
+              <label className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground font-mono">
+                Password
+              </label>
               <Input
                 type="password"
                 required
-                className="w-full bg-[#11151F] border border-white/10 rounded-lg px-4 py-2.5 text-sm placeholder-white/20 focus:outline-none focus:border-[#0061FF]/40 text-white"
+                className="w-full"
                 placeholder="Enter password"
                 value={loginPassword}
                 onChange={(e) => setLoginPassword(e.target.value)}
@@ -290,17 +295,17 @@ export default function App() {
             </div>
 
             {loginError && (
-              <div className="p-3 text-xs bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg">
-                ⚠️ {loginError}
+              <div className="p-3 text-xs bg-secondary border border-border text-foreground font-mono">
+                [ERROR] {loginError}
               </div>
             )}
 
             <Button
               type="submit"
               disabled={loginLoading}
-              className="w-full py-6 bg-[#0061FF] hover:bg-[#004ecb] disabled:opacity-50 text-sm font-semibold rounded-lg text-white transition-all shadow-none"
+              className="w-full py-2.5 text-xs font-bold font-mono tracking-wider uppercase"
             >
-              {loginLoading ? 'Authenticating...' : 'Sign In'}
+              {loginLoading ? 'AUTHENTICATING...' : 'SIGN IN'}
             </Button>
           </form>
 
@@ -311,9 +316,9 @@ export default function App() {
                 window.history.pushState(null, '', '/google');
               }}
               variant="link"
-              className="text-xs text-[#00E5FF] hover:underline p-0 h-auto font-normal"
+              className="text-xs text-muted-foreground hover:text-foreground font-mono"
             >
-              🌍 View public Google Clone instead
+              [ View Public Google Clone ]
             </Button>
           </div>
         </Card>
@@ -323,98 +328,104 @@ export default function App() {
 
   if (section === 'google') {
     return (
-      <React.Suspense fallback={<div className="flex items-center justify-center min-h-screen bg-[#000000] text-white/50">Loading Google Clone...</div>}>
+      <React.Suspense fallback={<div className="flex items-center justify-center min-h-screen bg-background text-foreground font-mono text-xs">Loading Google Clone...</div>}>
         <GoogleClonePanel isStandalone={true} />
       </React.Suspense>
     );
   }
 
   return (
-    <div className="h-screen max-h-screen flex flex-col bg-[var(--bg-main)] text-sm font-sans overflow-hidden">
+    <div className="h-screen max-h-screen flex flex-col bg-background text-foreground text-sm font-sans overflow-hidden">
       <div className="relative z-10 flex flex-col h-full overflow-hidden">
-        {/* Header */}
-        <header className="bg-[var(--bg-sidebar)] border-b border-white/5 px-4 md:px-6 py-3 sticky top-0 z-30">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 md:gap-3">
-              <div className="w-8 h-8 rounded-lg bg-[#0061FF] flex items-center justify-center text-base shadow-none">
-                🤖
+        {/* Top Header */}
+        <header className="bg-sidebar border-b border-border px-3 sm:px-6 py-2.5 sticky top-0 z-30">
+          <div className="flex items-center justify-between gap-2 sm:gap-4">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="w-7 h-7 bg-foreground text-background flex items-center justify-center text-xs font-mono font-black border border-border">
+                BP
               </div>
               <div>
-                <h1 className="font-bold text-white text-xs md:text-sm leading-tight tracking-wider uppercase font-mono">Bridge Panel</h1>
-                <p className="hidden sm:block text-[9px] text-white/30 uppercase tracking-widest font-mono">Discord ↔ WhatsApp</p>
+                <h1 className="font-bold text-foreground text-xs sm:text-sm leading-tight tracking-wider uppercase font-mono">
+                  Bridge Panel
+                </h1>
+                <p className="hidden sm:block text-[9px] text-muted-foreground uppercase tracking-widest font-mono">
+                  Discord ↔ WhatsApp Orchestrator
+                </p>
               </div>
-              <div className="hidden sm:flex items-center gap-1.5 ml-4 px-2.5 py-1 rounded-full bg-emerald-950/20 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold tracking-wider uppercase">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                SYSTEM LIVE
-              </div>
+              <Badge variant="outline" className="hidden sm:inline-flex ml-2 text-[9px] font-mono font-bold">
+                [LIVE]
+              </Badge>
             </div>
 
-            <div className="flex items-center gap-2 md:gap-3">
-              {/* Countdown - simplified on mobile */}
-              <Badge variant="outline" className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-[10px] font-mono font-normal tracking-wider ${
-                cd.urgent ? 'bg-red-500/10 border-red-500/20 text-red-400' : 'bg-[#11151F] border-white/5 text-white/60'
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              {/* Countdown badge */}
+              <Badge variant="outline" className={`hidden xs:flex items-center gap-1 px-2 py-0.5 text-[10px] font-mono ${
+                cd.urgent ? 'border-foreground font-bold' : 'text-muted-foreground'
               }`}>
-                <span className="text-white/40">SESSION REMAINING:</span> <span className="font-bold">{cd.display}</span>
+                <span className="text-muted-foreground">REMAINING:</span> <span>{cd.display}</span>
               </Badge>
 
-              {/* Theme toggle button */}
+              {/* Theme toggle */}
               <Button 
                 onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} 
                 variant="outline"
-                className="p-1.5 md:px-3 md:py-1.5 h-auto rounded-full bg-[var(--btn-secondary-bg)] border border-[var(--card-border)] text-[var(--text-muted)] hover:text-[var(--text-main)] text-[10px] md:text-xs transition-colors flex items-center gap-1.5 font-medium"
+                size="xs"
+                className="font-mono text-[10px]"
                 title={theme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
               >
                 <span>{theme === 'dark' ? '☀️' : '🌙'}</span>
-                <span className="hidden sm:inline">{theme === 'dark' ? 'Light' : 'Dark'}</span>
+                <span className="hidden sm:inline">{theme === 'dark' ? 'LIGHT' : 'DARK'}</span>
               </Button>
 
-              <Button onClick={refresh} variant="outline" className="p-1.5 md:px-3 md:py-1.5 h-auto rounded-full bg-white/[0.04] border border-white/10 text-white/40 hover:text-white/70 text-[10px] md:text-xs transition-colors font-normal">
-                <span className="hidden md:inline">🔄 Refresh</span>
-                <span className="md:hidden">🔄</span>
+              <Button onClick={refresh} variant="outline" size="xs" className="font-mono text-[10px]">
+                <span>🔄</span>
+                <span className="hidden md:inline">REFRESH</span>
               </Button>
 
               {isAuthenticated && (
-                <Button onClick={handleLogout} variant="outline" className="p-1.5 md:px-3 md:py-1.5 h-auto rounded-full bg-red-500/10 border border-red-500/20 text-red-400 hover:text-red-300 text-[10px] md:text-xs transition-colors font-semibold">
-                  <span className="hidden md:inline">🚪 Sign Out</span>
-                  <span className="md:hidden">🚪</span>
+                <Button onClick={handleLogout} variant="outline" size="xs" className="font-mono text-[10px]">
+                  <span>🚪</span>
+                  <span className="hidden md:inline">SIGN OUT</span>
                 </Button>
               )}
 
-              <button 
+              <Button 
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
-                className="md:hidden p-1.5 rounded-lg bg-white/[0.04] border border-white/10 text-white/60"
+                variant="outline"
+                size="xs"
+                className="md:hidden font-mono text-[10px]"
               >
-                {isMenuOpen ? '✕' : '☰'}
-              </button>
+                {isMenuOpen ? '✕' : '☰ MENU'}
+              </Button>
             </div>
           </div>
         </header>
 
         {/* Session progress bar */}
-        <div className="h-0.5 bg-white/[0.04] sticky top-[57px] md:top-[73px] z-30">
+        <div className="h-0.5 bg-secondary sticky top-[48px] sm:top-[56px] z-30">
           <div
-            className={`h-full transition-all duration-1000 ${cd.urgent ? 'bg-red-500' : 'bg-[#0061FF]'}`}
+            className="h-full bg-foreground transition-all duration-1000"
             style={{ width: `${cd.pct}%` }}
           />
         </div>
 
         <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
           {/* Desktop Sidebar */}
-          <nav className="w-60 flex-shrink-0 bg-[var(--bg-sidebar)] border-r border-white/5 p-4 space-y-5 hidden md:block overflow-y-auto scrollbar-thin">
+          <nav className="w-64 flex-shrink-0 bg-sidebar border-r border-border p-3 sm:p-4 space-y-4 hidden md:block overflow-y-auto">
             {/* Sidebar Search */}
-            <div className="relative px-1">
-              <span className="absolute inset-y-0 left-4 flex items-center text-white/30 text-xs">🔍</span>
+            <div className="relative">
+              <span className="absolute inset-y-0 left-2.5 flex items-center text-muted-foreground text-xs">🔍</span>
               <Input
                 type="text"
                 placeholder="Search tools..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                className="w-full bg-[#11151F] border border-white/5 hover:border-white/10 focus:border-[#0061FF]/40 rounded-lg pl-8 pr-7 py-2 text-xs text-white placeholder-white/35 focus:outline-none transition-all"
+                className="w-full pl-7 pr-6 text-xs h-7"
               />
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery('')}
-                  className="absolute inset-y-0 right-3 flex items-center text-white/40 hover:text-white text-xs"
+                  className="absolute inset-y-0 right-2 flex items-center text-muted-foreground hover:text-foreground text-xs"
                 >
                   ✕
                 </button>
@@ -423,8 +434,8 @@ export default function App() {
 
             <div className="space-y-4">
               {filteredCategories.map(category => (
-                <div key={category.title} className="space-y-1.5">
-                  <h3 className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/30 px-2 flex items-center gap-1.5 font-mono">
+                <div key={category.title} className="space-y-1">
+                  <h3 className="text-[10px] font-bold uppercase tracking-[0.15em] text-muted-foreground px-2 flex items-center gap-1.5 font-mono">
                     <span>{category.icon}</span>
                     {category.title}
                   </h3>
@@ -434,16 +445,16 @@ export default function App() {
                         key={n.id}
                         onClick={() => handleNavClick(n.id)}
                         variant="ghost"
-                        className={`w-full flex items-center justify-start gap-2.5 px-3 py-2 h-auto rounded-none text-xs font-semibold transition-all duration-200 ${
+                        className={`w-full flex items-center justify-start gap-2 px-2.5 py-1.5 h-auto text-xs font-mono transition-all ${
                           section === n.id
-                            ? 'border-l-2 border-[var(--primary)] bg-[var(--accent-active-bg)] text-[var(--accent-active-text)] hover:bg-[var(--accent-active-bg)] hover:text-[var(--accent-active-text)]'
-                            : 'text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--btn-secondary-hover)]'
+                            ? 'border-l-2 border-foreground bg-foreground text-background hover:bg-foreground hover:text-background font-bold'
+                            : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
                         }`}
                       >
-                        <span className="text-sm">{n.icon}</span>
-                        <span className="truncate uppercase font-mono tracking-wider text-[11px]">{n.label}</span>
+                        <span className="text-xs">{n.icon}</span>
+                        <span className="truncate uppercase tracking-wider text-[11px]">{n.label}</span>
                         {n.id === 'urls' && data?.tools && Object.keys(data.tools).length > 0 && (
-                          <Badge variant="outline" className="ml-auto text-[9px] bg-cyan-950/20 text-[#00E5FF] font-bold rounded-full px-1.5 py-0.5 border-cyan-500/25">
+                          <Badge variant="outline" className="ml-auto text-[9px] px-1 py-0 border-border">
                             {Object.keys(data.tools).length}
                           </Badge>
                         )}
@@ -453,15 +464,15 @@ export default function App() {
                 </div>
               ))}
               {filteredCategories.length === 0 && (
-                <p className="text-[11px] text-white/30 text-center py-4 uppercase tracking-wider font-mono">No tools found</p>
+                <p className="text-[11px] text-muted-foreground text-center py-4 uppercase tracking-wider font-mono">No tools found</p>
               )}
             </div>
 
-            <div className="pt-4 border-t border-white/[0.06] mt-4">
+            <div className="pt-3 border-t border-border mt-4">
               {data?.sessionStartedAt && (
-                <div className="px-3 py-2 bg-white/[0.02] border border-white/[0.04] rounded-xl space-y-0.5">
-                  <p className="text-[9px] uppercase font-bold tracking-wider text-white/30">Session Started</p>
-                  <p className="text-xs font-mono text-white/60">
+                <div className="px-2.5 py-1.5 bg-secondary border border-border space-y-0.5">
+                  <p className="text-[9px] uppercase font-bold tracking-wider text-muted-foreground font-mono">Session Started</p>
+                  <p className="text-xs font-mono text-foreground">
                     {new Date(data.sessionStartedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </p>
                 </div>
@@ -471,40 +482,40 @@ export default function App() {
 
           {/* Mobile Side Menu Overlay */}
           {isMenuOpen && (
-            <div className="fixed inset-0 z-40 md:hidden bg-black/60 backdrop-blur-sm" onClick={() => setIsMenuOpen(false)}>
+            <div className="fixed inset-0 z-40 md:hidden bg-black/80" onClick={() => setIsMenuOpen(false)}>
               <nav 
-                className="absolute right-0 top-0 bottom-0 w-64 bg-[var(--bg-sidebar)] border-l border-white/[0.07] p-4 flex flex-col shadow-2xl"
+                className="absolute right-0 top-0 bottom-0 w-72 bg-sidebar border-l border-border p-4 flex flex-col shadow-2xl"
                 onClick={e => e.stopPropagation()}
               >
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-bold text-white text-sm">Navigation</h3>
-                  <button onClick={() => setIsMenuOpen(false)} className="text-white/40 text-xl">✕</button>
+                <div className="flex items-center justify-between mb-4 pb-2 border-b border-border">
+                  <h3 className="font-bold text-foreground text-xs font-mono uppercase tracking-wider">Navigation</h3>
+                  <Button variant="ghost" size="xs" onClick={() => setIsMenuOpen(false)} className="font-mono text-xs">✕</Button>
                 </div>
 
                 {/* Mobile Search */}
-                <div className="relative mb-5">
-                  <span className="absolute inset-y-0 left-3 flex items-center text-white/30 text-xs">🔍</span>
+                <div className="relative mb-4">
+                  <span className="absolute inset-y-0 left-2.5 flex items-center text-muted-foreground text-xs">🔍</span>
                   <Input
                     type="text"
                     placeholder="Search tools..."
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
-                    className="w-full bg-white/[0.04] border border-white/[0.08] hover:border-white/15 focus:border-[#0061FF]/40 rounded-xl pl-8 pr-7 py-2 text-xs text-white placeholder-white/35 focus:outline-none transition-all"
+                    className="w-full pl-7 pr-6 text-xs h-8"
                   />
                   {searchQuery && (
                     <button
                       onClick={() => setSearchQuery('')}
-                      className="absolute inset-y-0 right-3 flex items-center text-white/40 hover:text-white text-xs"
+                      className="absolute inset-y-0 right-2 flex items-center text-muted-foreground hover:text-foreground text-xs"
                     >
                       ✕
                     </button>
                   )}
                 </div>
 
-                <div className="flex-1 overflow-y-auto space-y-5 pr-1 scrollbar-thin">
+                <div className="flex-1 overflow-y-auto space-y-4 pr-1">
                   {filteredCategories.map(category => (
-                    <div key={category.title} className="space-y-1.5">
-                      <h4 className="text-[10px] font-black uppercase tracking-wider text-white/35 px-2 flex items-center gap-1.5">
+                    <div key={category.title} className="space-y-1">
+                      <h4 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground px-2 flex items-center gap-1.5 font-mono">
                         <span>{category.icon}</span>
                         {category.title}
                       </h4>
@@ -514,16 +525,16 @@ export default function App() {
                             key={n.id}
                             onClick={() => handleNavClick(n.id)}
                             variant="ghost"
-                            className={`w-full flex items-center justify-start gap-3 px-3 py-2.5 h-auto rounded-xl text-sm font-medium transition-all ${
+                            className={`w-full flex items-center justify-start gap-2 px-2.5 py-2 h-auto text-xs font-mono transition-all ${
                               section === n.id
-                                ? 'bg-[var(--accent-active-bg)] text-[var(--accent-active-text)] border border-[var(--accent-active-border)] hover:bg-[var(--accent-active-bg)]'
-                                : 'text-[var(--text-muted)] hover:text-[var(--text-main)] hover:bg-[var(--btn-secondary-hover)]'
+                                ? 'bg-foreground text-background border-l-2 border-foreground'
+                                : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
                             }`}
                           >
-                            <span className="text-base">{n.icon}</span>
+                            <span className="text-sm">{n.icon}</span>
                             <span className="truncate">{n.label}</span>
                             {n.id === 'urls' && data?.tools && Object.keys(data.tools).length > 0 && (
-                              <Badge variant="outline" className="ml-auto text-xs bg-teal-500/20 text-teal-400 rounded-full px-2 py-0.5 border-teal-500/25">
+                              <Badge variant="outline" className="ml-auto text-xs px-1.5 py-0">
                                 {Object.keys(data.tools).length}
                               </Badge>
                             )}
@@ -533,33 +544,27 @@ export default function App() {
                     </div>
                   ))}
                   {filteredCategories.length === 0 && (
-                    <p className="text-xs text-white/30 text-center py-4">No tools found</p>
+                    <p className="text-xs text-muted-foreground text-center py-4 font-mono">No tools found</p>
                   )}
-                </div>
-                <div className="mt-4 pt-4 border-t border-white/[0.06]">
-                  <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-green-500/5 border border-green-500/10 text-green-400 text-[10px]">
-                    <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                    Session Active
-                  </div>
                 </div>
               </nav>
             </div>
           )}
 
-          {/* Main content */}
-          <main className="flex-1 overflow-y-auto scrollbar-thin p-4 md:p-6 lg:p-8">
-            <div className=" mx-auto">
-              <div className="mb-6 flex items-center justify-between">
-                <h2 className="text-xl md:text-2xl font-bold text-white flex items-center gap-3">
-                  <span className="w-10 h-10 rounded-xl bg-white/[0.03] border border-white/[0.07] flex items-center justify-center text-xl shadow-inner">
+          {/* Main Content Area */}
+          <main className="flex-1 overflow-y-auto p-3 sm:p-5 lg:p-6">
+            <div className="max-w-7xl mx-auto space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-border">
+                <h2 className="text-base sm:text-lg font-bold font-mono uppercase tracking-wider text-foreground flex items-center gap-2">
+                  <span className="w-7 h-7 border border-border bg-secondary flex items-center justify-center text-sm">
                     {NAV.find(n => n.id === section)?.icon}
                   </span>
                   {NAV.find(n => n.id === section)?.label}
                 </h2>
               </div>
 
-              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <React.Suspense fallback={<div className="flex items-center justify-center p-12 text-white/50">Loading panel...</div>}>
+              <div className="animate-in fade-in duration-200">
+                <React.Suspense fallback={<div className="flex items-center justify-center p-12 text-muted-foreground font-mono text-xs">Loading panel...</div>}>
                   {section === 'sessions' && <SessionsPanel />}
                   {section === 'manager' && <SessionsManagerPanel />}
                   {section === 'code-exec' && <CodeExecPanel />}

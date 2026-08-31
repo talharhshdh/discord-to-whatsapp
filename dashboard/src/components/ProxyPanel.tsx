@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { api, BrowserPoolPayload, WorkerProxyResponse } from '../api';
 import { Button } from '@/components/ui/button';
-import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
+import { Card, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 
 interface HeaderPair {
   key: string;
@@ -59,7 +60,6 @@ export default function ProxyPanel() {
     setResponse(null);
     setError(null);
 
-    // Convert header pairs to Record
     const headerDict: Record<string, string> = {};
     for (const h of headers) {
       if (h.key.trim()) {
@@ -103,13 +103,6 @@ export default function ProxyPanel() {
 
   const activeWorkers = (pool?.browsers ?? []).filter(b => b.status === 'active');
 
-  const getStatusColor = (code?: number) => {
-    if (!code) return 'bg-white/10 text-white/50 border-white/10';
-    if (code >= 200 && code < 300) return 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400';
-    if (code >= 300 && code < 400) return 'bg-amber-500/10 border-amber-500/30 text-amber-400';
-    return 'bg-rose-500/10 border-rose-500/30 text-rose-400';
-  };
-
   let prettyResponseBody = response?.body ?? '';
   try {
     if (response?.body) {
@@ -117,45 +110,44 @@ export default function ProxyPanel() {
       prettyResponseBody = JSON.stringify(parsed, null, 2);
     }
   } catch {
-    // raw text/html fallback
+    // fallback
   }
 
   return (
-    <div className="space-y-6 text-sm">
+    <div className="space-y-4 text-sm font-mono">
       {/* Header Banner */}
-      <Card className="glass rounded-3xl p-6 border border-white/[0.08] bg-gradient-to-r from-teal-900/20 via-blue-900/10 to-transparent">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#00E5FF] to-[#0061FF] flex items-center justify-center text-2xl shadow-lg shadow-[#00E5FF]/20 text-slate-950">
+      <Card className="border border-border bg-card p-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 border border-border bg-secondary flex items-center justify-center text-lg">
               📡
             </div>
             <div>
-              <CardTitle className="text-[#00E5FF] font-black text-lg">HTTP Proxy & Network Relay</CardTitle>
-              <CardDescription className="text-white/40 text-xs mt-0.5">
-                Route HTTP/HTTPS API requests through your distributed runner VM IP addresses.
+              <CardTitle className="text-xs uppercase tracking-wider text-foreground">HTTP Network Relay Proxy</CardTitle>
+              <CardDescription className="text-xs text-muted-foreground mt-0.5">
+                Route HTTP API requests through distributed runner IP addresses.
               </CardDescription>
             </div>
           </div>
-          <Badge variant="outline" className="self-start sm:self-center px-3 py-1 bg-emerald-500/10 border-emerald-500/30 text-emerald-400 text-xs font-bold rounded-full">
-            ● {activeWorkers.length} Active Relay Node(s)
+          <Badge variant="outline" className="self-start sm:self-center text-[10px]">
+            [RELAYS: {activeWorkers.length}]
           </Badge>
         </div>
       </Card>
 
       {/* Main Request Form */}
-      <Card className="glass rounded-3xl p-6 border border-white/[0.08] space-y-5">
-        {/* Worker Selector & Timeout */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <Card className="border border-border bg-card p-4 space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
-            <label className="block text-[10px] uppercase font-bold tracking-wider text-white/40 mb-2">
+            <label className="block text-[10px] uppercase font-bold tracking-wider text-muted-foreground mb-1">
               Relay Worker Node
             </label>
             <select
               value={selectedWorker}
               onChange={(e) => setSelectedWorker(e.target.value)}
-              className="w-full bg-[#1E2330] border border-white/[0.08] rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[#00E5FF]/50 transition-colors"
+              className="w-full border border-border bg-secondary px-2.5 py-1.5 text-xs text-foreground outline-none"
             >
-              <option value="">⚡ Auto (Round-Robin Active Worker)</option>
+              <option value="">⚡ Auto (Round-Robin Worker)</option>
               {activeWorkers.map((w) => (
                 <option key={w.workerId} value={w.workerId}>
                   {w.workerId} ({w.secondsSinceHeartbeat}s ago)
@@ -165,13 +157,13 @@ export default function ProxyPanel() {
           </div>
 
           <div>
-            <label className="block text-[10px] uppercase font-bold tracking-wider text-white/40 mb-2">
-              Request Timeout (Seconds)
+            <label className="block text-[10px] uppercase font-bold tracking-wider text-muted-foreground mb-1">
+              Timeout (Seconds)
             </label>
             <select
               value={timeout}
               onChange={(e) => setTimeoutSec(Number(e.target.value))}
-              className="w-full bg-[#1E2330] border border-white/[0.08] rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[#00E5FF]/50 transition-colors"
+              className="w-full border border-border bg-secondary px-2.5 py-1.5 text-xs text-foreground outline-none"
             >
               <option value={5}>5 Seconds</option>
               <option value={15}>15 Seconds (Default)</option>
@@ -183,39 +175,32 @@ export default function ProxyPanel() {
 
         {/* Method & URL Row */}
         <div>
-          <label className="block text-[10px] uppercase font-bold tracking-wider text-white/40 mb-2">
+          <label className="block text-[10px] uppercase font-bold tracking-wider text-muted-foreground mb-1">
             Target Request URL & Method
           </label>
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2">
             <select
               value={method}
               onChange={(e) => setMethod(e.target.value)}
-              className="bg-[#1E2330] border border-white/[0.08] rounded-xl px-3 py-2.5 text-xs text-[#00E5FF] font-bold outline-none focus:border-[#00E5FF]/50 transition-colors"
+              className="border border-border bg-secondary px-2.5 py-1.5 text-xs font-bold text-foreground outline-none"
             >
               {['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD'].map((m) => (
                 <option key={m} value={m}>{m}</option>
               ))}
             </select>
-            <input
+            <Input
               type="text"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               placeholder="https://example.com/api/v1/endpoint"
-              className="flex-1 bg-[#1E2330] border border-white/[0.08] rounded-xl px-4 py-2.5 text-xs text-white outline-none focus:border-[#00E5FF]/50 transition-colors font-mono"
+              className="flex-1"
             />
             <Button
               onClick={handleSend}
               disabled={sending || !url.trim()}
-              className="px-6 py-2.5 bg-gradient-to-r from-[#00E5FF] to-[#0061FF] text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-[#00E5FF]/20 hover:opacity-90 disabled:opacity-40 transition-all flex items-center gap-2"
+              className="font-mono text-xs uppercase"
             >
-              {sending ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
-                  Relaying...
-                </>
-              ) : (
-                <>📡 Send Request</>
-              )}
+              {sending ? 'RELAYING...' : 'SEND REQUEST ▶'}
             </Button>
           </div>
         </div>
@@ -223,58 +208,62 @@ export default function ProxyPanel() {
         {/* Headers Editor */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] uppercase font-bold tracking-wider text-white/40">
+            <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">
               HTTP Headers ({headers.length})
             </span>
-            <button
+            <Button
+              variant="ghost"
+              size="xs"
               onClick={handleAddHeader}
-              className="text-xs text-[#00E5FF] hover:underline font-semibold"
+              className="text-[10px] font-mono"
             >
-              + Add Header
-            </button>
+              + ADD HEADER
+            </Button>
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {headers.map((h, idx) => (
               <div key={idx} className="flex gap-2 items-center">
                 <input
                   type="text"
-                  placeholder="Header Name (e.g. Authorization)"
+                  placeholder="Header Name"
                   value={h.key}
                   onChange={(e) => handleHeaderChange(idx, 'key', e.target.value)}
-                  className="w-1/3 bg-[#1E2330] border border-white/[0.08] rounded-xl px-3 py-1.5 text-xs text-white outline-none font-mono"
+                  className="w-1/3 border border-border bg-secondary px-2.5 py-1 text-xs text-foreground outline-none font-mono"
                 />
                 <input
                   type="text"
-                  placeholder="Header Value (e.g. Bearer token)"
+                  placeholder="Header Value"
                   value={h.value}
                   onChange={(e) => handleHeaderChange(idx, 'value', e.target.value)}
-                  className="flex-1 bg-[#1E2330] border border-white/[0.08] rounded-xl px-3 py-1.5 text-xs text-white outline-none font-mono"
+                  className="flex-1 border border-border bg-secondary px-2.5 py-1 text-xs text-foreground outline-none font-mono"
                 />
-                <button
+                <Button
+                  variant="ghost"
+                  size="xs"
                   onClick={() => handleRemoveHeader(idx)}
-                  className="text-rose-400 hover:text-rose-300 text-xs px-2 py-1"
+                  className="text-xs px-2"
                   title="Remove Header"
                 >
                   ✕
-                </button>
+                </Button>
               </div>
             ))}
           </div>
         </div>
 
-        {/* Request Body (for POST/PUT/PATCH) */}
+        {/* Request Body */}
         {['POST', 'PUT', 'PATCH'].includes(method) && (
-          <div className="space-y-2">
-            <label className="block text-[10px] uppercase font-bold tracking-wider text-white/40">
-              Request Payload Body (JSON / Raw)
+          <div className="space-y-1">
+            <label className="block text-[10px] uppercase font-bold tracking-wider text-muted-foreground">
+              Request Payload (JSON / Raw)
             </label>
             <textarea
               value={body}
               onChange={(e) => setBody(e.target.value)}
               rows={4}
               placeholder='{"key": "value"}'
-              className="w-full bg-[#0A0E17] border border-white/[0.08] rounded-2xl p-3 font-mono text-xs text-teal-300 outline-none resize-y"
+              className="w-full border border-border bg-background p-2.5 font-mono text-xs text-foreground outline-none resize-y"
             />
           </div>
         )}
@@ -282,20 +271,20 @@ export default function ProxyPanel() {
 
       {/* Response Display Section */}
       {(response || error) && (
-        <Card className="glass rounded-3xl overflow-hidden border border-white/[0.08] animate-in fade-in slide-in-from-bottom-2 duration-300">
-          <div className="bg-[#121824] border-b border-white/[0.06] px-6 py-4 flex items-center justify-between flex-wrap gap-3">
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-bold uppercase tracking-wider text-white">Proxy Response</span>
+        <Card className="border border-border bg-card">
+          <div className="bg-secondary border-b border-border px-4 py-2 flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold uppercase text-foreground">Proxy Response</span>
               {response && (
                 <>
-                  <Badge variant="outline" className={`text-[10px] font-bold border px-2.5 py-0.5 rounded-full ${getStatusColor(response.status_code)}`}>
+                  <Badge variant="outline" className="text-[10px]">
                     HTTP {response.status_code}
                   </Badge>
-                  <Badge variant="outline" className="text-[10px] bg-white/5 border-white/10 text-white/60 rounded-full">
-                    ⚡ {response.execution_time_ms} ms
+                  <Badge variant="outline" className="text-[10px]">
+                    {response.execution_time_ms} ms
                   </Badge>
-                  <Badge variant="outline" className="text-[10px] bg-teal-500/10 border-teal-500/20 text-teal-300 rounded-full font-mono">
-                    Worker: {response.workerId}
+                  <Badge variant="outline" className="text-[10px]">
+                    {response.workerId}
                   </Badge>
                 </>
               )}
@@ -303,54 +292,57 @@ export default function ProxyPanel() {
 
             <div className="flex items-center gap-2">
               {response && (
-                <button
+                <Button
+                  variant="outline"
+                  size="xs"
                   onClick={() => setShowHeaders(!showHeaders)}
-                  className="px-3 py-1 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs text-white/70 hover:text-white transition-colors"
+                  className="text-[10px]"
                 >
-                  {showHeaders ? 'Hide Response Headers' : 'Show Response Headers'}
-                </button>
+                  {showHeaders ? 'HIDE HEADERS' : 'SHOW HEADERS'}
+                </Button>
               )}
               <Button
                 variant="ghost"
+                size="xs"
                 onClick={() => copyText(response ? response.body : error || '')}
-                className="text-xs text-white/40 hover:text-white p-1.5 h-auto"
-                title="Copy Response Body"
+                className="text-xs"
               >
-                📋 Copy Body
+                COPY BODY
               </Button>
             </div>
           </div>
 
           {/* Response Headers Table */}
           {response && showHeaders && (
-            <div className="bg-[#0D121F] border-b border-white/[0.06] p-4 text-xs font-mono text-white/70 max-h-[160px] overflow-y-auto space-y-1">
+            <div className="bg-secondary border-b border-border p-3 text-xs font-mono max-h-[160px] overflow-y-auto space-y-1">
               {Object.entries(response.headers).map(([k, v]) => (
                 <div key={k} className="flex gap-2">
-                  <span className="text-teal-400 font-semibold">{k}:</span>
-                  <span className="text-white/60 truncate">{v}</span>
+                  <span className="text-foreground font-bold">{k}:</span>
+                  <span className="text-muted-foreground truncate">{v}</span>
                 </div>
               ))}
             </div>
           )}
 
           {/* Response Body Console */}
-          <div className="p-6 bg-[#0A0E17] font-mono text-xs overflow-x-auto min-h-[160px] max-h-[420px]">
+          <div className="p-4 bg-background font-mono text-xs overflow-x-auto min-h-[140px] max-h-[380px]">
             {error ? (
-              <div className="text-rose-400">Proxy Error: {error}</div>
+              <div className="text-foreground">[ERROR] {error}</div>
             ) : response ? (
-              <pre className="text-emerald-400 leading-relaxed">{prettyResponseBody || '(empty response body)'}</pre>
+              <pre className="text-foreground leading-relaxed">{prettyResponseBody || '(empty response body)'}</pre>
             ) : null}
           </div>
 
           {/* Equivalent cURL Exporter */}
-          <div className="bg-[#0F1420] border-t border-white/[0.06] p-4 flex items-center justify-between">
-            <span className="text-[10px] uppercase font-bold tracking-wider text-white/30">Equivalent cURL Request:</span>
+          <div className="bg-secondary border-t border-border p-3 flex items-center justify-between">
+            <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">cURL Command:</span>
             <Button
               variant="outline"
+              size="xs"
               onClick={() => copyText(generateCurl())}
-              className="text-xs bg-white/5 hover:bg-white/10 border border-white/10 text-teal-300 font-mono py-1 px-3 h-auto rounded-lg"
+              className="text-xs font-mono"
             >
-              📋 Copy cURL Command
+              COPY cURL COMMAND
             </Button>
           </div>
         </Card>

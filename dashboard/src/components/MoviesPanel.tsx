@@ -28,107 +28,93 @@ export default function MoviesPanel() {
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto text-sm">
-      <Card className="rounded-2xl border border-[var(--card-border)] bg-[var(--card-bg)] shadow-xl relative overflow-hidden">
+      <Card className="border border-border bg-card">
         <CardHeader>
-          <CardTitle>🎬 Discover Movies & TV Shows</CardTitle>
-          <CardDescription>Search TMDB to fetch instant details and streaming links.</CardDescription>
+          <CardTitle>Discover Movies & Series</CardTitle>
+          <CardDescription>Search TMDB catalogue for titles, overviews, and streams.</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-1">
-              <span className="absolute inset-y-0 left-4 flex items-center text-[var(--text-subtle)] text-sm">🔍</span>
-              <Input
-                value={query}
-                onChange={e => setQuery(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && search()}
-                placeholder="Search movies or TV shows..."
-                className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-xl pl-10 pr-4 py-3 text-sm text-[var(--input-text)] placeholder-[var(--input-placeholder)]"
-              />
-            </div>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Input
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && search()}
+              placeholder="Search movies or TV shows..."
+              className="flex-1"
+            />
             <Button
               onClick={search}
               disabled={searching || !query.trim()}
-              className="px-6 py-5 rounded-xl text-xs uppercase tracking-wider font-bold transition-all flex items-center justify-center gap-2 h-auto"
+              className="font-mono text-xs uppercase"
             >
-              {searching ? (
-                <>
-                  <div className="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin" />
-                  <span>Searching...</span>
-                </>
-              ) : (
-                <span>Search</span>
-              )}
+              {searching ? 'SEARCHING...' : 'SEARCH TMDB'}
             </Button>
           </div>
         </CardContent>
       </Card>
 
       {error && (
-        <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 flex items-center gap-2.5 animate-in fade-in duration-300">
-          <span>⚠️</span>
-          <span>{error}</span>
+        <div className="text-xs text-foreground bg-secondary border border-border px-4 py-3 font-mono">
+          [ERROR] {error}
         </div>
       )}
 
       {results.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 pt-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {results.map(m => (
             <Card
               key={m.tmdbId}
-              className="rounded-2xl overflow-hidden flex flex-col border border-[var(--card-border)] bg-[var(--card-bg)] shadow-md transition-all duration-300 group hover:shadow-lg"
+              className="flex flex-col justify-between border border-border bg-card"
             >
-              {/* Media Poster Wrapper */}
-              <div className="relative aspect-[16/10] overflow-hidden bg-black/40 flex items-center justify-center flex-shrink-0">
-                <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-85 z-10" />
-                {m.posterUrl ? (
-                  <img
-                    src={m.posterUrl}
-                    alt={m.title}
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                  />
-                ) : (
-                  <div className="text-5xl select-none">🎬</div>
-                )}
-                
-                {/* Media Type Tag */}
-                <Badge variant="outline" className="absolute top-3 left-3 px-2 py-0.5 rounded-lg bg-black/60 border border-white/10 text-[9px] font-bold uppercase tracking-wider text-[var(--accent-active-text)] z-20">
-                  {m.mediaType === 'tv' ? '📺 TV Show' : '🎬 Movie'}
-                </Badge>
-                
-                {/* Release Year Tag */}
-                {m.releaseDate && (
-                  <Badge variant="outline" className="absolute top-3 right-3 px-2 py-0.5 rounded-lg bg-black/60 border border-white/10 text-[9px] font-bold text-white/70 z-20">
-                    {m.releaseDate.slice(0, 4)}
+              <div className="space-y-3">
+                <div className="relative aspect-[16/10] bg-secondary border-b border-border overflow-hidden flex items-center justify-center">
+                  {m.posterUrl ? (
+                    <img
+                      src={m.posterUrl}
+                      alt={m.title}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="text-3xl">🎬</div>
+                  )}
+                  
+                  <Badge variant="outline" className="absolute top-2 left-2 text-[9px] bg-background">
+                    {m.mediaType === 'tv' ? 'TV SHOW' : 'MOVIE'}
                   </Badge>
-                )}
-              </div>
+                  
+                  {m.releaseDate && (
+                    <Badge variant="outline" className="absolute top-2 right-2 text-[9px] bg-background">
+                      {m.releaseDate.slice(0, 4)}
+                    </Badge>
+                  )}
+                </div>
 
-              {/* Media Info Content */}
-              <div className="p-5 flex-1 flex flex-col justify-between space-y-3">
-                <div className="space-y-1">
+                <div className="p-4 space-y-2">
                   <div className="flex items-center justify-between gap-2">
-                    <h3 className="font-bold text-[var(--text-main)] text-sm line-clamp-1 leading-snug group-hover:text-[var(--primary)] transition-colors">{m.title}</h3>
+                    <h3 className="font-bold font-mono text-xs uppercase tracking-wider text-foreground truncate">{m.title}</h3>
                     {m.voteAverage > 0 && (
-                      <Badge variant="outline" className="text-[10px] font-bold text-yellow-500 flex items-center gap-0.5 bg-yellow-500/10 px-1.5 py-0.5 rounded border border-yellow-500/20">
+                      <Badge variant="outline" className="text-[10px] font-mono shrink-0">
                         ⭐ {m.voteAverage.toFixed(1)}
                       </Badge>
                     )}
                   </div>
                   {m.overview && (
-                    <p className="text-[11px] text-[var(--text-muted)] line-clamp-3 leading-relaxed">
+                    <p className="text-xs text-muted-foreground line-clamp-3 leading-relaxed">
                       {m.overview}
                     </p>
                   )}
                 </div>
+              </div>
 
+              <div className="p-4 pt-0">
                 <a
                   href={m.watchUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-[var(--btn-secondary-bg)] hover:bg-[var(--btn-secondary-hover)] border border-[var(--btn-secondary-border)] text-[var(--text-main)] text-xs font-bold transition-all shadow-inner"
+                  className="w-full flex items-center justify-center gap-1.5 py-2 border border-border bg-secondary hover:bg-foreground hover:text-background text-foreground text-xs font-mono font-bold uppercase transition-colors"
                 >
                   <span>▶</span>
-                  <span>Watch Content</span>
+                  <span>WATCH CONTENT</span>
                 </a>
               </div>
             </Card>

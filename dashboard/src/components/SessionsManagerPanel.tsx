@@ -1,5 +1,9 @@
 import { useState, useEffect } from 'react';
 import { BASE } from '../api';
+import { Button } from '@/components/ui/button';
+import { Card, CardTitle, CardDescription } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 
 interface Session {
   id: string;
@@ -26,20 +30,16 @@ interface Session {
 type TabType = 'all' | 'docker' | 'browser' | 'terminal' | 'vscode' | 'android';
 
 export default function SessionsManagerPanel() {
-  // --- Data States ---
   const [sessions, setSessions] = useState<Session[]>([]);
   const [browsers, setBrowsers] = useState<any[]>([]);
   const [android, setAndroid] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState('');
 
-  // --- UI States ---
   const [activeTab, setActiveTab] = useState<TabType>('all');
 
-  // --- Custom Browser States ---
   const [customUrl, setCustomUrl] = useState('');
 
-  // --- Custom Docker Deploy States ---
   const [dockerImage, setDockerImage] = useState('');
   const [dockerPort, setDockerPort] = useState('80');
   const [dockerName, setDockerName] = useState('');
@@ -49,7 +49,6 @@ export default function SessionsManagerPanel() {
   const [hostPort, setHostPort] = useState('15000');
   const [tunnelToken, setTunnelToken] = useState('');
 
-  // --- Edit Docker Container States ---
   const [editingSession, setEditingSession] = useState<Session | null>(null);
   const [editImage, setEditImage] = useState('');
   const [editPort, setEditPort] = useState('80');
@@ -60,7 +59,6 @@ export default function SessionsManagerPanel() {
   const [editTunnelToken, setEditTunnelToken] = useState('');
   const [editEnv, setEditEnv] = useState('');
 
-  // --- Logic & API calls (Unchanged) ---
   const loadSessions = async () => {
     try {
       const res = await fetch(`${BASE}/api/sessions/all`);
@@ -107,13 +105,13 @@ export default function SessionsManagerPanel() {
 
   const saveEditedContainer = async () => {
     if (!editingSession) return;
-    if (!editImage) return setResult('❌ Please enter a Docker Image URI');
+    if (!editImage) return setResult('[ERROR] Please enter a Docker Image URI');
 
     const portNum = parseInt(editPort, 10);
-    if (isNaN(portNum) || portNum <= 0) return setResult('❌ Invalid container port');
+    if (isNaN(portNum) || portNum <= 0) return setResult('[ERROR] Invalid container port');
 
     const hostPortNum = parseInt(editHostPort, 10);
-    if (isNaN(hostPortNum) || hostPortNum <= 0) return setResult('❌ Invalid host port');
+    if (isNaN(hostPortNum) || hostPortNum <= 0) return setResult('[ERROR] Invalid host port');
 
     setLoading(true);
     setResult('');
@@ -146,11 +144,11 @@ export default function SessionsManagerPanel() {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
 
-      setResult(`✅ Redeployed successfully!\nURL: ${data.url}\nContainer: ${data.containerName}`);
+      setResult(`[SUCCESS] Redeployed container!\nURL: ${data.url}\nContainer: ${data.containerName}`);
       setEditingSession(null);
       await loadSessions();
     } catch (err: any) {
-      setResult(`❌ Error: ${err.message}`);
+      setResult(`[ERROR] ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -165,17 +163,17 @@ export default function SessionsManagerPanel() {
         body: JSON.stringify({ sessionId, type }),
       });
       const data = await res.json();
-      setResult(data.success ? `✅ ${data.message}` : `❌ ${data.message}`);
+      setResult(data.success ? `[SUCCESS] ${data.message}` : `[ERROR] ${data.message}`);
       await loadSessions();
     } catch (err: any) {
-      setResult(`❌ Error: ${err.message}`);
+      setResult(`[ERROR] ${err.message}`);
     } finally {
       setLoading(false);
     }
   };
 
   const startCustomBrowser = async () => {
-    if (!customUrl) return setResult('❌ Please enter a URL');
+    if (!customUrl) return setResult('[ERROR] Please enter a URL');
     setLoading(true);
     setResult('');
     try {
@@ -187,22 +185,22 @@ export default function SessionsManagerPanel() {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
 
-      setResult(`✅ Browser started!\nURL: ${data.url}\nUser: ${data.username} | Pass: ${data.password}`);
+      setResult(`[SUCCESS] Browser started!\nURL: ${data.url}\nUser: ${data.username} | Pass: ${data.password}`);
       setCustomUrl('');
       await loadSessions();
     } catch (err: any) {
-      setResult(`❌ Error: ${err.message}`);
+      setResult(`[ERROR] ${err.message}`);
     } finally {
       setLoading(false);
     }
   };
 
   const deployCustomContainer = async () => {
-    if (!dockerImage) return setResult('❌ Please enter a Docker Image URI');
+    if (!dockerImage) return setResult('[ERROR] Please enter a Docker Image URI');
     const portNum = parseInt(dockerPort, 10);
-    if (isNaN(portNum) || portNum <= 0) return setResult('❌ Invalid container port');
+    if (isNaN(portNum) || portNum <= 0) return setResult('[ERROR] Invalid container port');
     const hostPortNum = parseInt(hostPort, 10);
-    if (isNaN(hostPortNum) || hostPortNum <= 0) return setResult('❌ Invalid host port');
+    if (isNaN(hostPortNum) || hostPortNum <= 0) return setResult('[ERROR] Invalid host port');
 
     setLoading(true);
     setResult('');
@@ -234,11 +232,11 @@ export default function SessionsManagerPanel() {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
 
-      setResult(`✅ Container started!\nURL: ${data.url}\nContainer: ${data.containerName}`);
+      setResult(`[SUCCESS] Container started!\nURL: ${data.url}\nContainer: ${data.containerName}`);
       setDockerImage(''); setDockerName(''); setDockerEnv(''); setCustomDomain(''); setTunnelToken('');
       await loadSessions();
     } catch (err: any) {
-      setResult(`❌ Error: ${err.message}`);
+      setResult(`[ERROR] ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -246,11 +244,10 @@ export default function SessionsManagerPanel() {
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    setResult('✅ Copied to clipboard!');
+    setResult('COPIED TO CLIPBOARD');
     setTimeout(() => setResult(''), 2000);
   };
 
-  // --- Computed Data ---
   const totalSessions = sessions.length + browsers.length + (android ? 1 : 0);
   const dockerSessions = sessions.filter(s => s.type === 'docker-container');
   const customBrowserSessions = sessions.filter(s => s.type === 'custom-browser');
@@ -258,218 +255,206 @@ export default function SessionsManagerPanel() {
   const vscodeSessions = sessions.filter(s => s.type === 'vscode');
 
   return (
-    <div className="space-y-6 mx-auto text-sm">
-
-      {/* Top Banner Area (Restores & Notifications) */}
-      <div className="space-y-3">
+    <div className="space-y-4 mx-auto text-sm font-mono">
+      {/* Top Notification Banner */}
+      <div className="space-y-2">
         {sessions.length > 0 && (
-          <div className="glass rounded-xl p-4 border border-teal-500/30 bg-teal-500/10 flex items-center gap-4 animate-in fade-in">
-            <span className="text-2xl">💾</span>
+          <div className="border border-border bg-secondary p-3 flex items-center gap-3">
+            <span className="text-xl">💾</span>
             <div>
-              <h4 className="text-white font-semibold">Sessions Restored</h4>
-              <p className="text-teal-100/70 text-xs mt-0.5">
-                {sessions.length} session(s) active from previous runs. Credentials and tunnels preserved.
+              <h4 className="text-foreground font-bold text-xs uppercase tracking-wider">Active Workloads Preserved</h4>
+              <p className="text-muted-foreground text-xs mt-0.5">
+                {sessions.length} workload(s) running with Cloudflare secure tunnels.
               </p>
             </div>
           </div>
         )}
 
         {result && (
-          <div className="glass rounded-xl p-3 border border-white/20 bg-white/5 animate-in slide-in-from-top-2">
-            <pre className="text-xs text-white/80 whitespace-pre-wrap font-mono m-0">{result}</pre>
+          <div className="border border-border bg-secondary p-3">
+            <pre className="text-xs text-foreground whitespace-pre-wrap font-mono m-0">{result}</pre>
           </div>
         )}
       </div>
 
       {/* Main Grid Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
 
-        {/* LEFT COLUMN: Controls & Launchpad */}
-        <div className="lg:col-span-4 space-y-6">
-
+        {/* LEFT COLUMN: Controls */}
+        <div className="lg:col-span-4 space-y-4">
           {/* Stats Widget */}
-          <div className="glass rounded-2xl p-5 border border-white/10 grid grid-cols-2 gap-4">
-            <div className="col-span-2 flex justify-between items-end border-b border-white/5 pb-3">
-              <span className="text-white/50 font-medium">Total Workloads</span>
-              <span className="text-3xl font-bold text-white">{totalSessions}</span>
+          <Card className="border border-border bg-card p-4 grid grid-cols-2 gap-3">
+            <div className="col-span-2 flex justify-between items-end border-b border-border pb-2">
+              <span className="text-muted-foreground text-xs uppercase font-bold">Total Workloads</span>
+              <span className="text-2xl font-bold text-foreground font-mono">{totalSessions}</span>
             </div>
             <div>
-              <div className="text-indigo-400 font-bold text-lg">{dockerSessions.length}</div>
-              <div className="text-white/40 text-[10px] uppercase tracking-wider">Docker</div>
+              <div className="text-foreground font-bold text-base font-mono">{dockerSessions.length}</div>
+              <div className="text-muted-foreground text-[10px] uppercase">Docker</div>
             </div>
             <div>
-              <div className="text-teal-400 font-bold text-lg">{customBrowserSessions.length + browsers.length}</div>
-              <div className="text-white/40 text-[10px] uppercase tracking-wider">Browsers</div>
+              <div className="text-foreground font-bold text-base font-mono">{customBrowserSessions.length + browsers.length}</div>
+              <div className="text-muted-foreground text-[10px] uppercase">Browsers</div>
             </div>
             <div>
-              <div className="text-purple-400 font-bold text-lg">{terminalSessions.length}</div>
-              <div className="text-white/40 text-[10px] uppercase tracking-wider">Terminals</div>
+              <div className="text-foreground font-bold text-base font-mono">{terminalSessions.length}</div>
+              <div className="text-muted-foreground text-[10px] uppercase">Terminals</div>
             </div>
             <div>
-              <div className="text-blue-400 font-bold text-lg">{vscodeSessions.length}</div>
-              <div className="text-white/40 text-[10px] uppercase tracking-wider">VSCode</div>
+              <div className="text-foreground font-bold text-base font-mono">{vscodeSessions.length}</div>
+              <div className="text-muted-foreground text-[10px] uppercase">VSCode</div>
             </div>
-          </div>
+          </Card>
 
           {/* Quick Launch: Browser */}
-          <div className="glass rounded-2xl p-5 border border-white/10 flex flex-col gap-3 relative overflow-hidden">
-            <div className="absolute top-0 right-0 p-4 opacity-10 text-4xl pointer-events-none">🌐</div>
-            <h3 className="font-semibold text-white">Quick Browser</h3>
-            <div className="flex gap-2 relative z-10">
-              <input
+          <Card className="border border-border bg-card p-4 space-y-2">
+            <CardTitle className="text-xs uppercase tracking-wider text-foreground">🌐 Quick Web Browser</CardTitle>
+            <div className="flex gap-2">
+              <Input
                 type="url"
                 value={customUrl}
                 onChange={(e) => setCustomUrl(e.target.value)}
                 placeholder="https://..."
-                className="flex-1 px-3 py-2 rounded-lg bg-black/20 border border-white/10 text-white focus:border-teal-500 focus:outline-none transition-colors"
+                className="flex-1 text-xs"
               />
-              <button
+              <Button
                 onClick={startCustomBrowser}
                 disabled={loading}
-                className="px-4 py-2 rounded-lg bg-teal-500/20 text-teal-400 border border-teal-500/30 hover:bg-teal-500/30 disabled:opacity-50 transition-all font-medium"
+                variant="outline"
+                size="sm"
+                className="font-mono text-xs uppercase"
               >
-                {loading ? '...' : 'Launch'}
-              </button>
+                LAUNCH
+              </Button>
             </div>
-          </div>
+          </Card>
 
           {/* Launchpad: Docker */}
-          <div className="glass rounded-2xl p-5 border border-white/10 space-y-4">
-            <h3 className="font-semibold text-white flex items-center gap-2">
-              <span>🐋</span> Deploy Container
-            </h3>
+          <Card className="border border-border bg-card p-4 space-y-3">
+            <CardTitle className="text-xs uppercase tracking-wider text-foreground">🐋 Deploy Container Instance</CardTitle>
 
-            <div className="space-y-3">
+            <div className="space-y-2">
               <div>
-                <label className="text-[10px] text-white/50 font-bold uppercase block mb-1">Image URI</label>
-                <input
+                <label className="text-[10px] text-muted-foreground font-bold uppercase block mb-1">Image URI</label>
+                <Input
                   type="text"
                   value={dockerImage}
                   onChange={(e) => setDockerImage(e.target.value)}
                   placeholder="nginx:latest"
-                  className="w-full px-3 py-2 rounded-lg bg-black/20 border border-white/10 text-white focus:border-indigo-500 outline-none"
+                  className="w-full text-xs"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-[10px] text-white/50 font-bold uppercase block mb-1">Container Port</label>
-                  <input type="number" value={dockerPort} onChange={(e) => setDockerPort(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-black/20 border border-white/10 text-white focus:border-indigo-500 outline-none" />
+                  <label className="text-[10px] text-muted-foreground font-bold uppercase block mb-1">Port</label>
+                  <Input type="number" value={dockerPort} onChange={(e) => setDockerPort(e.target.value)} className="w-full text-xs" />
                 </div>
                 <div>
-                  <label className="text-[10px] text-white/50 font-bold uppercase block mb-1">Local Port</label>
-                  <input type="number" value={hostPort} onChange={(e) => setHostPort(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-black/20 border border-white/10 text-white focus:border-indigo-500 outline-none" />
+                  <label className="text-[10px] text-muted-foreground font-bold uppercase block mb-1">Host Port</label>
+                  <Input type="number" value={hostPort} onChange={(e) => setHostPort(e.target.value)} className="w-full text-xs" />
                 </div>
               </div>
 
               <div>
-                <label className="text-[10px] text-white/50 font-bold uppercase block mb-1">Network Mode</label>
-                <select value={domainMode} onChange={(e) => setDomainMode(e.target.value as 'quick' | 'custom')} className="w-full px-3 py-2 rounded-lg bg-[#1E2330] border border-white/10 text-[var(--input-text)] focus:border-indigo-500 outline-none">
+                <label className="text-[10px] text-muted-foreground font-bold uppercase block mb-1">Network Mode</label>
+                <select
+                  value={domainMode}
+                  onChange={(e) => setDomainMode(e.target.value as 'quick' | 'custom')}
+                  className="w-full border border-border bg-secondary px-2.5 py-1.5 text-xs text-foreground outline-none"
+                >
                   <option value="quick">Quick Tunnel (trycloudflare)</option>
                   <option value="custom">Custom Subdomain</option>
                 </select>
               </div>
 
               {domainMode === 'custom' && (
-                <div className="space-y-3 animate-in fade-in duration-200">
-                  <input type="text" value={customDomain} onChange={(e) => setCustomDomain(e.target.value)} placeholder="whoami.yourdomain.com" className="w-full px-3 py-2 rounded-lg bg-black/20 border border-white/10 text-white focus:border-indigo-500 outline-none" />
+                <div>
+                  <Input type="text" value={customDomain} onChange={(e) => setCustomDomain(e.target.value)} placeholder="whoami.yourdomain.com" className="w-full text-xs" />
                 </div>
               )}
 
               <div>
-                <label className="text-[10px] text-white/50 font-bold uppercase block mb-1">Environment Variables</label>
+                <label className="text-[10px] text-muted-foreground font-bold uppercase block mb-1">Environment Variables</label>
                 <textarea
                   value={dockerEnv}
                   onChange={(e) => setDockerEnv(e.target.value)}
-                  rows={3}
+                  rows={2}
                   placeholder={"KEY=VALUE\nOTHER_KEY=123"}
-                  className="w-full px-3 py-2 rounded-lg bg-black/20 border border-white/10 text-white font-mono text-xs focus:border-indigo-500 outline-none resize-y"
+                  className="w-full border border-border bg-background p-2 font-mono text-xs text-foreground outline-none resize-y"
                 />
               </div>
 
-              <button
+              <Button
                 onClick={deployCustomContainer}
                 disabled={loading}
-                className="w-full py-2.5 rounded-lg bg-indigo-500/20 border border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/30 disabled:opacity-50 transition-all font-medium mt-2"
+                className="w-full font-mono text-xs uppercase font-bold mt-1"
               >
-                {loading ? 'Deploying...' : 'Deploy Instance'}
-              </button>
+                {loading ? 'DEPLOYING...' : 'DEPLOY CONTAINER'}
+              </Button>
             </div>
-          </div>
+          </Card>
         </div>
 
-        {/* RIGHT COLUMN: Active Workloads & Tabs */}
-        <div className="lg:col-span-8 glass rounded-2xl border border-white/10 overflow-hidden flex flex-col h-full min-h-[600px]">
-
+        {/* RIGHT COLUMN: Workloads List */}
+        <div className="lg:col-span-8 border border-border bg-card flex flex-col min-h-[500px]">
           {/* Tabs Header */}
-          <div className="flex overflow-x-auto border-b border-white/10 bg-white/5 scrollbar-hide">
+          <div className="flex border-b border-border bg-secondary overflow-x-auto">
             {(['all', 'docker', 'browser', 'terminal', 'vscode', 'android'] as TabType[]).map((tab) => (
-              <button
+              <Button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`px-5 py-3 text-xs font-semibold uppercase tracking-wider whitespace-nowrap transition-colors border-b-2 ${activeTab === tab
-                    ? 'border-indigo-400 text-white bg-white/5'
-                    : 'border-transparent text-white/40 hover:text-white hover:bg-white/5'
-                  }`}
+                variant="ghost"
+                size="sm"
+                className={`font-mono text-xs uppercase ${activeTab === tab
+                  ? 'bg-foreground text-background font-bold border-b-2 border-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+                }`}
               >
                 {tab === 'all' ? 'All Workloads' : tab}
-              </button>
+              </Button>
             ))}
           </div>
 
-          {/* Tab Content Area */}
-          <div className="p-5 flex-1 overflow-y-auto space-y-3">
-
-            {/* Helper to render Session Cards cleanly */}
+          {/* Workload List Content */}
+          <div className="p-4 flex-1 overflow-y-auto space-y-2.5">
             {(() => {
-              const SessionCard = ({ session, icon, accent }: { session: Session, icon: string, accent: string }) => (
-                <div className="bg-black/20 rounded-xl p-4 border border-white/5 hover:border-white/10 transition-colors group">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-start gap-3 flex-1 min-w-0">
-                      <div className="text-2xl mt-1 opacity-80">{icon}</div>
-                      <div className="space-y-1.5 flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-white font-medium truncate">
-                            {session.metadata?.containerName || session.metadata?.targetUrl || `${session.type} Session`}
-                          </span>
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-${accent}-500/10 text-${accent}-400 border border-${accent}-500/20`}>
-                            {session.type.replace('-container', '')}
-                          </span>
-                        </div>
+              const SessionCard = ({ session, icon }: { session: Session, icon: string }) => (
+                <div className="bg-secondary p-3 border border-border flex items-start justify-between gap-3 group">
+                  <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                    <div className="text-xl mt-0.5">{icon}</div>
+                    <div className="space-y-1 flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-foreground font-bold text-xs truncate">
+                          {session.metadata?.containerName || session.metadata?.targetUrl || `${session.type.toUpperCase()} SESSION`}
+                        </span>
+                        <Badge variant="outline" className="text-[9px]">
+                          {session.type.replace('-container', '').toUpperCase()}
+                        </Badge>
+                      </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                          <div className="flex items-center gap-2 text-white/50 truncate">
-                            🔗 <button onClick={() => copyToClipboard(session.metadata?.cloudflaredUrl || session.url)} className="hover:text-white truncate">{session.metadata?.cloudflaredUrl || session.url}</button>
-                          </div>
-                          <div className="text-white/50 truncate">
-                            ⏱️ {new Date(session.startedAt).toLocaleTimeString()}
-                          </div>
-                          {session.username && (
-                            <div className="text-white/50">👤 User: <button onClick={() => copyToClipboard(session.username!)} className="hover:text-white">{session.username}</button></div>
-                          )}
-                          {session.password && (
-                            <div className="text-white/50">🔑 Pass: <button onClick={() => copyToClipboard(session.password!)} className="hover:text-white">********</button></div>
-                          )}
-                          {session.metadata?.port && (
-                            <div className="text-white/50">🔌 Port: {session.metadata.port}</div>
-                          )}
-                          {session.type === 'docker-container' && session.metadata?.webhookSecret && (
-                            <div className="col-span-1 sm:col-span-2 flex items-center gap-1.5 text-white/50 truncate mt-1">
-                              ⚓ Webhook: <button onClick={() => copyToClipboard(`${BASE.startsWith('http') ? BASE : window.location.origin}/api/webhook/docker/${session.id}?secret=${session.metadata?.webhookSecret}`)} className="hover:text-white truncate text-[11px] font-mono text-indigo-400">
-                                {`${BASE.startsWith('http') ? BASE : window.location.origin}/api/webhook/docker/${session.id}?secret=${session.metadata?.webhookSecret}`}
-                              </button>
-                            </div>
-                          )}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-xs">
+                        <div className="flex items-center gap-1 text-muted-foreground truncate">
+                          🔗 <button onClick={() => copyToClipboard(session.metadata?.cloudflaredUrl || session.url)} className="text-foreground underline truncate">{session.metadata?.cloudflaredUrl || session.url}</button>
                         </div>
+                        <div className="text-muted-foreground truncate">
+                          ⏱ {new Date(session.startedAt).toLocaleTimeString()}
+                        </div>
+                        {session.username && (
+                          <div className="text-muted-foreground">USER: <span className="text-foreground">{session.username}</span></div>
+                        )}
+                        {session.password && (
+                          <div className="text-muted-foreground">PASS: <span className="text-foreground">{session.password}</span></div>
+                        )}
                       </div>
                     </div>
+                  </div>
 
-                    <div className="flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      {session.type === 'docker-container' && (
-                        <button onClick={() => startEditing(session)} className="px-3 py-1.5 rounded-lg bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30 text-xs transition-colors">Edit</button>
-                      )}
-                      <button onClick={() => stopSession(session.id, session.type)} className="px-3 py-1.5 rounded-lg bg-red-500/20 text-red-300 hover:bg-red-500/30 text-xs transition-colors">Stop</button>
-                    </div>
+                  <div className="flex gap-1.5 shrink-0">
+                    {session.type === 'docker-container' && (
+                      <Button onClick={() => startEditing(session)} variant="outline" size="xs" className="font-mono text-[10px]">EDIT</Button>
+                    )}
+                    <Button onClick={() => stopSession(session.id, session.type)} variant="outline" size="xs" className="font-mono text-[10px]">STOP</Button>
                   </div>
                 </div>
               );
@@ -477,35 +462,37 @@ export default function SessionsManagerPanel() {
               const elements = [];
 
               if ((activeTab === 'all' || activeTab === 'docker') && dockerSessions.length > 0) {
-                dockerSessions.forEach(s => elements.push(<SessionCard key={s.id} session={s} icon="🐋" accent="indigo" />));
+                dockerSessions.forEach(s => elements.push(<SessionCard key={s.id} session={s} icon="🐋" />));
               }
               if ((activeTab === 'all' || activeTab === 'browser') && customBrowserSessions.length > 0) {
-                customBrowserSessions.forEach(s => elements.push(<SessionCard key={s.id} session={s} icon="🌐" accent="teal" />));
+                customBrowserSessions.forEach(s => elements.push(<SessionCard key={s.id} session={s} icon="🌐" />));
               }
               if ((activeTab === 'all' || activeTab === 'browser') && browsers.length > 0) {
                 browsers.forEach((b, i) => elements.push(
-                  <div key={`gb-${i}`} className="bg-black/20 rounded-xl p-4 border border-white/5">
-                    <div className="flex items-center gap-3"><span className="text-xl">🌍</span><div className="text-white font-medium">General Browser</div></div>
-                    <div className="mt-2 text-xs text-white/50 pl-8 space-y-1">
+                  <div key={`gb-${i}`} className="bg-secondary p-3 border border-border flex items-start gap-2.5">
+                    <span className="text-xl">🌍</span>
+                    <div className="text-xs text-muted-foreground space-y-0.5">
+                      <div className="text-foreground font-bold">General Browser Pool</div>
                       <div>🔗 {b.url}</div>
-                      <div>👤 {b.username} · 🔑 {b.password} · 🔌 Port {b.port}</div>
+                      <div>USER: {b.username} · PASS: {b.password} · PORT: {b.port}</div>
                     </div>
                   </div>
                 ));
               }
               if ((activeTab === 'all' || activeTab === 'terminal') && terminalSessions.length > 0) {
-                terminalSessions.forEach(s => elements.push(<SessionCard key={s.id} session={s} icon="💻" accent="purple" />));
+                terminalSessions.forEach(s => elements.push(<SessionCard key={s.id} session={s} icon="💻" />));
               }
               if ((activeTab === 'all' || activeTab === 'vscode') && vscodeSessions.length > 0) {
-                vscodeSessions.forEach(s => elements.push(<SessionCard key={s.id} session={s} icon="⚡" accent="blue" />));
+                vscodeSessions.forEach(s => elements.push(<SessionCard key={s.id} session={s} icon="⚡" />));
               }
               if ((activeTab === 'all' || activeTab === 'android') && android) {
                 elements.push(
-                  <div key="android" className="bg-black/20 rounded-xl p-4 border border-white/5">
-                    <div className="flex items-center gap-3"><span className="text-xl">📱</span><div className="text-white font-medium">{android.deviceInfo || 'Android Emulator'}</div></div>
-                    <div className="mt-2 text-xs text-white/50 pl-8 space-y-1">
+                  <div key="android" className="bg-secondary p-3 border border-border flex items-start gap-2.5">
+                    <span className="text-xl">📱</span>
+                    <div className="text-xs text-muted-foreground space-y-0.5">
+                      <div className="text-foreground font-bold">{android.deviceInfo || 'Android Emulator'}</div>
                       <div>🔗 {android.webUrl || 'N/A'}</div>
-                      <div>⏱️ Uptime: {android.uptime || 'Unknown'}</div>
+                      <div>UPTIME: {android.uptime || 'Unknown'}</div>
                     </div>
                   </div>
                 );
@@ -513,9 +500,9 @@ export default function SessionsManagerPanel() {
 
               if (elements.length === 0) {
                 return (
-                  <div className="flex flex-col items-center justify-center h-full text-white/30 space-y-2 py-12">
-                    <span className="text-4xl">📭</span>
-                    <p>No active workloads in this category.</p>
+                  <div className="flex flex-col items-center justify-center h-full text-muted-foreground space-y-1 py-16">
+                    <span className="text-2xl">📭</span>
+                    <p className="text-xs font-mono">No active workloads in this category.</p>
                   </div>
                 );
               }
@@ -526,70 +513,45 @@ export default function SessionsManagerPanel() {
         </div>
       </div>
 
-      {/* MODAL: Edit Docker Container (Simplified & Centered) */}
+      {/* Edit Modal */}
       {editingSession && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
-          <div className="w-full max-w-lg glass rounded-2xl border border-white/10 bg-[#0d1117] shadow-2xl flex flex-col max-h-[90vh]">
-
-            <div className="p-5 border-b border-white/10 flex justify-between items-center bg-white/5">
-              <h3 className="font-semibold text-white flex items-center gap-2">⚙️ Edit Container Config</h3>
-              <button onClick={() => setEditingSession(null)} className="text-white/40 hover:text-white p-1">✕</button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80">
+          <Card className="w-full max-w-lg border border-border bg-card p-5 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center pb-2 border-b border-border">
+              <CardTitle className="text-xs uppercase font-mono tracking-wider text-foreground">⚙️ Edit Container Config</CardTitle>
+              <Button variant="ghost" size="xs" onClick={() => setEditingSession(null)}>✕</Button>
             </div>
 
-            <div className="p-5 overflow-y-auto space-y-4">
+            <div className="space-y-3 text-xs">
               <div>
-                <label className="text-[10px] text-white/50 font-bold uppercase">Image URI</label>
-                <input type="text" value={editImage} onChange={(e) => setEditImage(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-lg bg-black/40 border border-white/10 text-white outline-none focus:border-indigo-500" />
+                <label className="text-[10px] text-muted-foreground font-bold uppercase block mb-1">Image URI</label>
+                <Input type="text" value={editImage} onChange={(e) => setEditImage(e.target.value)} className="w-full text-xs" />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] text-white/50 font-bold uppercase">Container Port</label>
-                  <input type="number" value={editPort} onChange={(e) => setEditPort(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-lg bg-black/40 border border-white/10 text-white outline-none focus:border-indigo-500" />
+                  <label className="text-[10px] text-muted-foreground font-bold uppercase block mb-1">Container Port</label>
+                  <Input type="number" value={editPort} onChange={(e) => setEditPort(e.target.value)} className="w-full text-xs" />
                 </div>
                 <div>
-                  <label className="text-[10px] text-white/50 font-bold uppercase">Local Port</label>
-                  <input type="number" value={editHostPort} onChange={(e) => setEditHostPort(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-lg bg-black/40 border border-white/10 text-white outline-none focus:border-indigo-500" />
+                  <label className="text-[10px] text-muted-foreground font-bold uppercase block mb-1">Host Port</label>
+                  <Input type="number" value={editHostPort} onChange={(e) => setEditHostPort(e.target.value)} className="w-full text-xs" />
                 </div>
               </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-[10px] text-white/50 font-bold uppercase">Instance Name</label>
-                  <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-lg bg-black/40 border border-white/10 text-white outline-none focus:border-indigo-500" />
-                </div>
-                <div>
-                  <label className="text-[10px] text-white/50 font-bold uppercase">Domain Mode</label>
-                  <select value={editDomainMode} onChange={(e) => setEditDomainMode(e.target.value as 'quick' | 'custom')} className="w-full mt-1 px-3 py-2 rounded-lg bg-[#1E2330] border border-white/10 text-[var(--input-text)] outline-none focus:border-indigo-500">
-                    <option value="quick">Quick Tunnel</option>
-                    <option value="custom">Custom Domain</option>
-                  </select>
-                </div>
-              </div>
-
-              {editDomainMode === 'custom' && (
-                <div className="space-y-4 animate-in fade-in">
-                  <div>
-                    <label className="text-[10px] text-white/50 font-bold uppercase">Custom Subdomain</label>
-                    <input type="text" value={editCustomDomain} onChange={(e) => setEditCustomDomain(e.target.value)} className="w-full mt-1 px-3 py-2 rounded-lg bg-black/40 border border-white/10 text-white outline-none focus:border-indigo-500" />
-                  </div>
-                </div>
-              )}
 
               <div>
-                <label className="text-[10px] text-white/50 font-bold uppercase">Environment Variables</label>
-                <textarea value={editEnv} onChange={(e) => setEditEnv(e.target.value)} rows={4} placeholder="KEY=VALUE" className="w-full mt-1 px-3 py-2 rounded-lg bg-black/40 border border-white/10 text-white font-mono text-xs outline-none focus:border-indigo-500" />
+                <label className="text-[10px] text-muted-foreground font-bold uppercase block mb-1">Environment Variables</label>
+                <textarea value={editEnv} onChange={(e) => setEditEnv(e.target.value)} rows={4} placeholder="KEY=VALUE" className="w-full border border-border bg-background p-2 font-mono text-xs text-foreground outline-none resize-y" />
               </div>
             </div>
 
-            <div className="p-5 border-t border-white/10 flex justify-end gap-3 bg-white/5">
-              <button onClick={() => setEditingSession(null)} disabled={loading} className="px-4 py-2 rounded-lg text-white/60 hover:bg-white/10 transition-colors">Cancel</button>
-              <button onClick={saveEditedContainer} disabled={loading} className="px-4 py-2 rounded-lg bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 hover:bg-indigo-500/30 transition-colors font-medium">
-                {loading ? 'Redeploying...' : 'Save & Redeploy'}
-              </button>
+            <div className="pt-3 border-t border-border flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setEditingSession(null)} className="font-mono text-xs uppercase">Cancel</Button>
+              <Button onClick={saveEditedContainer} disabled={loading} size="sm" className="font-mono text-xs uppercase">
+                {loading ? 'REDEPLOYING...' : 'SAVE & REDEPLOY'}
+              </Button>
             </div>
-
-          </div>
+          </Card>
         </div>
       )}
     </div>

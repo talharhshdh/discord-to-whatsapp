@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-sb_cdp_worker.py — Persistent SeleniumBase UC Browser Worker.
+sb_cdp_worker.py — Persistent SeleniumBase UC Stealth Browser Worker.
 
-Runs a dedicated, stealth Undetected Chrome (SeleniumBase UC Mode) browser with
+Runs a dedicated, stealth Chrome (SeleniumBase UC Mode flags) browser with
 Chrome DevTools Protocol (CDP) enabled on port 9223 (default SB_CDP_PORT).
 
 Exposes:
@@ -14,9 +14,10 @@ import os
 import sys
 import time
 import signal
+import subprocess
 import urllib.request
 import json
-from seleniumbase import undetected
+import shutil
 
 SB_CDP_PORT = int(os.environ.get("SB_CDP_PORT", "9223"))
 SB_CDP_HOST = os.environ.get("SB_CDP_HOST", "0.0.0.0")
@@ -32,6 +33,22 @@ def handle_signal(signum, frame):
 signal.signal(signal.SIGINT, handle_signal)
 signal.signal(signal.SIGTERM, handle_signal)
 
+def find_chrome():
+    candidates = [
+        "google-chrome-stable",
+        "google-chrome",
+        "chromium-browser",
+        "chromium",
+        "/usr/bin/google-chrome-stable",
+        "/usr/bin/google-chrome",
+        "/usr/bin/chromium-browser",
+        "/usr/bin/chromium",
+    ]
+    for c in candidates:
+        if shutil.which(c):
+            return c
+    return "google-chrome-stable"
+
 def is_cdp_ready(port=SB_CDP_PORT):
     try:
         req = urllib.request.Request(f"http://127.0.0.1:{port}/json/version", headers={"User-Agent": "HealthCheck"})
@@ -43,45 +60,72 @@ def is_cdp_ready(port=SB_CDP_PORT):
         return False
     return False
 
-def start_driver():
-    print(f"[SB-CDP] Starting SeleniumBase UC browser on port {SB_CDP_PORT}...")
+def start_chrome_process():
+    print(f"[SB-CDP] Starting SeleniumBase UC stealth browser on port {SB_CDP_PORT}...")
     os.makedirs(USER_DATA_DIR, exist_ok=True)
+    chrome_bin = find_chrome()
 
-    options = undetected.ChromeOptions()
-    options._remote_debugging_port = SB_CDP_PORT
-    options.add_argument(f"--remote-debugging-port={SB_CDP_PORT}")
-    options.add_argument(f"--remote-debugging-address={SB_CDP_HOST}")
-    options.add_argument("--remote-allow-origins=*")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--disable-gpu")
-    options.add_argument("--no-first-run")
-    options.add_argument("--no-default-browser-check")
-    options.add_argument("--disable-background-networking")
-    options.add_argument("--disable-sync")
-    options.add_argument(f"--user-data-dir={USER_DATA_DIR}")
+    cmd = [
+        chrome_bin,
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        f"--remote-debugging-port={SB_CDP_PORT}",
+        f"--remote-debugging-address={SB_CDP_HOST}",
+        "--remote-allow-origins=*",
+        f"--user-data-dir={USER_DATA_DIR}",
+        "--window-size=1400,900",
+        "--window-position=10,10",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--no-service-autorun",
+        "--disable-auto-reload",
+        "--homepage=about:blank",
+        "--no-pings",
+        "--enable-unsafe-extension-debugging",
+        "--wm-window-animations-disabled",
+        "--animation-duration-scale=0",
+        "--enable-privacy-sandbox-ads-apis",
+        "--safebrowsing-disable-download-protection",
+        "--password-store=basic",
+        "--deny-permission-prompts",
+        "--disable-breakpad",
+        "--disable-prompt-on-repost",
+        "--disable-application-cache",
+        "--disable-password-generation",
+        "--disable-save-password-bubble",
+        "--disable-single-click-autofill",
+        "--disable-ipc-flooding-protection",
+        "--disable-background-timer-throttling",
+        "--disable-search-engine-choice-screen",
+        "--disable-background-networking",
+        "--disable-backgrounding-occluded-windows",
+        "--disable-client-side-phishing-detection",
+        "--disable-device-discovery-notifications",
+        "--disable-top-sites",
+        "--disable-translate",
+        "--dns-prefetch-disable",
+        "--disable-renderer-backgrounding",
+        "--disable-features=IsolateOrigins,site-per-process,Translate,InsecureDownloadWarnings,DownloadBubble,DownloadBubbleV2,OptimizationTargetPrediction,OptimizationGuideModelDownloading,SidePanelPinning,UserAgentClientHint,PrivacySandboxSettings4,OptimizationHintsFetching,InterestFeedContentSuggestions,ComponentUpdater,NetworkPrediction,DisableLoadExtensionCommandLineSwitch,WebAuthentication,OmniboxUIFeedback,OmniboxPopupShortcut,PasskeyAuth,MediaRouter,DialMediaRouteProvider,WebRtcHideLocalIpsWithMdns",
+    ]
 
-    # Determine display / headless mode
-    # On Linux with Xvfb or DISPLAY set, headed UC mode provides maximum anti-bot stealth
-    is_linux = sys.platform.startswith("linux")
-    has_display = bool(os.environ.get("DISPLAY"))
-
-    driver = undetected.Chrome(
-        options=options,
-        user_data_dir=USER_DATA_DIR,
-        headless=False if (is_linux and has_display) else False,
-        use_subprocess=True,
+    proc = subprocess.Popen(
+        cmd,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        close_fds=True if sys.platform != "win32" else False
     )
-    return driver
+    return proc
 
 def main():
     global running
-    print(f"🚀 [SB-CDP] SeleniumBase CDP Worker initializing on port {SB_CDP_PORT}...")
+    print(f"🚀 [SB-CDP] SeleniumBase UC CDP Worker initializing on port {SB_CDP_PORT}...")
 
-    driver = None
+    proc = None
     try:
-        driver = start_driver()
-        print(f"✅ [SB-CDP] Driver process launched. Waiting for CDP readiness...")
+        proc = start_chrome_process()
+        print(f"✅ [SB-CDP] Chrome process launched (PID: {proc.pid}). Waiting for CDP readiness...")
 
         for attempt in range(30):
             if is_cdp_ready(SB_CDP_PORT):
@@ -89,33 +133,37 @@ def main():
                 break
             time.sleep(1)
         else:
-            print(f"⚠️ [SB-CDP] Warning: CDP did not report ready within 30s, but driver process is running.")
+            print(f"⚠️ [SB-CDP] Warning: CDP did not report ready within 30s.")
 
         # Keep alive loop with watchdog
         while running:
             time.sleep(5)
-            # Watchdog check
-            if not is_cdp_ready(SB_CDP_PORT):
-                print(f"⚠️ [SB-CDP] CDP unresponsive on port {SB_CDP_PORT}! Restarting driver...")
+            # Check process status
+            if proc.poll() is not None or not is_cdp_ready(SB_CDP_PORT):
+                print(f"⚠️ [SB-CDP] Process died or CDP unresponsive on port {SB_CDP_PORT}! Restarting Chrome...")
                 try:
-                    if driver:
-                        driver.quit()
+                    if proc and proc.poll() is None:
+                        proc.kill()
                 except Exception:
                     pass
                 time.sleep(2)
-                driver = start_driver()
-                time.sleep(3)
+                proc = start_chrome_process()
+                time.sleep(2)
 
     except Exception as e:
         print(f"❌ [SB-CDP] Error in worker: {e}", file=sys.stderr)
         raise
     finally:
-        print(f"🧹 [SB-CDP] Cleaning up SeleniumBase driver...")
-        if driver:
+        print(f"🧹 [SB-CDP] Cleaning up Chrome process...")
+        if proc and proc.poll() is None:
             try:
-                driver.quit()
+                proc.terminate()
+                proc.wait(timeout=3)
             except Exception:
-                pass
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
         print(f"👋 [SB-CDP] Worker exited.")
 
 if __name__ == "__main__":
