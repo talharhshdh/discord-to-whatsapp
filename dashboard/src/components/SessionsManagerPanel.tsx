@@ -419,45 +419,76 @@ export default function SessionsManagerPanel() {
           {/* Workload List Content */}
           <div className="p-4 flex-1 overflow-y-auto space-y-2.5">
             {(() => {
-              const SessionCard = ({ session, icon }: { session: Session, icon: string }) => (
-                <div className="bg-secondary p-3 border border-border flex items-start justify-between gap-3 group">
-                  <div className="flex items-start gap-2.5 flex-1 min-w-0">
-                    <div className="text-xl mt-0.5">{icon}</div>
-                    <div className="space-y-1 flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-foreground font-bold text-xs truncate">
-                          {session.metadata?.containerName || session.metadata?.targetUrl || `${session.type.toUpperCase()} SESSION`}
-                        </span>
-                        <Badge variant="outline" className="text-[9px]">
-                          {session.type.replace('-container', '').toUpperCase()}
-                        </Badge>
+              const SessionCard = ({ session, icon }: { session: Session, icon: string }) => {
+                const webhookUrl = session.metadata?.webhookSecret
+                  ? `${window.location.origin}/api/webhook/docker/${session.id}?secret=${session.metadata.webhookSecret}`
+                  : null;
+
+                return (
+                  <div className="bg-secondary p-3 border border-border flex flex-col gap-2.5 group">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                        <div className="text-xl mt-0.5">{icon}</div>
+                        <div className="space-y-1 flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-foreground font-bold text-xs truncate">
+                              {session.metadata?.containerName || session.metadata?.targetUrl || `${session.type.toUpperCase()} SESSION`}
+                            </span>
+                            <Badge variant="outline" className="text-[9px]">
+                              {session.type.replace('-container', '').toUpperCase()}
+                            </Badge>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-xs">
+                            <div className="flex items-center gap-1 text-muted-foreground truncate">
+                              🔗 <button onClick={() => copyToClipboard(session.metadata?.cloudflaredUrl || session.url)} className="text-foreground underline truncate">{session.metadata?.cloudflaredUrl || session.url}</button>
+                            </div>
+                            <div className="text-muted-foreground truncate">
+                              ⏱ {new Date(session.startedAt).toLocaleTimeString()}
+                            </div>
+                            {session.username && (
+                              <div className="text-muted-foreground">USER: <span className="text-foreground">{session.username}</span></div>
+                            )}
+                            {session.password && (
+                              <div className="text-muted-foreground">PASS: <span className="text-foreground">{session.password}</span></div>
+                            )}
+                          </div>
+                        </div>
                       </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-xs">
-                        <div className="flex items-center gap-1 text-muted-foreground truncate">
-                          🔗 <button onClick={() => copyToClipboard(session.metadata?.cloudflaredUrl || session.url)} className="text-foreground underline truncate">{session.metadata?.cloudflaredUrl || session.url}</button>
-                        </div>
-                        <div className="text-muted-foreground truncate">
-                          ⏱ {new Date(session.startedAt).toLocaleTimeString()}
-                        </div>
-                        {session.username && (
-                          <div className="text-muted-foreground">USER: <span className="text-foreground">{session.username}</span></div>
+                      <div className="flex gap-1.5 shrink-0">
+                        {session.type === 'docker-container' && (
+                          <Button onClick={() => startEditing(session)} variant="outline" size="xs" className="font-mono text-[10px]">EDIT</Button>
                         )}
-                        {session.password && (
-                          <div className="text-muted-foreground">PASS: <span className="text-foreground">{session.password}</span></div>
-                        )}
+                        <Button onClick={() => stopSession(session.id, session.type)} variant="outline" size="xs" className="font-mono text-[10px]">STOP</Button>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="flex gap-1.5 shrink-0">
-                    {session.type === 'docker-container' && (
-                      <Button onClick={() => startEditing(session)} variant="outline" size="xs" className="font-mono text-[10px]">EDIT</Button>
+                    {webhookUrl && (
+                      <div className="pt-2 border-t border-border flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-background/40 p-2 border border-border/50 text-[11px]">
+                        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                          <span className="text-muted-foreground font-bold shrink-0">⚓ WEBHOOK:</span>
+                          <button
+                            onClick={() => copyToClipboard(webhookUrl)}
+                            title="Click to copy redeploy webhook URL"
+                            className="text-foreground underline font-mono text-[11px] truncate text-left hover:text-primary transition-colors"
+                          >
+                            {webhookUrl}
+                          </button>
+                        </div>
+                        <Button
+                          onClick={() => copyToClipboard(webhookUrl)}
+                          variant="outline"
+                          size="xs"
+                          className="font-mono text-[10px] shrink-0 uppercase tracking-wider"
+                        >
+                          COPY WEBHOOK
+                        </Button>
+                      </div>
                     )}
-                    <Button onClick={() => stopSession(session.id, session.type)} variant="outline" size="xs" className="font-mono text-[10px]">STOP</Button>
                   </div>
-                </div>
-              );
+                );
+              };
 
               const elements = [];
 

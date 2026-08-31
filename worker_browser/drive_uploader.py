@@ -28,17 +28,20 @@ def stream_upload_to_drive(
     folder_id: str,
     access_token: str,
     encryption_key_hex: Optional[str] = None,
-    chunk_size: int = 16 * 1024 * 1024  # 16 MB chunks
+    chunk_size: int = 16 * 1024 * 1024  # 16 MB chunks (must be multiple of 256 KiB)
 ) -> Generator[Dict[str, Any], None, None]:
     """
     Generator that streams a file URL directly into Google Drive with AES-256-CTR encryption
     and yields real-time JSON progress dictionaries for each uploaded chunk.
     """
+    # Ensure chunk_size is a multiple of 256 KB
+    chunk_size = (max(chunk_size, 256 * 1024) // (256 * 1024)) * (256 * 1024)
     start_time = time.time()
+
     try:
         # 1. Inspect source stream
         yield {"status": "connecting", "message": f"Connecting to source URL: {source_url[:80]}..."}
-        head_resp = requests.get(source_url, stream=True, timeout=20)
+        head_resp = requests.get(source_url, stream=True, timeout=25)
         head_resp.raise_for_status()
 
         content_len = head_resp.headers.get("content-length")
@@ -68,7 +71,7 @@ def stream_upload_to_drive(
             "isEncrypted": bool(encryption_key_hex),
         }
 
-        # 3. Create Google Drive Resumable Upload Session
+        # 3. Create Google Drive Resumable Upload Session (Dynamic streaming mode)
         metadata = {
             "name": final_file_name,
             "parents": [folder_id] if folder_id else []
@@ -79,8 +82,6 @@ def stream_upload_to_drive(
             "Content-Type": "application/json; charset=UTF-8",
             "X-Upload-Content-Type": "application/octet-stream",
         }
-        if final_size is not None:
-            init_headers["X-Upload-Content-Length"] = str(final_size)
 
         init_url = "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable"
         init_res = requests.post(init_url, headers=init_headers, json=metadata, timeout=15)
@@ -98,11 +99,12 @@ def stream_upload_to_drive(
         if iv:
             buffer.extend(iv)
 
-        stream_iter = head_resp.iter_content(chunk_size=1024 * 512)
+        stream_iter = head_resp.iter_content(chunk_size=1024 * 256)
         stream_exhausted = False
         drive_response_data = None
 
         while not stream_exhausted or len(buffer) > 0:
+            # Accumulate full chunk_size (or until stream ends)
             while len(buffer) < chunk_size and not stream_exhausted:
                 try:
                     raw_chunk = next(stream_iter)
@@ -131,7 +133,14 @@ def stream_upload_to_drive(
             chunk_len = len(current_chunk)
             chunk_start = bytes_uploaded
             chunk_end = bytes_uploaded + chunk_len - 1
-            total_str = str(final_size) if final_size is not None else ("*" if not stream_exhausted else str(bytes_uploaded + chunk_len))
+
+            # On the final chunk, declare total bytes; otherwise use '*'
+            if stream_exhausted:
+                total_bytes_count = bytes_uploaded + chunk_len
+                total_str = str(total_bytes_count)
+            else:
+                total_bytes_count = final_size
+                total_str = "*"
 
             chunk_headers = {
                 "Content-Length": str(chunk_len),
@@ -148,7 +157,7 @@ def stream_upload_to_drive(
                 yield {
                     "status": "uploading",
                     "bytesUploaded": bytes_uploaded,
-                    "totalBytes": final_size or bytes_uploaded,
+                    "totalBytes": bytes_uploaded,
                     "progressPercent": 100.0,
                     "speedMBps": speed_mbps,
                 }
@@ -157,17 +166,18 @@ def stream_upload_to_drive(
                 bytes_uploaded += chunk_len
                 elapsed = time.time() - start_time
                 speed_mbps = round((bytes_uploaded / (1024 * 1024)) / elapsed, 2) if elapsed > 0 else 0
-                progress_pct = round((bytes_uploaded / final_size) * 100, 2) if final_size else None
+                progress_pct = round((bytes_uploaded / total_bytes_count) * 100, 2) if total_bytes_count else None
 
                 yield {
                     "status": "uploading",
                     "bytesUploaded": bytes_uploaded,
-                    "totalBytes": final_size,
+                    "totalBytes": total_bytes_count,
                     "progressPercent": progress_pct,
                     "speedMBps": speed_mbps,
                 }
             else:
-                raise RuntimeError(f"Google Drive chunk upload failed ({put_res.status_code}): {put_res.text}")
+                err_detail = f"Google Drive chunk upload failed ({put_res.status_code}): {put_res.text} (Headers sent: {chunk_headers})"
+                raise RuntimeError(err_detail)
 
         head_resp.close()
 
