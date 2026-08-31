@@ -30,6 +30,7 @@ dashboard/.env.local
 *.swo
 
 # Executables and Go binaries
+google-drive-api/
 *.exe
 *.exe~
 *.dll

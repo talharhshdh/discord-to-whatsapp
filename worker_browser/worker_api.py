@@ -1,4 +1,4 @@
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel
 from seleniumbase import SB
@@ -597,6 +597,60 @@ def get_logs():
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+# ---------------------------------------------------------------------------
+# DriveStream Hub Integration Endpoints
+# ---------------------------------------------------------------------------
+try:
+    from drive_worker_client import drive_client
+
+    class DriveUploadRequest(BaseModel):
+        url: str
+        fileName: Optional[str] = None
+        folderId: Optional[str] = None
+        accountId: Optional[str] = None
+
+    class DriveBatchUploadRequest(BaseModel):
+        urls: List[str]
+        folderId: Optional[str] = None
+        accountId: Optional[str] = None
+
+    @app.post("/drive/upload")
+    def drive_upload(req: DriveUploadRequest):
+        try:
+            job = drive_client.enqueue_job(
+                url=req.url,
+                file_name=req.fileName,
+                folder_id=req.folderId,
+                account_id=req.accountId
+            )
+            return {"success": True, "job": job}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.post("/drive/upload/batch")
+    def drive_upload_batch(req: DriveBatchUploadRequest):
+        try:
+            jobs = drive_client.enqueue_batch(
+                urls=req.urls,
+                folder_id=req.folderId,
+                account_id=req.accountId
+            )
+            return {"success": True, "jobs": jobs, "total": len(jobs)}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.get("/drive/accounts")
+    def drive_accounts():
+        try:
+            accounts = drive_client.get_accounts()
+            return {"success": True, "accounts": accounts}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+except Exception as e:
+    print(f"[*] DriveStream client integration skipped: {e}")
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000)
