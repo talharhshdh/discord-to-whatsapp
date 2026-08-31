@@ -81,12 +81,23 @@ class DriveStreamClient:
             else ""
         )
 
+    def _get_headers(self) -> Dict[str, str]:
+        headers = {
+            "accept": "*/*",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        }
+        if self.pool_auth:
+            headers["authorization"] = self.pool_auth
+        if self.pool_cookie:
+            headers["cookie"] = self.pool_cookie
+        return headers
+
     def is_hub_online(self) -> bool:
         """Check if DriveStream Hub server is running and reachable."""
         if not self.hub_url:
             return False
         try:
-            res = requests.get(f"{self.hub_url}/api/stats", timeout=4)
+            res = requests.get(f"{self.hub_url}/api/stats", headers=self._get_headers(), timeout=4)
             return res.status_code == 200 and res.json().get("success", False)
         except Exception:
             return False
@@ -99,17 +110,8 @@ class DriveStreamClient:
             print("[!] BROWSER_POOL_API_URL or DASHBOARD_DOMAIN not set in environment.")
             return []
 
-        headers = {
-            "accept": "*/*",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        }
-        if self.pool_auth:
-            headers["authorization"] = self.pool_auth
-        if self.pool_cookie:
-            headers["cookie"] = self.pool_cookie
-
         try:
-            res = requests.get(self.pool_api_url, headers=headers, timeout=8)
+            res = requests.get(self.pool_api_url, headers=self._get_headers(), timeout=8)
             if res.status_code == 200:
                 data = res.json()
                 return [b for b in data.get("browsers", []) if b.get("status") == "active"]
@@ -121,7 +123,7 @@ class DriveStreamClient:
 
     def get_accounts(self) -> List[Dict[str, Any]]:
         """List all connected Google 5TB accounts from the hub."""
-        res = requests.get(f"{self.hub_url}/api/accounts", timeout=6)
+        res = requests.get(f"{self.hub_url}/api/accounts", headers=self._get_headers(), timeout=6)
         res.raise_for_status()
         return res.json().get("accounts", [])
 
@@ -141,7 +143,7 @@ class DriveStreamClient:
             "folderId": folder_id,
             "accountId": account_id,
         }
-        res = requests.post(f"{self.hub_url}/api/jobs", json=payload, timeout=10)
+        res = requests.post(f"{self.hub_url}/api/jobs", json=payload, headers=self._get_headers(), timeout=10)
         res.raise_for_status()
         data = res.json()
         if not data.get("success"):
@@ -168,7 +170,7 @@ class DriveStreamClient:
             "folderId": folder_id,
             "accountId": account_id,
         }
-        res = requests.post(f"{self.hub_url}/api/jobs", json=payload, timeout=15)
+        res = requests.post(f"{self.hub_url}/api/jobs", json=payload, headers=self._get_headers(), timeout=15)
         res.raise_for_status()
         data = res.json()
         if not data.get("success"):
@@ -177,7 +179,7 @@ class DriveStreamClient:
 
     def get_job_status(self, job_id: str) -> Dict[str, Any]:
         """Fetch current status and progress of an upload job."""
-        res = requests.get(f"{self.hub_url}/api/jobs?limit=100", timeout=6)
+        res = requests.get(f"{self.hub_url}/api/jobs?limit=100", headers=self._get_headers(), timeout=6)
         res.raise_for_status()
         jobs = res.json().get("jobs", [])
         for j in jobs:
@@ -198,7 +200,7 @@ class DriveStreamClient:
         target_acc_id = account_id or accounts[0]["id"]
 
         payload = {"name": name, "parentFolderId": parent_folder_id}
-        res = requests.post(f"{self.hub_url}/api/drive/{target_acc_id}/folder", json=payload, timeout=10)
+        res = requests.post(f"{self.hub_url}/api/drive/{target_acc_id}/folder", json=payload, headers=self._get_headers(), timeout=10)
         res.raise_for_status()
         return res.json().get("folder", {})
 
